@@ -1,0 +1,65 @@
+:root {
+  font-family:
+    Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  color: #1e2a25;
+  background: #f6f8f7;
+  --el-color-primary: #0f8b8d;
+  --el-color-success: #2f9e44;
+  --el-color-warning: #d98c21;
+  --el-color-danger: #d64545;
+  --el-border-radius-base: 8px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+.content-band {
+  padding: 20px;
+  border: 1px solid #d8e1dd;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.metric-tile {
+  padding: 18px;
+  border: 1px solid #d8e1dd;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.metric-tile__label {
+  margin: 0;
+  color: #687871;
+  font-size: 13px;
+}
+
+.metric-tile__value {
+  margin: 10px 0 0;
+  color: #1e2a25;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+@media (max-width: 780px) {
+  .app-shell__aside {
+    width: 72px !important;
+  }
+
+  .app-shell__title,
+  .el-menu-item span {
+    display: none;
+  }
+}
+

@@ -1,0 +1,45 @@
+# old code archive
+bak/
+
+# environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# Node / Vite
+node_modules/
+front/node_modules/
+front/dist/
+front/.vite/
+front/.npm-cache/
+front/.pnpm-store/
+*.tsbuildinfo
+
+# runtime data
+data/
+logs/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Docker / local tooling
+.docker/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

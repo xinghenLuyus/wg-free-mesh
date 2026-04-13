@@ -1,0 +1,30 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: docker/app/backend.Dockerfile
+    environment:
+      WFM_DEBUG: "false"
+      WFM_CORS_ORIGINS: '["http://localhost:8000"]'
+      WFM_MQTT_URL: "mqtt://mqtt:1883"
+      WFM_DATABASE_URL: "sqlite:///./data/wg_free_mesh.db"
+    ports:
+      - "8000:8000"
+    volumes:
+      - api_data:/app/data
+    depends_on:
+      - mqtt
+
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mqtt_data:/mosquitto/data
+      - mqtt_log:/mosquitto/log
+
+volumes:
+  api_data:
+  mqtt_data:
+  mqtt_log:
