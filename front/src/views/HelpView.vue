@@ -1,8 +1,12 @@
+<script setup lang="ts">
+import { HelpFilled } from '@element-plus/icons-vue'
+</script>
+
 <template>
   <section class="content-card">
     <h1 class="page-title">帮助</h1>
     <div class="placeholder">
-      <div class="placeholder-icon">?</div>
+      <div class="placeholder-icon"><el-icon><HelpFilled /></el-icon></div>
       <div class="placeholder-text">帮助内容后续补充。</div>
       <div class="placeholder-desc">这里保留和旧版一致的页面入口与占位位置。</div>
     </div>
@@ -12,15 +16,16 @@
 <style scoped>
 .content-card {
   padding: 24px;
-  border: 1px solid #d8e1dd;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: #fff;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
+  box-shadow: var(--app-shadow-md);
 }
 
 .page-title {
   margin: 0 0 24px;
-  color: #1f2d28;
-  font-size: 28px;
+  color: var(--app-text);
+  font-size: 30px;
 }
 
 .placeholder {
@@ -36,11 +41,13 @@
   place-items: center;
   width: 52px;
   height: 52px;
+  border: 1px solid #bfe0da;
   border-radius: 8px;
-  background: #eef8f7;
-  color: #0f8b8d;
+  background: var(--app-primary-soft);
+  color: var(--app-primary);
   font-size: 24px;
   font-weight: 700;
+  box-shadow: var(--app-shadow-sm);
 }
 
 .placeholder-text {

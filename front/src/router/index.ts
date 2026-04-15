@@ -10,6 +10,7 @@ const HelpView = () => import('@/views/HelpView.vue')
 const HomeView = () => import('@/views/HomeView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const MeshView = () => import('@/views/MeshView.vue')
+const NodeWorkspaceLayout = () => import('@/views/NodeWorkspaceLayout.vue')
 const NodesView = () => import('@/views/NodesView.vue')
 const SettingsView = () => import('@/views/SettingsView.vue')
 const SystemView = () => import('@/views/SystemView.vue')
@@ -30,9 +31,19 @@ export const router = createRouter({
           children: [
             { path: '', component: ConfigOverviewView },
             { path: 'nodes', component: NodesView },
-            { path: 'mesh', component: MeshView },
-            { path: 'apply', component: ApplyView },
-            { path: 'endpoints', component: EndpointsView },
+            { path: 'mesh', redirect: (to) => `/configs/${to.params.configId}` },
+            { path: 'apply', redirect: (to) => `/configs/${to.params.configId}` },
+            { path: 'endpoints', redirect: (to) => `/configs/${to.params.configId}` },
+            {
+              path: 'nodes/:nodeId',
+              component: NodeWorkspaceLayout,
+              redirect: (to) => `/configs/${to.params.configId}/nodes/${to.params.nodeId}/mesh`,
+              children: [
+                { path: 'mesh', component: MeshView },
+                { path: 'apply', component: ApplyView },
+                { path: 'control', component: EndpointsView },
+              ],
+            },
           ],
         },
         { path: 'settings', component: SettingsView },

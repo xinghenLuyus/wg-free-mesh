@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ArrowLeft, Key, Plus } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -123,11 +124,8 @@ async function deleteNode(node: NodeRead) {
   }
 }
 
-function goTo(section: 'mesh' | 'apply' | 'endpoints', nodeId: string) {
-  void router.push({
-    path: `/configs/${route.params.configId}/${section}`,
-    query: { node: nodeId },
-  })
+function goTo(section: 'mesh' | 'apply' | 'control', nodeId: string) {
+  void router.push(`/configs/${route.params.configId}/nodes/${nodeId}/${section}`)
 }
 
 watch(
@@ -154,8 +152,8 @@ onMounted(async () => {
         <p class="section-subtitle">当前配置共 {{ nodeCount }} 个节点，节点仍然围绕配置详情工作流组织。</p>
       </div>
       <div class="section-actions">
-        <el-button @click="router.push(`/configs/${route.params.configId}`)">返回概览</el-button>
-        <el-button type="primary" @click="openCreate">新增节点</el-button>
+        <el-button :icon="ArrowLeft" @click="router.push(`/configs/${route.params.configId}`)">返回概览</el-button>
+        <el-button type="primary" :icon="Plus" @click="openCreate">新增节点</el-button>
       </div>
     </div>
 
@@ -178,7 +176,7 @@ onMounted(async () => {
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" @click="goTo('mesh', row.id)">Mesh</el-button>
             <el-button size="small" @click="goTo('apply', row.id)">应用</el-button>
-            <el-button size="small" type="primary" plain @click="goTo('endpoints', row.id)">控制</el-button>
+            <el-button size="small" type="primary" plain @click="goTo('control', row.id)">控制</el-button>
             <el-button size="small" type="danger" plain @click="deleteNode(row)">删除</el-button>
           </el-space>
         </template>
@@ -213,7 +211,7 @@ onMounted(async () => {
       <el-form-item label="公钥">
         <el-input v-model="form.public_key" type="textarea" />
       </el-form-item>
-      <el-button plain @click="autofillKeys">生成密钥</el-button>
+      <el-button plain :icon="Key" @click="autofillKeys">生成密钥</el-button>
     </el-form>
     <template #footer>
       <el-button @click="dialogVisible = false">取消</el-button>
@@ -233,11 +231,14 @@ onMounted(async () => {
 
 .section-head h3 {
   margin: 0;
+  color: var(--app-text);
+  font-size: 22px;
 }
 
 .section-subtitle {
   margin: 8px 0 0;
-  color: #70837c;
+  color: var(--app-muted);
+  line-height: 1.6;
 }
 
 .section-actions {

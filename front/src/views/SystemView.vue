@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Refresh } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { onMounted, shallowRef } from 'vue'
 
@@ -30,7 +31,7 @@ onMounted(async () => {
         <h1 class="page-title">系统状态</h1>
         <p class="page-description">这里查看健康检查和服务聚合状态。</p>
       </div>
-      <el-button @click="load">刷新</el-button>
+      <el-button :icon="Refresh" @click="load">刷新</el-button>
     </div>
   </section>
 
@@ -58,10 +59,11 @@ onMounted(async () => {
 
 <style scoped>
 .content-card {
-  padding: 20px 24px;
-  border: 1px solid #d8e1dd;
+  padding: 24px;
+  border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: #fff;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
+  box-shadow: var(--app-shadow-md);
 }
 
 .page-header {
@@ -73,13 +75,14 @@ onMounted(async () => {
 
 .page-title {
   margin: 0;
-  color: #1f2d28;
-  font-size: 28px;
+  color: var(--app-text);
+  font-size: 30px;
 }
 
 .page-description {
   margin: 8px 0 0;
-  color: #687871;
+  color: var(--app-muted);
+  line-height: 1.6;
 }
 
 .section-gap {
