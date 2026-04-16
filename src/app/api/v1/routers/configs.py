@@ -32,8 +32,11 @@ def list_configs() -> ApiResponse[list[dict[str, Any]]]:
 
 
 @router.post("")
-def create_config(payload: ConfigCreateRequest) -> ApiResponse[dict[str, Any]]:
+async def create_config(payload: ConfigCreateRequest) -> ApiResponse[dict[str, Any]]:
     config = control_plane_service.create_config(payload.model_dump())
+    await control_plane_service.publish_configs()
+    await control_plane_service.publish_config_overview(config.id)
+    await control_plane_service.publish_system_status()
     return ok(config.model_dump(mode="json"))
 
 
@@ -43,14 +46,19 @@ def get_config(config_id: str) -> ApiResponse[dict[str, Any]]:
 
 
 @router.put("/{config_id}")
-def update_config(config_id: str, payload: ConfigUpdateRequest) -> ApiResponse[dict[str, Any]]:
+async def update_config(config_id: str, payload: ConfigUpdateRequest) -> ApiResponse[dict[str, Any]]:
     config = control_plane_service.update_config(config_id, payload.model_dump())
+    await control_plane_service.publish_configs()
+    await control_plane_service.publish_config_overview(config_id)
+    await control_plane_service.publish_system_status()
     return ok(config.model_dump(mode="json"))
 
 
 @router.delete("/{config_id}")
-def delete_config(config_id: str) -> ApiResponse[dict[str, str]]:
+async def delete_config(config_id: str) -> ApiResponse[dict[str, str]]:
     control_plane_service.delete_config(config_id)
+    await control_plane_service.publish_configs()
+    await control_plane_service.publish_system_status()
     return ok({"message": "配置已删除"})
 
 

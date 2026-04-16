@@ -1,16 +1,22 @@
 <script setup lang="ts">
 import { Files, Plus } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 import { onMounted, reactive, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
-import type { ConfigRead } from '@/types/api'
+import { useRealtime } from '@/composables/useRealtime'
+import type { ConfigListUpdatedPayload, ConfigRead, RealtimeEvent } from '@/types/api'
+import { notify } from '@/utils/notify'
 
 const router = useRouter()
 
 const configs = shallowRef<ConfigRead[]>([])
+const realtime = useRealtime((event: RealtimeEvent) => {
+  if (event.type === 'config.list.updated') {
+    configs.value = (event.payload as unknown as ConfigListUpdatedPayload).configs
+  }
+})
 const dialogVisible = shallowRef(false)
 const form = reactive({
   name: '',
@@ -34,7 +40,7 @@ async function submit() {
     await load()
     await router.push(`/configs/${config.id}`)
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '配置创建失败')
+    notify.error(error instanceof ApiClientError ? error.message : '配置创建失败')
   }
 }
 
@@ -45,8 +51,9 @@ async function openConfig(configId: string) {
 onMounted(async () => {
   try {
     await load()
+    realtime.connect()
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '配置加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : '配置加载失败')
   }
 })
 </script>
@@ -88,10 +95,6 @@ onMounted(async () => {
         <div>
           <dt>节点数</dt>
           <dd>{{ config.node_count }}</dd>
-        </div>
-        <div>
-          <dt>动态节点</dt>
-          <dd>{{ config.dynamic_node_count }}</dd>
         </div>
       </dl>
     </button>
@@ -269,7 +272,7 @@ onMounted(async () => {
 
 .config-card__meta {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin: 0;
 }

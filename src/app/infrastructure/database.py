@@ -89,6 +89,14 @@ def init_database() -> None:
               FOREIGN KEY (config_id) REFERENCES configs(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS config_tags (
+              config_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              PRIMARY KEY (config_id, name),
+              FOREIGN KEY (config_id) REFERENCES configs(id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS peer_links (
               id TEXT PRIMARY KEY,
               config_id TEXT NOT NULL,
@@ -198,15 +206,6 @@ def init_database() -> None:
         )
 
         now = now_utc().isoformat()
-        password_row = connection.execute(
-            "SELECT key FROM system_settings WHERE key = 'auth_password_hash'"
-        ).fetchone()
-        if password_row is None:
-            connection.execute(
-                "INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)",
-                ("auth_password_hash", "admin123", now),
-            )
-
         mqtt_row = connection.execute(
             "SELECT key FROM system_settings WHERE key = 'mqtt_client'"
         ).fetchone()

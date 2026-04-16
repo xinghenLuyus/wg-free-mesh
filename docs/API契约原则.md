@@ -71,6 +71,16 @@
 - `PATCH /api/v1/nodes/{node_id}`
 - `DELETE /api/v1/nodes/{node_id}`
 
+### Tags
+
+- `GET /api/v1/configs/{config_id}/tags`
+- `POST /api/v1/configs/{config_id}/tags`
+- `POST /api/v1/configs/{config_id}/tags/apply`
+- `DELETE /api/v1/configs/{config_id}/tags/{tag_name}`
+- `PUT /api/v1/nodes/{node_id}/tags`
+- `DELETE /api/v1/nodes/{node_id}/tags/{tag_name}`
+- 标签创建、删除、批量应用和端点归属变更都由后端承担业务一致性，前端只提交用户选择。
+
 ### Mesh Links
 
 - `GET /api/v1/configs/{config_id}/links`
@@ -97,4 +107,3 @@
 - 不提交后端未声明字段。
 - 不根据前端缓存直接判断资源可操作性。
 - 写操作后必须使用后端返回值更新状态。
-

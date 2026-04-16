@@ -1,25 +1,72 @@
 <script setup lang="ts">
-import { Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
-import { onMounted, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, shallowRef } from 'vue'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
-import type { HealthRead, SystemStatusRead } from '@/types/api'
+import { useRealtime } from '@/composables/useRealtime'
+import type { HealthRead, RealtimeEvent, SystemClockTickPayload, SystemStatusRead } from '@/types/api'
+import { formatDateTime } from '@/utils/dateTime'
+import { notify } from '@/utils/notify'
 
 const health = shallowRef<HealthRead | null>(null)
 const status = shallowRef<SystemStatusRead | null>(null)
+const serverClockBaseMs = shallowRef<number | null>(null)
+const serverClockReceivedMs = shallowRef<number | null>(null)
+const displayNowMs = shallowRef(Date.now())
+let displayTimer: number | null = null
+
+const serverClockText = computed(() => {
+  if (serverClockBaseMs.value === null || serverClockReceivedMs.value === null) {
+    return formatDateTime(health.value?.timestamp)
+  }
+  const current = serverClockBaseMs.value + (displayNowMs.value - serverClockReceivedMs.value)
+  return formatDateTime(new Date(current))
+})
+
+const websocketConnectionText = computed(() => (realtime.connected ? '已连接' : '已断开'))
+
+function syncServerClock(timestamp: string | null | undefined) {
+  if (!timestamp) return
+  const parsed = new Date(timestamp).getTime()
+  if (Number.isNaN(parsed)) return
+  serverClockBaseMs.value = parsed
+  serverClockReceivedMs.value = Date.now()
+  displayNowMs.value = Date.now()
+}
+
+const realtime = useRealtime((event: RealtimeEvent) => {
+  if (event.type === 'system.clock.tick' && health.value) {
+    const payload = event.payload as unknown as SystemClockTickPayload
+    health.value = { ...health.value, timestamp: payload.timestamp }
+    syncServerClock(payload.timestamp)
+  }
+  if ((event.type === 'system.status.snapshot' || event.type === 'system.status.updated') && event.payload) {
+    status.value = event.payload as unknown as SystemStatusRead
+  }
+})
 
 async function load() {
   health.value = await api.health()
   status.value = await api.systemStatus()
+  syncServerClock(health.value.timestamp)
 }
 
 onMounted(async () => {
+  displayTimer = window.setInterval(() => {
+    displayNowMs.value = Date.now()
+  }, 1000)
   try {
     await load()
+    realtime.connect()
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '系统状态加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : '系统状态加载失败')
+  }
+})
+
+onBeforeUnmount(() => {
+  if (displayTimer !== null) {
+    window.clearInterval(displayTimer)
+    displayTimer = null
   }
 })
 </script>
@@ -31,7 +78,9 @@ onMounted(async () => {
         <h1 class="page-title">系统状态</h1>
         <p class="page-description">这里查看健康检查和服务聚合状态。</p>
       </div>
-      <el-button :icon="Refresh" @click="load">刷新</el-button>
+      <el-tag :type="realtime.connected ? 'success' : 'warning'">
+        {{ realtime.connected ? '实时同步正常' : '实时同步断开' }}
+      </el-tag>
     </div>
   </section>
 
@@ -40,7 +89,7 @@ onMounted(async () => {
       <el-descriptions-item label="状态">{{ health.status }}</el-descriptions-item>
       <el-descriptions-item label="服务">{{ health.service }}</el-descriptions-item>
       <el-descriptions-item label="版本">{{ health.version }}</el-descriptions-item>
-      <el-descriptions-item label="时间">{{ health.timestamp }}</el-descriptions-item>
+      <el-descriptions-item label="时间">{{ serverClockText }}</el-descriptions-item>
     </el-descriptions>
   </section>
 
@@ -52,7 +101,9 @@ onMounted(async () => {
       <el-descriptions-item label="待同步节点">{{ status.summary.pending_sync_nodes }}</el-descriptions-item>
       <el-descriptions-item label="数据库">{{ status.services.database }}</el-descriptions-item>
       <el-descriptions-item label="MQTT">{{ status.services.mqtt }}</el-descriptions-item>
-      <el-descriptions-item label="WireGuard">{{ status.services.wireguard }}</el-descriptions-item>
+      <el-descriptions-item label="WebSocket 连接状态">
+        {{ websocketConnectionText }}
+      </el-descriptions-item>
     </el-descriptions>
   </section>
 </template>

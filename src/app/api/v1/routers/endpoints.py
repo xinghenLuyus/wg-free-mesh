@@ -39,18 +39,32 @@ def read_applied_conf(config_id: str, node_id: str) -> ApiResponse[dict[str, Any
 
 
 @router.put("/configs/{config_id}/nodes/{node_id}/applied-conf")
-def save_applied_conf(config_id: str, node_id: str, payload: AppliedConfRequest) -> ApiResponse[dict[str, Any]]:
-    return ok(control_plane_service.save_applied_conf(config_id, node_id, payload.content))
+async def save_applied_conf(config_id: str, node_id: str, payload: AppliedConfRequest) -> ApiResponse[dict[str, Any]]:
+    result = control_plane_service.save_applied_conf(config_id, node_id, payload.content)
+    await control_plane_service.publish_node_apply(config_id, node_id)
+    await control_plane_service.publish_node_workspace(config_id, node_id)
+    return ok(result)
 
 
 @router.post("/configs/{config_id}/nodes/{node_id}/sync")
-def sync_node(config_id: str, node_id: str) -> ApiResponse[dict[str, Any]]:
-    return ok(control_plane_service.sync_node(config_id, node_id))
+async def sync_node(config_id: str, node_id: str) -> ApiResponse[dict[str, Any]]:
+    result = control_plane_service.sync_node(config_id, node_id)
+    await control_plane_service.publish_node_apply(config_id, node_id)
+    await control_plane_service.publish_node_workspace(config_id, node_id)
+    await control_plane_service.publish_config_overview(config_id)
+    await control_plane_service.publish_system_status()
+    return ok(result)
 
 
 @router.post("/configs/{config_id}/sync-all")
-def sync_all(config_id: str) -> ApiResponse[dict[str, Any]]:
-    return ok(control_plane_service.sync_all(config_id))
+async def sync_all(config_id: str) -> ApiResponse[dict[str, Any]]:
+    result = control_plane_service.sync_all(config_id)
+    for node in control_plane_service.list_nodes(config_id):
+        await control_plane_service.publish_node_apply(config_id, node.id)
+        await control_plane_service.publish_node_workspace(config_id, node.id)
+    await control_plane_service.publish_config_overview(config_id)
+    await control_plane_service.publish_system_status()
+    return ok(result)
 
 
 @router.get("/configs/{config_id}/endpoint/runtime-snapshot")

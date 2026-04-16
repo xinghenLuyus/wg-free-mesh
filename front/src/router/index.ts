@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
 import AppLayout from '@/components/layout/AppLayout.vue'
+import { useAuthStore } from '@/stores/auth'
 
 const ApplyView = () => import('@/views/ApplyView.vue')
 const ConfigOverviewView = () => import('@/views/ConfigOverviewView.vue')
@@ -13,12 +14,14 @@ const MeshView = () => import('@/views/MeshView.vue')
 const NodeWorkspaceLayout = () => import('@/views/NodeWorkspaceLayout.vue')
 const NodesView = () => import('@/views/NodesView.vue')
 const SettingsView = () => import('@/views/SettingsView.vue')
+const SetupView = () => import('@/views/SetupView.vue')
 const SystemView = () => import('@/views/SystemView.vue')
 
 export const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: LoginView },
+    { path: '/setup', component: SetupView },
     {
       path: '/',
       component: AppLayout,
@@ -53,4 +56,26 @@ export const router = createRouter({
       ],
     },
   ],
+})
+
+router.beforeEach(async (to) => {
+  const authStore = useAuthStore()
+  const isSetupPage = to.path === '/setup'
+  const isLoginPage = to.path === '/login'
+
+  const state = await authStore.loadState()
+  if (state?.setup_required) {
+    return isSetupPage ? true : { path: '/setup' }
+  }
+  if (isSetupPage) {
+    return authStore.authenticated ? { path: '/' } : { path: '/login' }
+  }
+  if (!authStore.authenticated && !isLoginPage) {
+    return { path: '/login', query: { redirect: to.fullPath } }
+  }
+  if (authStore.authenticated && isLoginPage) {
+    const redirect = typeof to.query.redirect === 'string' ? to.query.redirect : '/'
+    return redirect
+  }
+  return true
 })

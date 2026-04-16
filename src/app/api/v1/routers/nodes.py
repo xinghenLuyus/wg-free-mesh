@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Path
 from pydantic import BaseModel, Field
 
 from app.core.responses import ApiResponse, ok
@@ -34,14 +34,38 @@ class VirtualIpRequest(BaseModel):
     virtual_ip: str = Field(min_length=1)
 
 
+class TagRead(BaseModel):
+    name: str
+    count: int
+
+
+class ApplyTagRequest(BaseModel):
+    tag: str = Field(min_length=1, max_length=64)
+    node_ids: list[str] = Field(default_factory=list)
+
+
+class CreateTagRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=64)
+
+
+class NodeTagsRequest(BaseModel):
+    tags: list[str] = Field(default_factory=list)
+
+
 @router.get("/configs/{config_id}/nodes")
 def list_nodes(config_id: str) -> ApiResponse[list[dict[str, Any]]]:
     return ok([item.model_dump(mode="json") for item in control_plane_service.list_nodes(config_id)])
 
 
 @router.post("/configs/{config_id}/nodes")
-def create_node(config_id: str, payload: NodeRequest) -> ApiResponse[dict[str, Any]]:
+async def create_node(config_id: str, payload: NodeRequest) -> ApiResponse[dict[str, Any]]:
     node = control_plane_service.create_node(config_id, payload.model_dump())
+    await control_plane_service.publish_configs()
+    await control_plane_service.publish_config_overview(config_id)
+    await control_plane_service.publish_node_workspace(config_id, node.id)
+    await control_plane_service.publish_node_apply(config_id, node.id)
+    await control_plane_service.publish_mesh_workspace(config_id, node.id)
+    await control_plane_service.publish_system_status()
     return ok(node.model_dump(mode="json"))
 
 
@@ -51,14 +75,74 @@ def get_node(node_id: str) -> ApiResponse[dict[str, Any]]:
 
 
 @router.put("/nodes/{node_id}")
-def update_node(node_id: str, payload: NodeRequest) -> ApiResponse[dict[str, Any]]:
+async def update_node(node_id: str, payload: NodeRequest) -> ApiResponse[dict[str, Any]]:
     node = control_plane_service.update_node(node_id, payload.model_dump())
+    await control_plane_service.publish_configs()
+    await control_plane_service.publish_config_overview(node.config_id)
+    await control_plane_service.publish_node_workspace(node.config_id, node.id)
+    await control_plane_service.publish_node_apply(node.config_id, node.id)
+    await control_plane_service.publish_mesh_workspace(node.config_id, node.id)
+    await control_plane_service.publish_system_status()
+    return ok(node.model_dump(mode="json"))
+
+
+@router.get("/configs/{config_id}/tags")
+def list_tags(config_id: str) -> ApiResponse[list[TagRead]]:
+    return ok([TagRead.model_validate(item) for item in control_plane_service.list_tags(config_id)])
+
+
+@router.post("/configs/{config_id}/tags")
+async def create_tag(config_id: str, payload: CreateTagRequest) -> ApiResponse[TagRead]:
+    tag = TagRead.model_validate(control_plane_service.create_tag(config_id, payload.name))
+    await control_plane_service.publish_config_overview(config_id)
+    return ok(tag)
+
+
+@router.post("/configs/{config_id}/tags/apply")
+async def apply_tag_to_nodes(config_id: str, payload: ApplyTagRequest) -> ApiResponse[list[dict[str, Any]]]:
+    nodes = control_plane_service.apply_tag_to_nodes(config_id, payload.tag, payload.node_ids)
+    await control_plane_service.publish_config_overview(config_id)
+    for node in nodes:
+        await control_plane_service.publish_node_workspace(config_id, node.id)
+    return ok([item.model_dump(mode="json") for item in nodes])
+
+
+@router.delete("/configs/{config_id}/tags/{tag_name}")
+async def delete_tag_from_config(
+    config_id: str,
+    tag_name: Annotated[str, Path(min_length=1, max_length=64)],
+) -> ApiResponse[dict[str, int | str]]:
+    removed_count = control_plane_service.delete_tag_from_config(config_id, tag_name)
+    await control_plane_service.publish_config_overview(config_id)
+    return ok({"message": "标签已删除", "removed_count": removed_count})
+
+
+@router.put("/nodes/{node_id}/tags")
+async def replace_node_tags(node_id: str, payload: NodeTagsRequest) -> ApiResponse[dict[str, Any]]:
+    node = control_plane_service.replace_node_tags(node_id, payload.tags)
+    await control_plane_service.publish_config_overview(node.config_id)
+    await control_plane_service.publish_node_workspace(node.config_id, node.id)
+    return ok(node.model_dump(mode="json"))
+
+
+@router.delete("/nodes/{node_id}/tags/{tag_name}")
+async def remove_tag_from_node(
+    node_id: str,
+    tag_name: Annotated[str, Path(min_length=1, max_length=64)],
+) -> ApiResponse[dict[str, Any]]:
+    node = control_plane_service.remove_tag_from_node(node_id, tag_name)
+    await control_plane_service.publish_config_overview(node.config_id)
+    await control_plane_service.publish_node_workspace(node.config_id, node.id)
     return ok(node.model_dump(mode="json"))
 
 
 @router.delete("/nodes/{node_id}")
-def delete_node(node_id: str) -> ApiResponse[dict[str, str]]:
+async def delete_node(node_id: str) -> ApiResponse[dict[str, str]]:
+    node = control_plane_service.get_node(node_id)
     control_plane_service.delete_node(node_id)
+    await control_plane_service.publish_configs()
+    await control_plane_service.publish_config_overview(node.config_id)
+    await control_plane_service.publish_system_status()
     return ok({"message": "节点已删除"})
 
 

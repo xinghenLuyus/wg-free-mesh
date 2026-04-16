@@ -16,6 +16,7 @@
 - [目录结构规划](D:/wenjian/stepsave/project/wg-free-mesh/docs/目录结构规划.md)
 - [后端设计](D:/wenjian/stepsave/project/wg-free-mesh/docs/后端设计.md)
 - [前端设计](D:/wenjian/stepsave/project/wg-free-mesh/docs/前端设计.md)
+- [前后端职责边界](D:/wenjian/stepsave/project/wg-free-mesh/docs/前后端职责边界.md)
 - [安全边界](D:/wenjian/stepsave/project/wg-free-mesh/docs/安全边界.md)
 - [API契约原则](D:/wenjian/stepsave/project/wg-free-mesh/docs/API契约原则.md)
 - [API接口设计](D:/wenjian/stepsave/project/wg-free-mesh/docs/API接口设计.md)

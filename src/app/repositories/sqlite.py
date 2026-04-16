@@ -4,9 +4,11 @@ import ipaddress
 import json
 import re
 import shutil
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 from sqlite3 import Row
+from typing import cast
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from app.core.errors import AppError
@@ -16,6 +18,9 @@ from app.domain.models import (
     ConnectivityState,
     ControlAction,
     ControlStatus,
+    EndpointFamily,
+    EndpointMode,
+    EndpointPortMode,
     EndpointControlLog,
     EndpointRuntimeStatus,
     Node,
@@ -25,6 +30,7 @@ from app.domain.models import (
     SnapshotInfo,
     WgRuntimeState,
     derive_public_key,
+    generate_private_key,
     generate_key_pair,
     new_id,
     now_utc,
@@ -73,6 +79,75 @@ def _bool_value(value: object) -> bool:
     return bool(value)
 
 
+def _int_value(value: object, default: int) -> int:
+    if value is None or value == "":
+        return default
+    return int(str(value))
+
+
+def _int_or_none(value: object) -> int | None:
+    if value is None or value == "":
+        return None
+    return int(str(value))
+
+
+def _str_or_none(value: object) -> str | None:
+    text = str(value or "").strip()
+    return text or None
+
+
+def _is_ipv6_literal(value: str) -> bool:
+    try:
+        return isinstance(ipaddress.ip_address(value.strip("[]")), ipaddress.IPv6Address)
+    except ValueError:
+        return False
+
+
+def _endpoint_family_or_none(payload: dict[str, object]) -> str | None:
+    if str(payload.get("endpoint_mode", "auto")) != "auto":
+        return None
+    family = str(payload.get("endpoint_ref_family") or "ipv4")
+    return "ipv6" if family == "ipv6" else "ipv4"
+
+
+def _endpoint_family_from_row(value: object) -> EndpointFamily | None:
+    if not value:
+        return None
+    family = str(value)
+    if family == "domain":
+        family = "ipv4"
+    return EndpointFamily.ipv6 if family == "ipv6" else EndpointFamily.ipv4
+
+
+def _link_payload(payload: dict[str, object], direction: str, row: Row | None = None) -> dict[str, object]:
+    nested = payload.get(direction)
+    if isinstance(nested, dict):
+        return nested
+
+    local_node_id = payload.get("local_node_id", row["local_node_id"] if row else None)
+    peer_node_id = payload.get("peer_node_id", row["peer_node_id"] if row else None)
+    if direction == "reverse" and row is None:
+        local_node_id = payload.get("peer_node_id")
+        peer_node_id = payload.get("local_node_id")
+
+    return {
+        "local_node_id": local_node_id,
+        "peer_node_id": peer_node_id,
+        "allowed_ips": payload.get(
+            "allowed_ips_forward" if direction == "forward" else "allowed_ips_reverse",
+            row["allowed_ips"] if row else None,
+        ),
+        "persistent_keepalive": payload.get("persistent_keepalive", row["persistent_keepalive"] if row else None),
+        "preshared_key": payload.get("preshared_key", row["preshared_key"] if row else None),
+        "endpoint_mode": payload.get("endpoint_mode", row["endpoint_mode"] if row else "auto"),
+        "endpoint_ref_family": payload.get("endpoint_ref_family", row["endpoint_ref_family"] if row else "ipv4"),
+        "endpoint_manual_host": payload.get("endpoint_manual_host", row["endpoint_manual_host"] if row else None),
+        "endpoint_port_mode": payload.get("endpoint_port_mode", row["endpoint_port_mode"] if row else "ref_peer_listen_port"),
+        "endpoint_manual_port": payload.get("endpoint_manual_port", row["endpoint_manual_port"] if row else None),
+        "enabled": payload.get("enabled", row["enabled"] if row else True),
+    }
+
+
 def _json_list(value: str) -> list[str]:
     if not value:
         return []
@@ -81,6 +156,37 @@ def _json_list(value: str) -> list[str]:
     except json.JSONDecodeError:
         return []
     return [str(item) for item in parsed if str(item).strip()]
+
+
+def _normalize_tags(tags: Iterable[object]) -> list[str]:
+    normalized: list[str] = []
+    for item in tags:
+        tag = str(item).strip()
+        if tag and tag not in normalized:
+            normalized.append(tag)
+    return sorted(normalized)
+
+
+def _payload_tags(value: object, default: Iterable[str] = ()) -> list[str]:
+    if value is None:
+        return _normalize_tags(default)
+    if isinstance(value, str):
+        return _normalize_tags([value])
+    if isinstance(value, Iterable):
+        return _normalize_tags(value)
+    return _normalize_tags([value])
+
+
+def _node_type_value(value: object) -> NodeType:
+    if isinstance(value, NodeType):
+        return value
+    return NodeType(str(value))
+
+
+def _control_action_value(value: object) -> ControlAction:
+    if isinstance(value, ControlAction):
+        return value
+    return ControlAction(str(value))
 
 
 def _config_from_row(row: Row) -> Config:
@@ -135,7 +241,7 @@ def _peer_link_from_row(row: Row) -> PeerLink:
         persistent_keepalive=row["persistent_keepalive"],
         preshared_key=row["preshared_key"] or None,
         endpoint_mode=row["endpoint_mode"],
-        endpoint_ref_family=row["endpoint_ref_family"] or None,
+        endpoint_ref_family=_endpoint_family_from_row(row["endpoint_ref_family"]),
         endpoint_manual_host=row["endpoint_manual_host"] or None,
         endpoint_port_mode=row["endpoint_port_mode"],
         endpoint_manual_port=row["endpoint_manual_port"],
@@ -291,8 +397,8 @@ class SQLiteStore:
             description=str(payload.get("description", "") or ""),
             enabled=bool(payload.get("enabled", True)),
             virtual_subnet=str(payload.get("virtual_subnet", "10.66.0.0/24")),
-            default_listen_port=int(payload.get("default_listen_port", 51820)),
-            default_mtu=int(payload["default_mtu"]) if payload.get("default_mtu") else None,
+            default_listen_port=_int_value(payload.get("default_listen_port"), 51820),
+            default_mtu=_int_or_none(payload.get("default_mtu")),
             default_dns=str(payload.get("default_dns") or "") or None,
             auto_sync=bool(payload.get("auto_sync", True)),
         )
@@ -330,8 +436,8 @@ class SQLiteStore:
                 "description": str(payload.get("description", current.description) or ""),
                 "enabled": payload.get("enabled", current.enabled),
                 "virtual_subnet": str(payload.get("virtual_subnet", current.virtual_subnet)),
-                "default_listen_port": int(payload.get("default_listen_port", current.default_listen_port)),
-                "default_mtu": int(payload["default_mtu"]) if payload.get("default_mtu") else None,
+                "default_listen_port": _int_value(payload.get("default_listen_port"), current.default_listen_port),
+                "default_mtu": _int_or_none(payload.get("default_mtu")),
                 "default_dns": str(payload.get("default_dns") or "") or None,
                 "auto_sync": payload.get("auto_sync", current.auto_sync),
                 "updated_at": now_utc(),
@@ -443,15 +549,15 @@ class SQLiteStore:
             name=str(payload["name"]).strip(),
             ipv4_address=str(payload.get("ipv4_address") or "") or None,
             ipv6_address=str(payload.get("ipv6_address") or "") or None,
-            listen_port=int(payload["listen_port"]) if payload.get("listen_port") else None,
+            listen_port=_int_or_none(payload.get("listen_port")),
             virtual_ip=str(payload.get("virtual_ip") or "") or self.suggest_virtual_ip(config_id),
-            mtu=int(payload["mtu"]) if payload.get("mtu") else None,
+            mtu=_int_or_none(payload.get("mtu")),
             dns=str(payload.get("dns") or "") or None,
             auto_sync=bool(payload.get("auto_sync", True)),
-            node_type=str(payload.get("node_type", NodeType.dynamic)),
+            node_type=_node_type_value(payload.get("node_type", NodeType.dynamic)),
             public_key=public_key,
             private_key=private_key,
-            tags=[str(item) for item in payload.get("tags", [])],
+            tags=_payload_tags(payload.get("tags")),
         )
         validation = self.validate_virtual_ip(config_id, node.virtual_ip or "")
         if not validation["valid"]:
@@ -488,6 +594,11 @@ class SQLiteStore:
                 "INSERT INTO node_config_state (id, config_id, node_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
                 (new_id("ncs"), config_id, node.id, now, now),
             )
+            for tag in _normalize_tags(node.tags):
+                connection.execute(
+                    "INSERT OR IGNORE INTO config_tags (config_id, name, created_at) VALUES (?, ?, ?)",
+                    (config_id, tag, now),
+                )
             connection.execute(
                 """
                 INSERT INTO endpoint_runtime_status
@@ -517,17 +628,17 @@ class SQLiteStore:
         updated = current.model_copy(
             update={
                 "name": str(payload.get("name", current.name)).strip(),
-                "ipv4_address": str(payload.get("ipv4_address") or current.ipv4_address or "") or None,
-                "ipv6_address": str(payload.get("ipv6_address") or current.ipv6_address or "") or None,
-                "listen_port": int(payload["listen_port"]) if payload.get("listen_port") else current.listen_port,
-                "virtual_ip": str(payload.get("virtual_ip") or current.virtual_ip or "") or None,
-                "mtu": int(payload["mtu"]) if payload.get("mtu") else current.mtu,
-                "dns": str(payload.get("dns") or current.dns or "") or None,
+                "ipv4_address": _str_or_none(payload.get("ipv4_address")) if "ipv4_address" in payload else current.ipv4_address,
+                "ipv6_address": _str_or_none(payload.get("ipv6_address")) if "ipv6_address" in payload else current.ipv6_address,
+                "listen_port": _int_or_none(payload.get("listen_port")) if "listen_port" in payload else current.listen_port,
+                "virtual_ip": _str_or_none(payload.get("virtual_ip")) if "virtual_ip" in payload else current.virtual_ip,
+                "mtu": _int_or_none(payload.get("mtu")) if "mtu" in payload else current.mtu,
+                "dns": _str_or_none(payload.get("dns")) if "dns" in payload else current.dns,
                 "auto_sync": payload.get("auto_sync", current.auto_sync),
-                "node_type": str(payload.get("node_type", current.node_type)),
+                "node_type": _node_type_value(payload.get("node_type", current.node_type)),
                 "private_key": str(payload.get("private_key") or current.private_key),
                 "public_key": str(payload.get("public_key") or current.public_key),
-                "tags": [str(item) for item in payload.get("tags", current.tags)],
+                "tags": _payload_tags(payload.get("tags"), current.tags),
                 "updated_at": now_utc(),
             }
         )
@@ -536,6 +647,7 @@ class SQLiteStore:
         validation = self.validate_virtual_ip(current.config_id, updated.virtual_ip or "", exclude_node_id=node_id)
         if not validation["valid"]:
             raise AppError("INVALID_VIRTUAL_IP", str(validation["warning"]), 400)
+        self._validate_endpoint_references(current.config_id, current, updated)
         with connect() as connection:
             connection.execute(
                 """
@@ -564,6 +676,106 @@ class SQLiteStore:
         self.refresh_config_state(current.config_id)
         return self.get_node(node_id)
 
+    def list_tags(self, config_id: str) -> list[dict[str, object]]:
+        self.get_config(config_id)
+        counts: dict[str, int] = {}
+        for node in self.list_nodes(config_id):
+            for tag in node.tags:
+                counts[tag] = counts.get(tag, 0) + 1
+        with connect() as connection:
+            rows = connection.execute(
+                "SELECT name FROM config_tags WHERE config_id = ? ORDER BY name ASC",
+                (config_id,),
+            ).fetchall()
+        names = sorted(set(counts.keys()).union(row["name"] for row in rows))
+        return [{"name": name, "count": counts.get(name, 0)} for name in names]
+
+    def create_tag(self, config_id: str, tag: str) -> dict[str, object]:
+        self.get_config(config_id)
+        normalized = _normalize_tags([tag])
+        if not normalized:
+            raise AppError("INVALID_TAG", "标签不能为空", 400)
+        name = normalized[0]
+        with connect() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO config_tags (config_id, name, created_at) VALUES (?, ?, ?)",
+                (config_id, name, now_utc().isoformat()),
+            )
+        count = next((item["count"] for item in self.list_tags(config_id) if item["name"] == name), 0)
+        return {"name": name, "count": count}
+
+    def replace_node_tags(self, node_id: str, tags: Iterable[object]) -> Node:
+        current = self.get_node(node_id)
+        updated_tags = _normalize_tags(tags)
+        now = now_utc().isoformat()
+        with connect() as connection:
+            connection.execute(
+                "UPDATE nodes SET tags_json = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(updated_tags, ensure_ascii=True), now, node_id),
+            )
+            for tag in updated_tags:
+                connection.execute(
+                    "INSERT OR IGNORE INTO config_tags (config_id, name, created_at) VALUES (?, ?, ?)",
+                    (current.config_id, tag, now),
+                )
+        self.refresh_config_state(current.config_id)
+        return self.get_node(node_id)
+
+    def apply_tag_to_nodes(self, config_id: str, tag: str, node_ids: list[str]) -> list[Node]:
+        normalized_tag = str(tag).strip()
+        if not normalized_tag:
+            raise AppError("INVALID_TAG", "标签不能为空", 400)
+
+        requested_ids = list(dict.fromkeys(str(node_id) for node_id in node_ids if str(node_id).strip()))
+        if not requested_ids:
+            return []
+
+        nodes_by_id = {node.id: node for node in self.list_nodes(config_id)}
+        missing_ids = [node_id for node_id in requested_ids if node_id not in nodes_by_id]
+        if missing_ids:
+            raise AppError("NODE_CONFIG_MISMATCH", "端点不属于当前配置", 400, {"node_ids": missing_ids})
+
+        now = now_utc().isoformat()
+        with connect() as connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO config_tags (config_id, name, created_at) VALUES (?, ?, ?)",
+                (config_id, normalized_tag, now),
+            )
+            for node_id in requested_ids:
+                node = nodes_by_id[node_id]
+                tags = _normalize_tags([*node.tags, normalized_tag])
+                connection.execute(
+                    "UPDATE nodes SET tags_json = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(tags, ensure_ascii=True), now, node_id),
+                )
+        self.refresh_config_state(config_id)
+        return [self.get_node(node_id) for node_id in requested_ids]
+
+    def remove_tag_from_node(self, node_id: str, tag: str) -> Node:
+        current = self.get_node(node_id)
+        normalized_tag = str(tag).strip()
+        return self.replace_node_tags(node_id, [item for item in current.tags if item != normalized_tag])
+
+    def delete_tag_from_config(self, config_id: str, tag: str) -> int:
+        normalized_tag = str(tag).strip()
+        if not normalized_tag:
+            raise AppError("INVALID_TAG", "标签不能为空", 400)
+
+        nodes = self.list_nodes(config_id)
+        affected = [node for node in nodes if normalized_tag in node.tags]
+        now = now_utc().isoformat()
+        with connect() as connection:
+            connection.execute("DELETE FROM config_tags WHERE config_id = ? AND name = ?", (config_id, normalized_tag))
+            for node in affected:
+                tags = _normalize_tags([item for item in node.tags if item != normalized_tag])
+                connection.execute(
+                    "UPDATE nodes SET tags_json = ?, updated_at = ? WHERE id = ?",
+                    (json.dumps(tags, ensure_ascii=True), now, node.id),
+                )
+        if affected:
+            self.refresh_config_state(config_id)
+        return len(affected)
+
     def delete_node(self, node_id: str) -> None:
         node = self.get_node(node_id)
         with connect() as connection:
@@ -579,12 +791,90 @@ class SQLiteStore:
             ).fetchall()
         return [_peer_link_from_row(row) for row in rows]
 
-    def create_peer_link_group(self, config_id: str, payload: dict[str, object]) -> list[PeerLink]:
-        self.get_config(config_id)
-        local_node = self.get_node(str(payload["local_node_id"]))
-        peer_node = self.get_node(str(payload["peer_node_id"]))
+    def build_peer_link_draft(
+        self,
+        config_id: str,
+        node_id: str,
+        peer_node_id: str,
+        endpoint_ref_family: str = "ipv4",
+    ) -> dict[str, object]:
+        config = self.get_config(config_id)
+        local_node = self.get_node(node_id)
+        peer_node = self.get_node(peer_node_id)
         if local_node.config_id != config_id or peer_node.config_id != config_id:
             raise AppError("NODE_CONFIG_MISMATCH", "链路节点不属于当前配置", 400)
+        if local_node.id == peer_node.id:
+            raise AppError("INVALID_PEER_LINK", "不能连接到自身节点", 400)
+
+        family = "ipv6" if endpoint_ref_family == "ipv6" else "ipv4"
+        warnings: list[str] = []
+        if not peer_node.virtual_ip:
+            warnings.append(f"{peer_node.name} 缺少虚拟 IP，主向 AllowedIPs 需要手动填写。")
+        if not local_node.virtual_ip:
+            warnings.append(f"{local_node.name} 缺少虚拟 IP，反向 AllowedIPs 需要手动填写。")
+        if not self._endpoint_host_for_family(peer_node, family):
+            warnings.append(f"{peer_node.name} 没有公网 {family.upper()} 入口，主向自动 Endpoint 会留空。")
+        if not self._endpoint_host_for_family(local_node, family):
+            warnings.append(f"{local_node.name} 没有公网 {family.upper()} 入口，反向自动 Endpoint 会留空。")
+
+        return {
+            "local_node": local_node.model_dump(mode="json"),
+            "peer_node": peer_node.model_dump(mode="json"),
+            "endpoint_ref_family": family,
+            "forward": self._peer_link_direction_draft(config, local_node, peer_node, family, 25),
+            "reverse": self._peer_link_direction_draft(config, peer_node, local_node, family, None),
+            "warnings": warnings,
+        }
+
+    def mesh_workspace(self, config_id: str, node_id: str) -> dict[str, object]:
+        config = self.get_config(config_id)
+        node = self.get_node(node_id)
+        if node.config_id != config_id:
+            raise AppError("NODE_CONFIG_MISMATCH", "节点不属于当前配置", 400)
+
+        links = self.list_peer_links(config_id)
+        reverse_by_group: dict[str, PeerLink] = {}
+        for link in links:
+            if link.peer_node_id == node_id:
+                reverse_by_group[link.link_group_id] = link
+
+        connections: list[dict[str, object]] = []
+        for link in links:
+            if link.local_node_id != node_id:
+                continue
+            reverse = reverse_by_group.get(link.link_group_id)
+            peer_node = self.get_node(link.peer_node_id)
+            connections.append(
+                {
+                    "link_group_id": link.link_group_id,
+                    "peer_node": peer_node.model_dump(mode="json"),
+                    "enabled": link.enabled,
+                    "has_preshared_key": bool(link.preshared_key or reverse and reverse.preshared_key),
+                    "preshared_key": link.preshared_key or reverse.preshared_key if reverse else link.preshared_key,
+                    "notes": link.notes or reverse.notes if reverse else link.notes,
+                    "updated_at": max(link.updated_at, reverse.updated_at if reverse else link.updated_at).isoformat(),
+                    "forward": self._peer_link_direction_card(config, node, peer_node, link),
+                    "reverse": self._peer_link_direction_card(config, peer_node, node, reverse) if reverse else None,
+                }
+            )
+        return {
+            "node": node.model_dump(mode="json"),
+            "connections": connections,
+            "validation": self._validate_mesh_payload(config_id),
+        }
+
+    def create_peer_link_group(self, config_id: str, payload: dict[str, object]) -> list[PeerLink]:
+        self.get_config(config_id)
+        forward = _link_payload(payload, "forward")
+        reverse = _link_payload(payload, "reverse")
+        local_node = self.get_node(str(forward["local_node_id"]))
+        peer_node = self.get_node(str(forward["peer_node_id"]))
+        if local_node.config_id != config_id or peer_node.config_id != config_id:
+            raise AppError("NODE_CONFIG_MISMATCH", "链路节点不属于当前配置", 400)
+        if str(reverse["local_node_id"]) != peer_node.id or str(reverse["peer_node_id"]) != local_node.id:
+            raise AppError("INVALID_PEER_LINK", "双向链路节点方向不匹配", 400)
+        self._validate_link_endpoint_settings(forward)
+        self._validate_link_endpoint_settings(reverse)
         group_id = new_id("group")
         now = now_utc().isoformat()
         rows = [
@@ -593,18 +883,19 @@ class SQLiteStore:
                 "local_node_id": local_node.id,
                 "peer_node_id": peer_node.id,
                 "direction": "forward",
-                "allowed_ips": normalize_allowed_ips(str(payload["allowed_ips_forward"])),
+                "payload": forward,
             },
             {
                 "id": new_id("plink"),
                 "local_node_id": peer_node.id,
                 "peer_node_id": local_node.id,
                 "direction": "reverse",
-                "allowed_ips": normalize_allowed_ips(str(payload["allowed_ips_reverse"])),
+                "payload": reverse,
             },
         ]
         with connect() as connection:
             for item in rows:
+                item_payload = cast(dict[str, object], item["payload"])
                 connection.execute(
                     """
                     INSERT INTO peer_links
@@ -620,15 +911,15 @@ class SQLiteStore:
                         item["peer_node_id"],
                         group_id,
                         item["direction"],
-                        int(bool(payload.get("enabled", True))),
-                        item["allowed_ips"],
-                        int(payload["persistent_keepalive"]) if payload.get("persistent_keepalive") else None,
-                        str(payload.get("preshared_key") or "") or None,
-                        str(payload.get("endpoint_mode", "auto")),
-                        str(payload.get("endpoint_ref_family", "ipv4")) if str(payload.get("endpoint_mode", "auto")) != "none" else None,
-                        str(payload.get("endpoint_manual_host") or "") or None,
-                        str(payload.get("endpoint_port_mode", "ref_peer_listen_port")),
-                        int(payload["endpoint_manual_port"]) if payload.get("endpoint_manual_port") else None,
+                        int(bool(payload.get("enabled", item_payload.get("enabled", True)))),
+                        normalize_allowed_ips(str(item_payload["allowed_ips"])),
+                        _int_or_none(item_payload.get("persistent_keepalive")),
+                        str(payload.get("preshared_key") or item_payload.get("preshared_key") or "") or None,
+                        str(item_payload.get("endpoint_mode", "auto")),
+                        _endpoint_family_or_none(item_payload),
+                        str(item_payload.get("endpoint_manual_host") or "") or None,
+                        str(item_payload.get("endpoint_port_mode", "ref_peer_listen_port")),
+                        _int_or_none(item_payload.get("endpoint_manual_port")),
                         str(payload.get("notes", "")),
                         now,
                         now,
@@ -644,7 +935,9 @@ class SQLiteStore:
                 raise AppError("PEER_LINK_NOT_FOUND", "链路组不存在", 404)
             config_id = rows[0]["config_id"]
             for row in rows:
-                allowed_key = "allowed_ips_forward" if row["direction"] == "forward" else "allowed_ips_reverse"
+                direction = str(row["direction"])
+                data = _link_payload(payload, direction, row)
+                self._validate_link_endpoint_settings(data)
                 connection.execute(
                     """
                     UPDATE peer_links
@@ -655,14 +948,14 @@ class SQLiteStore:
                     """,
                     (
                         int(bool(payload.get("enabled", _bool_value(row["enabled"])))),
-                        normalize_allowed_ips(str(payload.get(allowed_key, row["allowed_ips"]))),
-                        int(payload["persistent_keepalive"]) if payload.get("persistent_keepalive") else row["persistent_keepalive"],
-                        str(payload.get("preshared_key") or row["preshared_key"] or "") or None,
-                        str(payload.get("endpoint_mode", row["endpoint_mode"])),
-                        str(payload.get("endpoint_ref_family", row["endpoint_ref_family"] or "")) or None,
-                        str(payload.get("endpoint_manual_host") or row["endpoint_manual_host"] or "") or None,
-                        str(payload.get("endpoint_port_mode", row["endpoint_port_mode"])),
-                        int(payload["endpoint_manual_port"]) if payload.get("endpoint_manual_port") else row["endpoint_manual_port"],
+                        normalize_allowed_ips(str(data.get("allowed_ips", row["allowed_ips"]))),
+                        _int_or_none(data.get("persistent_keepalive")) if "persistent_keepalive" in data else row["persistent_keepalive"],
+                        str(payload.get("preshared_key") or data.get("preshared_key") or row["preshared_key"] or "") or None,
+                        str(data.get("endpoint_mode", row["endpoint_mode"])),
+                        _endpoint_family_or_none(data),
+                        str(data.get("endpoint_manual_host") or "") or None,
+                        str(data.get("endpoint_port_mode", row["endpoint_port_mode"])),
+                        _int_or_none(data.get("endpoint_manual_port")) if "endpoint_manual_port" in data else row["endpoint_manual_port"],
                         str(payload.get("notes", row["notes"])),
                         now_utc().isoformat(),
                         row["id"],
@@ -743,7 +1036,7 @@ class SQLiteStore:
         log = EndpointControlLog(
             config_id=config_id,
             node_id=node_id,
-            action=action,
+            action=_control_action_value(action),
             requested_by=requested_by,
             summary="命令已记录，等待服务端模拟执行",
         )
@@ -1077,6 +1370,26 @@ class SQLiteStore:
             else:
                 connection.execute("UPDATE system_settings SET value = ?, updated_at = ? WHERE key = ?", (json.dumps(value, ensure_ascii=False), now, key))
 
+    def read_setting(self, key: str) -> str | None:
+        with connect() as connection:
+            row = connection.execute("SELECT value FROM system_settings WHERE key = ?", (key,)).fetchone()
+        return str(row["value"]) if row else None
+
+    def write_setting(self, key: str, value: str) -> None:
+        now = now_utc().isoformat()
+        with connect() as connection:
+            exists = connection.execute("SELECT key FROM system_settings WHERE key = ?", (key,)).fetchone()
+            if exists is None:
+                connection.execute(
+                    "INSERT INTO system_settings (key, value, updated_at) VALUES (?, ?, ?)",
+                    (key, value, now),
+                )
+            else:
+                connection.execute(
+                    "UPDATE system_settings SET value = ?, updated_at = ? WHERE key = ?",
+                    (value, now, key),
+                )
+
     def read_password(self) -> str:
         with connect() as connection:
             row = connection.execute("SELECT value FROM system_settings WHERE key = 'auth_password_hash'").fetchone()
@@ -1146,6 +1459,9 @@ class SQLiteStore:
         private_key, public_key = generate_key_pair()
         return {"private_key": private_key, "public_key": public_key}
 
+    def create_preshared_key(self) -> dict[str, str]:
+        return {"preshared_key": generate_private_key()}
+
     def derive_public_key_from_private(self, private_key: str) -> dict[str, str]:
         return {"private_key": private_key, "public_key": derive_public_key(private_key)}
 
@@ -1161,7 +1477,7 @@ class SQLiteStore:
                 "online_nodes": len([runtime for runtime in runtimes if runtime.online]),
                 "pending_sync_nodes": len([runtime for runtime in runtimes if runtime.config_sync_state != ConfigSyncState.in_sync]),
             },
-            "services": {"database": "ok", "mqtt": "deferred", "wireguard": "server-generated"},
+            "services": {"database": "ok", "mqtt": "deferred", "wireguard": "websocket"},
             "timestamp": now_utc(),
         }
 
@@ -1169,6 +1485,7 @@ class SQLiteStore:
         config = self.get_config(config_id)
         nodes = self.list_nodes(config_id)
         runtimes = self.list_runtime_snapshot(config_id)
+        runtime_by_node_id = {str(item["node_id"]): item for item in runtimes}
         return {
             "config": config,
             "stats": {
@@ -1179,6 +1496,22 @@ class SQLiteStore:
                 "pending_sync_nodes": len([item for item in runtimes if item["config_sync_state"] != ConfigSyncState.in_sync]),
                 "peer_links": len(self.list_peer_links(config_id)) // 2,
             },
+            "nodes": nodes,
+            "node_cards": [
+                {
+                    "id": node.id,
+                    "name": node.name,
+                    "node_type": node.node_type,
+                    "virtual_ip": node.virtual_ip,
+                    "ipv4_address": node.ipv4_address,
+                    "ipv6_address": node.ipv6_address,
+                    "tags": node.tags,
+                    "created_at": node.created_at.isoformat(),
+                    "online": bool(runtime_by_node_id.get(node.id, {}).get("online", False)),
+                    "peers_total": _int_value(runtime_by_node_id.get(node.id, {}).get("peers_total"), 0),
+                }
+                for node in nodes
+            ],
             "runtime_snapshot": runtimes,
             "sync_status": self.get_sync_status_for_config(config_id),
         }
@@ -1192,16 +1525,129 @@ class SQLiteStore:
             return "staged_outdated"
         return "pending"
 
+    def _endpoint_host_for_family(self, node: Node, family: object) -> str | None:
+        family_value = str(family or "ipv4")
+        if family_value == "ipv6":
+            return node.ipv6_address
+        return node.ipv4_address
+
+    def _endpoint_preview_text(self, config: Config, peer_node: Node, family: str) -> str:
+        host = self._endpoint_host_for_family(peer_node, family)
+        if not host:
+            return f"{peer_node.name} 没有公网 {family.upper()} 入口，自动留空"
+        port = peer_node.listen_port or config.default_listen_port
+        endpoint = f"[{host}]:{port}" if _is_ipv6_literal(host) else f"{host}:{port}"
+        return f"自动使用 {endpoint}"
+
+    def _peer_link_endpoint_summary(self, config: Config, peer_node: Node, link: PeerLink) -> str:
+        if link.endpoint_mode == EndpointMode.none:
+            return "不写 Endpoint"
+        if link.endpoint_mode == EndpointMode.manual:
+            host = link.endpoint_manual_host or ""
+            port = link.endpoint_manual_port
+            if not host or not port:
+                return "手动模式需填写 Host 和 Port"
+            endpoint = f"[{host}]:{port}" if _is_ipv6_literal(host) else f"{host}:{port}"
+            return f"手动使用 {endpoint}"
+        family = "ipv6" if link.endpoint_ref_family == EndpointFamily.ipv6 else "ipv4"
+        return self._endpoint_preview_text(config, peer_node, family)
+
+    def _peer_link_direction_card(
+        self,
+        config: Config,
+        local_node: Node,
+        peer_node: Node,
+        link: PeerLink | None,
+    ) -> dict[str, object]:
+        if link is None:
+            return {
+                "link_id": "",
+                "local_node_id": local_node.id,
+                "peer_node_id": peer_node.id,
+                "allowed_ips": "",
+                "persistent_keepalive": None,
+                "endpoint_mode": EndpointMode.none.value,
+                "endpoint_ref_family": None,
+                "endpoint_manual_host": None,
+                "endpoint_port_mode": EndpointPortMode.ref_peer_listen_port.value,
+                "endpoint_manual_port": None,
+                "endpoint_summary": "缺少反向连接",
+            }
+        return {
+            "link_id": link.id,
+            "local_node_id": link.local_node_id,
+            "peer_node_id": link.peer_node_id,
+            "allowed_ips": link.allowed_ips,
+            "persistent_keepalive": link.persistent_keepalive,
+            "endpoint_mode": link.endpoint_mode,
+            "endpoint_ref_family": link.endpoint_ref_family,
+            "endpoint_manual_host": link.endpoint_manual_host,
+            "endpoint_port_mode": link.endpoint_port_mode,
+            "endpoint_manual_port": link.endpoint_manual_port,
+            "endpoint_summary": self._peer_link_endpoint_summary(config, peer_node, link),
+        }
+
+    def _peer_link_direction_draft(
+        self,
+        config: Config,
+        local_node: Node,
+        peer_node: Node,
+        family: str,
+        persistent_keepalive: int | None,
+    ) -> dict[str, object]:
+        return {
+            "local_node_id": local_node.id,
+            "peer_node_id": peer_node.id,
+            "allowed_ips": peer_node.virtual_ip or "",
+            "persistent_keepalive": persistent_keepalive,
+            "endpoint_mode": EndpointMode.auto.value,
+            "endpoint_ref_family": family,
+            "endpoint_manual_host": "",
+            "endpoint_port_mode": EndpointPortMode.ref_peer_listen_port.value,
+            "endpoint_manual_port": None,
+            "endpoint_summary": self._endpoint_preview_text(config, peer_node, family),
+        }
+
+    def _validate_endpoint_references(self, config_id: str, current: Node, updated: Node) -> None:
+        return None
+
+    def _validate_link_endpoint_settings(
+        self,
+        payload: dict[str, object],
+    ) -> None:
+        endpoint_mode = EndpointMode(str(payload.get("endpoint_mode", EndpointMode.auto)))
+        if endpoint_mode == EndpointMode.none:
+            return
+        if endpoint_mode == EndpointMode.manual:
+            if not _str_or_none(payload.get("endpoint_manual_host")) or not _int_or_none(payload.get("endpoint_manual_port")):
+                raise AppError("INVALID_ENDPOINT", "手动 Endpoint 必须填写 Host 和 Port。", 400)
+            return
+
+    def _validate_mesh_payload(self, config_id: str) -> dict[str, object]:
+        messages: list[str] = []
+        links = self.list_peer_links(config_id)
+        nodes = {node.id: node for node in self.list_nodes(config_id)}
+        if not links:
+            messages.append("当前配置还没有任何 peer link。")
+        for link in links:
+            if link.local_node_id == link.peer_node_id:
+                messages.append(f"节点 {link.local_node_id} 存在自连接。")
+            if link.peer_node_id not in nodes:
+                messages.append(f"链路 {link.id} 指向不存在的节点。")
+            if not link.allowed_ips:
+                messages.append(f"链路 {link.id} 缺少 allowed_ips。")
+        return {"valid": not messages, "messages": messages or ["拓扑校验通过。"]}
+
     def _resolve_endpoint(self, config: Config, peer_node: Node, link: PeerLink) -> str | None:
         if link.endpoint_mode == "none":
             return None
-        host = link.endpoint_manual_host if link.endpoint_mode == "manual" else peer_node.ipv6_address if link.endpoint_ref_family == "ipv6" else peer_node.ipv4_address
+        host = link.endpoint_manual_host if link.endpoint_mode == "manual" else self._endpoint_host_for_family(peer_node, link.endpoint_ref_family)
         if not host:
             return None
         port = link.endpoint_manual_port if link.endpoint_port_mode == "manual" else peer_node.listen_port or config.default_listen_port
         if not port:
             return None
-        return f"[{host}]:{port}" if ":" in host and not host.startswith("[") else f"{host}:{port}"
+        return f"[{host}]:{port}" if _is_ipv6_literal(host) else f"{host}:{port}"
 
     def _conf_path(self, config_id: str, node_id: str) -> Path:
         target = wireguard_dir() / config_id

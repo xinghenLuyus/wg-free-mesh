@@ -14,11 +14,20 @@ export interface ApiErrorResponse {
   error: ApiErrorBody
 }
 
-export interface SessionRead {
+export interface AuthStateRead {
+  setup_required: boolean
   authenticated: boolean
   username: string
   display_name: string
+  expires_at: string | null
 }
+
+export interface TokenSessionRead extends AuthStateRead {
+  access_token: string
+  token_type: 'bearer'
+}
+
+export type SessionRead = AuthStateRead
 
 export interface ConfigRead {
   id: string
@@ -36,6 +45,19 @@ export interface ConfigRead {
   updated_at: string
 }
 
+export interface ConfigOverviewNodeCardRead {
+  id: string
+  name: string
+  node_type: 'dynamic' | 'static'
+  virtual_ip: string | null
+  ipv4_address: string | null
+  ipv6_address: string | null
+  tags: string[]
+  created_at: string
+  online: boolean
+  peers_total: number
+}
+
 export interface ConfigOverviewRead {
   config: ConfigRead
   stats: {
@@ -46,6 +68,8 @@ export interface ConfigOverviewRead {
     pending_sync_nodes: number
     peer_links: number
   }
+  nodes: NodeRead[]
+  node_cards: ConfigOverviewNodeCardRead[]
   runtime_snapshot: RuntimeSnapshotItem[]
   sync_status: SyncStatusRead[]
 }
@@ -69,6 +93,11 @@ export interface NodeRead {
   updated_at: string
 }
 
+export interface TagRead {
+  name: string
+  count: number
+}
+
 export interface PeerLinkRead {
   id: string
   config_id: string
@@ -81,13 +110,67 @@ export interface PeerLinkRead {
   persistent_keepalive: number | null
   preshared_key: string | null
   endpoint_mode: 'none' | 'auto' | 'manual'
-  endpoint_ref_family: 'ipv4' | 'ipv6' | 'domain' | null
+  endpoint_ref_family: 'ipv4' | 'ipv6' | null
   endpoint_manual_host: string | null
   endpoint_port_mode: 'ref_peer_listen_port' | 'manual'
   endpoint_manual_port: number | null
   notes: string
   created_at: string
   updated_at: string
+}
+
+export interface PeerLinkDirectionDraftRead {
+  local_node_id: string
+  peer_node_id: string
+  allowed_ips: string
+  persistent_keepalive: number | null
+  endpoint_mode: 'auto'
+  endpoint_ref_family: 'ipv4' | 'ipv6'
+  endpoint_manual_host: string
+  endpoint_port_mode: 'ref_peer_listen_port'
+  endpoint_manual_port: number | null
+  endpoint_summary: string
+}
+
+export interface PeerLinkDraftRead {
+  local_node: NodeRead
+  peer_node: NodeRead
+  endpoint_ref_family: 'ipv4' | 'ipv6'
+  forward: PeerLinkDirectionDraftRead
+  reverse: PeerLinkDirectionDraftRead
+  warnings: string[]
+}
+
+export interface MeshConnectionDirectionRead {
+  link_id: string
+  local_node_id: string
+  peer_node_id: string
+  allowed_ips: string
+  persistent_keepalive: number | null
+  endpoint_mode: 'none' | 'auto' | 'manual'
+  endpoint_ref_family: 'ipv4' | 'ipv6' | null
+  endpoint_manual_host: string | null
+  endpoint_port_mode: 'ref_peer_listen_port' | 'manual'
+  endpoint_manual_port: number | null
+  endpoint_summary: string
+}
+
+export interface MeshConnectionRead {
+  link_group_id: string
+  peer_node: NodeRead
+  enabled: boolean
+  has_preshared_key: boolean
+  preshared_key: string | null
+  notes: string
+  updated_at: string
+  forward: MeshConnectionDirectionRead
+  reverse: MeshConnectionDirectionRead | null
+}
+
+export interface MeshWorkspaceRead {
+  node: NodeRead
+  connections: MeshConnectionRead[]
+  validation: MeshValidationRead
 }
 
 export interface MeshValidationRead {
@@ -230,4 +313,73 @@ export interface RealtimeEvent<T = Record<string, unknown>> {
   type: string
   timestamp: string
   payload: T
+}
+
+export interface SystemClockTickPayload {
+  timestamp: string
+}
+
+export interface SystemStatusSnapshotPayload extends SystemStatusRead {}
+
+export interface EndpointStatusUpdatedPayload {
+  config_id: string
+  node_id: string
+  status: EndpointStatusRead
+}
+
+export interface ControlLogEventPayload {
+  config_id: string
+  node_id: string
+  log: ControlLogRead
+}
+
+export interface ConfigListUpdatedPayload {
+  configs: ConfigRead[]
+}
+
+export interface ConfigOverviewUpdatedPayload {
+  config_id: string
+  overview: ConfigOverviewRead
+  tags: TagRead[]
+}
+
+export interface NodeWorkspaceUpdatedPayload {
+  config_id: string
+  node_id: string
+  workspace: {
+    config: ConfigRead | null
+    node: NodeRead
+    endpoint_status: EndpointStatusRead
+    tags: TagRead[]
+  }
+}
+
+export interface NodeApplyUpdatedPayload {
+  config_id: string
+  node_id: string
+  sync_status: SyncStatusRead
+  preview: WgPreviewRead
+  applied: {
+    content: string
+    exists: boolean
+    node_name: string
+    node_type: string
+    desired_version: number
+    staged_version: number
+  }
+}
+
+export interface MeshWorkspaceUpdatedPayload {
+  config_id: string
+  node_id: string
+  workspace: MeshWorkspaceRead
+  nodes: NodeRead[]
+}
+
+export interface SnapshotListUpdatedPayload {
+  snapshots: SnapshotRead[]
+}
+
+export interface MqttSettingsUpdatedPayload {
+  mqtt: MqttSettingsRead
 }

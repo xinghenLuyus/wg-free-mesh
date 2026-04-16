@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.core.responses import ApiResponse, ok
 from app.services.control_plane_service import control_plane_service
+from app.services.auth_service import auth_service
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -30,8 +31,10 @@ def mqtt_settings() -> ApiResponse[dict[str, Any]]:
 
 
 @router.put("/mqtt")
-def update_mqtt_settings(payload: MqttSettingsRequest) -> ApiResponse[dict[str, Any]]:
-    return ok(control_plane_service.update_mqtt_settings(payload.model_dump()))
+async def update_mqtt_settings(payload: MqttSettingsRequest) -> ApiResponse[dict[str, Any]]:
+    result = control_plane_service.update_mqtt_settings(payload.model_dump())
+    await control_plane_service.publish_mqtt_settings()
+    return ok(result)
 
 
 @router.post("/mqtt/test")
@@ -47,5 +50,5 @@ def test_mqtt(payload: MqttSettingsRequest) -> ApiResponse[dict[str, Any]]:
 
 @router.post("/password")
 def update_password(payload: PasswordRequest) -> ApiResponse[dict[str, Any]]:
-    control_plane_service.update_password(payload.current_password, payload.new_password)
+    auth_service.change_password(payload.current_password, payload.new_password)
     return ok({"message": "密码已更新"})

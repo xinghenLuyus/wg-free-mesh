@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { Key, User } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 import { reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+import { notify } from '@/utils/notify'
 
 const router = useRouter()
+const route = useRoute()
 const authStore = useAuthStore()
 
 const form = reactive({
@@ -18,9 +19,10 @@ const form = reactive({
 async function submit() {
   try {
     await authStore.login(form.username, form.password)
-    await router.push('/')
+    const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
+    await router.push(redirect)
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '登录失败')
+    notify.error(error instanceof ApiClientError ? error.message : '登录失败')
   }
 }
 </script>

@@ -13,8 +13,10 @@ router = APIRouter(prefix="/backups", tags=["backups"])
 
 
 @router.post("/snapshot")
-def create_snapshot(note: str = Body(default="")) -> ApiResponse[dict[str, object]]:
-    return ok(control_plane_service.create_snapshot(note).model_dump(mode="json"))
+async def create_snapshot(note: str = Body(default="")) -> ApiResponse[dict[str, object]]:
+    snapshot = control_plane_service.create_snapshot(note).model_dump(mode="json")
+    await control_plane_service.publish_snapshots()
+    return ok(snapshot)
 
 
 @router.get("/list")
@@ -29,8 +31,9 @@ def download_snapshot(snapshot_id: str) -> FileResponse:
 
 
 @router.post("/restore/{snapshot_id}")
-def restore_snapshot(snapshot_id: str) -> ApiResponse[dict[str, str]]:
+async def restore_snapshot(snapshot_id: str) -> ApiResponse[dict[str, str]]:
     control_plane_service.restore_snapshot(snapshot_id)
+    await control_plane_service.publish_full_state()
     return ok({"message": "快照已恢复"})
 
 
@@ -44,15 +47,19 @@ async def upload_snapshot(file: UploadFile = File(...)) -> ApiResponse[dict[str,
     finally:
         if temp_path.exists():
             temp_path.unlink()
+    await control_plane_service.publish_full_state()
     return ok({"message": "上传快照已恢复"})
 
 
 @router.delete("/{snapshot_id}")
-def delete_snapshot(snapshot_id: str) -> ApiResponse[dict[str, str]]:
+async def delete_snapshot(snapshot_id: str) -> ApiResponse[dict[str, str]]:
     control_plane_service.delete_snapshot(snapshot_id)
+    await control_plane_service.publish_snapshots()
     return ok({"message": "快照已删除"})
 
 
 @router.put("/{snapshot_id}/note")
-def update_snapshot_note(snapshot_id: str, note: str = Body(default="")) -> ApiResponse[dict[str, object]]:
-    return ok(control_plane_service.update_snapshot_note(snapshot_id, note).model_dump(mode="json"))
+async def update_snapshot_note(snapshot_id: str, note: str = Body(default="")) -> ApiResponse[dict[str, object]]:
+    snapshot = control_plane_service.update_snapshot_note(snapshot_id, note).model_dump(mode="json")
+    await control_plane_service.publish_snapshots()
+    return ok(snapshot)

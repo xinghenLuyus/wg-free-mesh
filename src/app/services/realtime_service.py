@@ -10,12 +10,15 @@ class RealtimeService:
     def __init__(self) -> None:
         self._subscribers: set[asyncio.Queue[dict[str, object]]] = set()
 
-    async def publish(self, event_type: str, payload: dict[str, object]) -> None:
-        event = {
+    def make_event(self, event_type: str, payload: dict[str, object]) -> dict[str, object]:
+        return {
             "type": event_type,
             "timestamp": now_utc().isoformat(),
             "payload": payload,
         }
+
+    async def publish(self, event_type: str, payload: dict[str, object]) -> None:
+        event = self.make_event(event_type, payload)
         stale: list[asyncio.Queue[dict[str, object]]] = []
         for queue in self._subscribers:
             try:
@@ -25,14 +28,21 @@ class RealtimeService:
         for queue in stale:
             self._subscribers.discard(queue)
 
-    async def subscribe(self) -> AsyncIterator[dict[str, object]]:
+    def open_subscription(self) -> asyncio.Queue[dict[str, object]]:
         queue: asyncio.Queue[dict[str, object]] = asyncio.Queue(maxsize=100)
         self._subscribers.add(queue)
+        return queue
+
+    def close_subscription(self, queue: asyncio.Queue[dict[str, object]]) -> None:
+        self._subscribers.discard(queue)
+
+    async def subscribe(self) -> AsyncIterator[dict[str, object]]:
+        queue = self.open_subscription()
         try:
             while True:
                 yield await queue.get()
         finally:
-            self._subscribers.discard(queue)
+            self.close_subscription(queue)
 
 
 realtime_service = RealtimeService()

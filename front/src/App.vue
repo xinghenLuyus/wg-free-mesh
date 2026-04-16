@@ -3,6 +3,9 @@ import { RouterView } from 'vue-router'
 </script>
 
 <template>
-  <RouterView />
+  <RouterView v-slot="{ Component, route }">
+    <Transition name="route-shell" appear>
+      <component :is="Component" :key="route.matched[0]?.path || route.fullPath" />
+    </Transition>
+  </RouterView>
 </template>
-

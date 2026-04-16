@@ -12,6 +12,43 @@
 
 ## 认证与会话
 
+认证采用三态模型：
+
+- `setup_required`：数据库中没有有效管理员密码，只允许初始化相关接口。
+- `anonymous`：系统已初始化，但请求没有有效 Bearer Token。
+- `authenticated`：请求携带有效 Bearer Token，可以访问业务 API。
+
+除健康检查、认证状态、初始化和登录接口外，业务接口必须携带：
+
+```text
+Authorization: Bearer <access_token>
+```
+
+### `GET /api/v1/auth/state`
+
+- 用途：获取系统初始化状态和当前请求认证状态
+- 响应：
+  - `setup_required`
+  - `authenticated`
+  - `username`
+  - `display_name`
+  - `expires_at`
+
+### `POST /api/v1/auth/setup`
+
+- 用途：首次设置 `admin` 管理员密码
+- 约束：仅当 `setup_required=true` 时可用
+- 请求：
+  - `password`
+- 响应：
+  - `setup_required`
+  - `authenticated`
+  - `username`
+  - `display_name`
+  - `access_token`
+  - `token_type`
+  - `expires_at`
+
 ### `POST /api/v1/auth/login`
 
 - 用途：登录后台
@@ -19,24 +56,38 @@
   - `username`
   - `password`
 - 响应：
+  - `setup_required`
   - `authenticated`
   - `username`
   - `display_name`
+  - `access_token`
+  - `token_type`
+  - `expires_at`
 
 ### `GET /api/v1/auth/session`
 
-- 用途：获取当前会话
+- 用途：校验当前 Bearer Token，并返回当前会话状态
 
 ### `POST /api/v1/auth/logout`
 
 - 用途：退出登录
 
-### `POST /api/v1/settings/password`
+### `POST /api/v1/auth/password`
 
 - 用途：修改后台密码
+- 约束：必须已登录
 - 请求：
   - `current_password`
   - `new_password`
+- 说明：修改密码后后端轮换 token secret，旧 token 立即失效。
+
+### 认证错误码
+
+- `AUTH_SETUP_REQUIRED`：系统尚未设置初始管理员密码，前端应跳转 `/setup`。
+- `AUTH_REQUIRED`：业务接口缺少登录凭证，前端应跳转 `/login`。
+- `INVALID_TOKEN`：登录凭证无效。
+- `TOKEN_EXPIRED`：登录凭证过期。
+- `AUTH_FAILED`：用户名或密码错误。
 
 ## 配置管理
 
@@ -75,8 +126,15 @@
 - 返回：
   - 配置详情
   - 节点统计
+  - 节点完整列表
+  - 节点卡片视图模型
   - 实时状态聚合
   - 同步状态聚合
+
+说明：
+
+- 配置概览页的节点卡片所需在线状态、Peer 数等聚合字段由后端返回。
+- 前端可以做本页临时筛选和排序，但不得自己拼接业务视图模型。
 
 ## 节点管理
 
@@ -101,6 +159,12 @@
   - `private_key`
   - `tags`
 
+说明：
+
+- `ipv4_address` 表示公网 IPv4 入口，可填写 IP 或域名。
+- `ipv6_address` 表示公网 IPv6 入口，可填写 IP 或域名。
+- 前端不得把二者合并成单个“公网端点”字段。
+
 ### `GET /api/v1/nodes/{node_id}`
 
 - 用途：获取单个节点详情
@@ -112,6 +176,34 @@
 ### `DELETE /api/v1/nodes/{node_id}`
 
 - 用途：删除节点
+
+### `GET /api/v1/configs/{config_id}/tags`
+
+- 用途：获取当前配置的标签列表和使用数量
+
+### `POST /api/v1/configs/{config_id}/tags`
+
+- 用途：在当前配置下创建标签
+- 请求：`{ name }`
+
+### `POST /api/v1/configs/{config_id}/tags/apply`
+
+- 用途：批量给端点应用标签
+- 请求：`{ tag, node_ids }`
+- 约束：后端校验端点必须属于当前配置，前端不负责批量业务一致性
+
+### `DELETE /api/v1/configs/{config_id}/tags/{tag_name}`
+
+- 用途：删除配置标签，并从当前配置下所有端点移除该标签
+
+### `PUT /api/v1/nodes/{node_id}/tags`
+
+- 用途：替换单个端点的所属标签
+- 请求：`{ tags }`
+
+### `DELETE /api/v1/nodes/{node_id}/tags/{tag_name}`
+
+- 用途：从单个端点移除一个标签
 
 ### `POST /api/v1/configs/{config_id}/nodes/suggest-ip`
 
@@ -135,23 +227,86 @@
 
 - 用途：获取配置下所有 peer link
 
+### `GET /api/v1/configs/{config_id}/nodes/{node_id}/mesh-workspace`
+
+- 用途：获取当前节点 Mesh 网络页面所需的后端聚合视图
+- 返回：
+  - `node`
+  - `connections`
+  - `validation`
+
+说明：
+
+- `connections` 按 `link_group_id` 聚合双向连接。
+- 每个连接包含对端节点、启用状态、PSK 是否配置、备注、更新时间、主向参数和反向参数。
+- 主向表示当前节点到对端节点，反向表示对端节点到当前节点。
+- 前端不得自行从两条 peer link 拼接 Mesh 连接卡片。
+
+### `GET /api/v1/configs/{config_id}/nodes/{node_id}/peer-link-draft`
+
+- 用途：获取当前节点新建 Mesh 连接所需的后端业务草稿
+- 查询参数：
+  - `peer_node_id`
+  - `endpoint_ref_family`：`ipv4` 或 `ipv6`
+- 返回：
+  - `local_node`
+  - `peer_node`
+  - `endpoint_ref_family`
+  - `forward`
+  - `reverse`
+  - `warnings`
+
+说明：
+
+- 该接口负责生成正反向默认 `allowed_ips`、Endpoint 自动摘要和缺失项警告。
+- 前端不得自行推导新建连接的业务默认值。
+- 该接口后续可被外部 API 和 MCP 聚合器复用。
+
 ### `POST /api/v1/configs/{config_id}/peer-links`
 
 - 用途：创建双向 peer link
 - 请求：
-  - `local_node_id`
-  - `peer_node_id`
-  - `allowed_ips_forward`
-  - `allowed_ips_reverse`
-  - `persistent_keepalive`
+  - `forward.local_node_id`
+  - `forward.peer_node_id`
+  - `forward.allowed_ips`
+  - `forward.persistent_keepalive`
+  - `forward.endpoint_mode`
+  - `forward.endpoint_ref_family`
+  - `forward.endpoint_manual_host`
+  - `forward.endpoint_manual_port`
+  - `reverse.local_node_id`
+  - `reverse.peer_node_id`
+  - `reverse.allowed_ips`
+  - `reverse.persistent_keepalive`
+  - `reverse.endpoint_mode`
+  - `reverse.endpoint_ref_family`
+  - `reverse.endpoint_manual_host`
+  - `reverse.endpoint_manual_port`
   - `preshared_key`
-  - `endpoint_mode`
-  - `endpoint_ref_family`
-  - `endpoint_manual_host`
-  - `endpoint_port_mode`
-  - `endpoint_manual_port`
   - `notes`
   - `enabled`
+
+说明：
+
+- `endpoint_ref_family` 只使用 `ipv4` 或 `ipv6`，表示自动模式读取对端哪个公网入口。
+- 两个公网入口都可以填写 IP 或域名，域名不是独立地址族。
+- `endpoint_mode=auto` 表示自动判断对向节点是否有对应公网入口；有则生成 Endpoint，没有则留空。
+- `endpoint_mode=none` 表示强制不写 Endpoint。
+- `endpoint_mode=manual` 表示手动填写对向 Host 和 Port，不推荐常规场景使用。
+- 后端只在 `manual` 模式下强制校验 Host 和 Port。
+
+前端展示时必须使用中文模式名称：
+
+- `auto`：自动
+- `none`：不写 Endpoint
+- `manual`：手动
+
+创建连接时前端应提交正反向独立配置：
+
+- `forward`：当前节点到对端节点。
+- `reverse`：对端节点到当前节点。
+- `forward.allowed_ips` 默认使用对端虚拟 IP。
+- `reverse.allowed_ips` 默认使用当前节点虚拟 IP。
 
 ### `PUT /api/v1/peer-links/{link_group_id}`
 
@@ -160,6 +315,12 @@
 ### `DELETE /api/v1/peer-links/{link_group_id}`
 
 - 用途：删除双向链路
+
+### `POST /api/v1/peer-links/psk/generate`
+
+- 用途：生成 WireGuard PresharedKey
+- 返回：`{ preshared_key }`
+- 说明：新建连接和修改连接参数都通过该接口生成 PSK，前端不在浏览器中生成密钥。
 
 ### `POST /api/v1/configs/{config_id}/mesh/validate`
 
@@ -277,19 +438,37 @@
 ### `GET /api/v1/system/status`
 
 - 用途：系统状态聚合
+- 约束：必须已登录
 
 ## WebSocket
 
-### `GET /api/v1/ws/events`
+### `GET /api/v1/ws/events?token={access_token}`
 
 - 用途：订阅实时事件
+- 约束：连接时必须提供有效 token
 - 当前事件类型：
   - `runtime.snapshot.updated`
   - `runtime.node.updated`
+  - `endpoint.status.updated`
+  - `config.list.updated`
+  - `config.overview.updated`
+  - `node.workspace.updated`
+  - `node.apply.updated`
+  - `mesh.workspace.updated`
   - `control.log.created`
   - `control.log.updated`
   - `sync.status.updated`
   - `system.status.updated`
+  - `system.status.snapshot`
+  - `system.clock.tick`
+  - `settings.mqtt.updated`
+  - `snapshot.list.updated`
+
+说明：
+
+- 建立连接后后端会立即推送一次 `system.status.snapshot`
+- 连接存活期间后端会按秒推送 `system.clock.tick`
+- 系统状态页删除手动刷新按钮，以 WebSocket 推送为准
 
 ## 本轮不包含
 

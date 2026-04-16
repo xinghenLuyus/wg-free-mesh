@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
     database_url: str = "sqlite:///./data/wg_free_mesh.db"
     mqtt_url: str = "mqtt://localhost:1883"
+    auth_token_expire_minutes: int = 1440
 
     @property
     def sqlite_path(self) -> str:

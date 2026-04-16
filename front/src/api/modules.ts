@@ -6,22 +6,29 @@ import type {
   EndpointStatusRead,
   HealthRead,
   MeshValidationRead,
+  MeshWorkspaceRead,
   MqttSettingsRead,
   NodeRead,
+  PeerLinkDraftRead,
   PeerLinkRead,
-  SessionRead,
+  AuthStateRead,
+  TokenSessionRead,
   SnapshotRead,
   SyncStatusRead,
   SystemStatusRead,
+  TagRead,
   RuntimeSnapshotItem,
   WgPreviewRead,
 } from '@/types/api'
 
 export const api = {
+  authState: () => request<AuthStateRead>('/auth/state'),
+  setup: (password: string) =>
+    request<TokenSessionRead>('/auth/setup', { method: 'POST', data: { password } }),
   login: (username: string, password: string) =>
-    request<SessionRead>('/auth/login', { method: 'POST', data: { username, password } }),
-  session: () => request<SessionRead>('/auth/session'),
-  logout: () => request<SessionRead>('/auth/logout', { method: 'POST' }),
+    request<TokenSessionRead>('/auth/login', { method: 'POST', data: { username, password } }),
+  session: () => request<AuthStateRead>('/auth/session'),
+  logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),
   changePassword: (current_password: string, new_password: string) =>
     request<{ message: string }>('/auth/password', {
       method: 'POST',
@@ -48,6 +55,23 @@ export const api = {
     request<NodeRead>(`/nodes/${nodeId}`, { method: 'PUT', data: payload }),
   deleteNode: (nodeId: string) =>
     request<{ message: string }>(`/nodes/${nodeId}`, { method: 'DELETE' }),
+  tags: (configId: string) => request<TagRead[]>(`/configs/${configId}/tags`),
+  createTag: (configId: string, name: string) =>
+    request<TagRead>(`/configs/${configId}/tags`, { method: 'POST', data: { name } }),
+  applyTagToNodes: (configId: string, tag: string, node_ids: string[]) =>
+    request<NodeRead[]>(`/configs/${configId}/tags/apply`, {
+      method: 'POST',
+      data: { tag, node_ids },
+    }),
+  deleteTag: (configId: string, tag: string) =>
+    request<{ message: string; removed_count: number }>(
+      `/configs/${configId}/tags/${encodeURIComponent(tag)}`,
+      { method: 'DELETE' },
+    ),
+  replaceNodeTags: (nodeId: string, tags: string[]) =>
+    request<NodeRead>(`/nodes/${nodeId}/tags`, { method: 'PUT', data: { tags } }),
+  removeTagFromNode: (nodeId: string, tag: string) =>
+    request<NodeRead>(`/nodes/${nodeId}/tags/${encodeURIComponent(tag)}`, { method: 'DELETE' }),
   suggestIp: (configId: string) =>
     request<{ ip: string }>(`/configs/${configId}/nodes/suggest-ip`, { method: 'POST' }),
   validateIp: (configId: string, virtual_ip: string) =>
@@ -58,12 +82,20 @@ export const api = {
   generateKeys: () => request<{ private_key: string; public_key: string }>('/nodes/keys/generate', { method: 'POST' }),
 
   peerLinks: (configId: string) => request<PeerLinkRead[]>(`/configs/${configId}/peer-links`),
+  meshWorkspace: (configId: string, nodeId: string) =>
+    request<MeshWorkspaceRead>(`/configs/${configId}/nodes/${nodeId}/mesh-workspace`),
+  peerLinkDraft: (configId: string, nodeId: string, peerNodeId: string, endpointRefFamily: 'ipv4' | 'ipv6') =>
+    request<PeerLinkDraftRead>(
+      `/configs/${configId}/nodes/${nodeId}/peer-link-draft?peer_node_id=${encodeURIComponent(peerNodeId)}&endpoint_ref_family=${endpointRefFamily}`,
+    ),
   createPeerLink: (configId: string, payload: Record<string, unknown>) =>
     request<PeerLinkRead[]>(`/configs/${configId}/peer-links`, { method: 'POST', data: payload }),
   updatePeerLinkGroup: (groupId: string, payload: Record<string, unknown>) =>
     request<PeerLinkRead[]>(`/peer-links/${groupId}`, { method: 'PUT', data: payload }),
   deletePeerLinkGroup: (groupId: string) =>
     request<{ message: string }>(`/peer-links/${groupId}`, { method: 'DELETE' }),
+  generatePresharedKey: () =>
+    request<{ preshared_key: string }>('/peer-links/psk/generate', { method: 'POST' }),
   validateMesh: (configId: string) =>
     request<MeshValidationRead>(`/configs/${configId}/mesh/validate`, { method: 'POST' }),
   wgPreview: (configId: string, nodeId: string) =>

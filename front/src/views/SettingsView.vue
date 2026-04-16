@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { Check, Connection, Delete, Files, Lock, Plus, Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { Check, Connection, Delete, Files, Lock, Plus } from '@element-plus/icons-vue'
 import { onMounted, reactive, shallowRef } from 'vue'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
-import type { SnapshotRead } from '@/types/api'
+import { useRealtime } from '@/composables/useRealtime'
+import type { MqttSettingsUpdatedPayload, RealtimeEvent, SnapshotListUpdatedPayload, SnapshotRead } from '@/types/api'
+import { formatDateTime } from '@/utils/dateTime'
+import { notify } from '@/utils/notify'
 
 const mqttForm = reactive({
   host: '',
@@ -22,6 +24,14 @@ const passwordForm = reactive({
 
 const snapshots = shallowRef<SnapshotRead[]>([])
 const mqttTestResult = shallowRef('')
+const realtime = useRealtime((event: RealtimeEvent) => {
+  if (event.type === 'snapshot.list.updated') {
+    snapshots.value = (event.payload as unknown as SnapshotListUpdatedPayload).snapshots
+  }
+  if (event.type === 'settings.mqtt.updated') {
+    Object.assign(mqttForm, (event.payload as unknown as MqttSettingsUpdatedPayload).mqtt)
+  }
+})
 
 async function load() {
   Object.assign(mqttForm, await api.mqttSettings())
@@ -31,9 +41,9 @@ async function load() {
 async function saveMqtt() {
   try {
     Object.assign(mqttForm, await api.updateMqttSettings({ ...mqttForm }))
-    ElMessage.success('MQTT 配置已保存')
+    notify.success('MQTT 配置已保存')
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : 'MQTT 配置保存失败')
+    notify.error(error instanceof ApiClientError ? error.message : 'MQTT 配置保存失败')
   }
 }
 
@@ -41,10 +51,10 @@ async function testMqtt() {
   try {
     const result = await api.testMqttSettings({ ...mqttForm })
     mqttTestResult.value = `${result.success ? '连接成功' : '连接失败'} / ${result.message}`
-    ElMessage.success('MQTT 测试已完成')
+    notify.success('MQTT 测试已完成')
   } catch (error) {
     mqttTestResult.value = '测试失败'
-    ElMessage.error(error instanceof ApiClientError ? error.message : 'MQTT 测试失败')
+    notify.error(error instanceof ApiClientError ? error.message : 'MQTT 测试失败')
   }
 }
 
@@ -53,9 +63,9 @@ async function savePassword() {
     await api.changePassword(passwordForm.current_password, passwordForm.new_password)
     passwordForm.current_password = ''
     passwordForm.new_password = ''
-    ElMessage.success('密码已更新')
+    notify.success('密码已更新')
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '密码更新失败')
+    notify.error(error instanceof ApiClientError ? error.message : '密码更新失败')
   }
 }
 
@@ -63,18 +73,18 @@ async function createSnapshot() {
   try {
     await api.createSnapshot('')
     await load()
-    ElMessage.success('快照已创建')
+    notify.success('快照已创建')
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '快照创建失败')
+    notify.error(error instanceof ApiClientError ? error.message : '快照创建失败')
   }
 }
 
 async function restoreSnapshot(snapshotId: string) {
   try {
     await api.restoreSnapshot(snapshotId)
-    ElMessage.success('快照已恢复')
+    notify.success('快照已恢复')
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '快照恢复失败')
+    notify.error(error instanceof ApiClientError ? error.message : '快照恢复失败')
   }
 }
 
@@ -82,17 +92,18 @@ async function removeSnapshot(snapshotId: string) {
   try {
     await api.deleteSnapshot(snapshotId)
     await load()
-    ElMessage.success('快照已删除')
+    notify.success('快照已删除')
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '快照删除失败')
+    notify.error(error instanceof ApiClientError ? error.message : '快照删除失败')
   }
 }
 
 onMounted(async () => {
   try {
     await load()
+    realtime.connect()
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '设置加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : '设置加载失败')
   }
 })
 </script>
@@ -104,7 +115,6 @@ onMounted(async () => {
       <h1 class="page-title">系统设置</h1>
       <p class="page-description">管理登录密码、客户端 MQTT 连接参数和系统快照。</p>
     </div>
-    <el-button :icon="Refresh" @click="load">刷新设置</el-button>
   </section>
 
   <section class="settings-grid">
@@ -164,7 +174,6 @@ onMounted(async () => {
         <div class="action-row">
           <el-button type="primary" :icon="Check" @click="saveMqtt">保存 MQTT</el-button>
           <el-button :icon="Connection" @click="testMqtt">测试连接</el-button>
-          <el-button :icon="Refresh" @click="load">刷新配置</el-button>
         </div>
 
         <div v-if="mqttTestResult" class="result-callout">
@@ -190,7 +199,7 @@ onMounted(async () => {
           <div class="snapshot-card__main">
             <span class="snapshot-card__icon"><el-icon><Files /></el-icon></span>
             <div>
-              <h3>{{ snapshot.created_at }}</h3>
+              <h3>{{ formatDateTime(snapshot.created_at) }}</h3>
               <p>{{ snapshot.note || '无备注' }}</p>
             </div>
           </div>

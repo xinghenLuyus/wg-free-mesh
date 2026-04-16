@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import { RefreshRight, SwitchButton, VideoPause, VideoPlay } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
 import { onMounted, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
-import type { ControlLogRead, EndpointStatusRead, RealtimeEvent } from '@/types/api'
+import type { ControlLogEventPayload, ControlLogRead, EndpointStatusRead, EndpointStatusUpdatedPayload, RealtimeEvent } from '@/types/api'
+import { formatDateTime } from '@/utils/dateTime'
+import { notify } from '@/utils/notify'
 
 const route = useRoute()
 
 const endpointStatus = shallowRef<EndpointStatusRead | null>(null)
 const logs = shallowRef<ControlLogRead[]>([])
+
+function nodeTypeLabel(type: 'dynamic' | 'static') {
+  return type === 'static' ? '静态节点' : '动态节点'
+}
 
 async function reloadNode() {
   const configId = String(route.params.configId)
@@ -24,19 +29,32 @@ async function reloadNode() {
 async function sendAction(action: string) {
   try {
     const result = await api.controlEndpoint(String(route.params.configId), String(route.params.nodeId), action)
-    ElMessage.success(result.message)
-    await reloadNode()
+    notify.success(result.message)
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '控制命令失败')
+    notify.error(error instanceof ApiClientError ? error.message : '控制命令失败')
   }
 }
 
+function upsertLog(nextLog: ControlLogRead) {
+  const items = [...logs.value]
+  const index = items.findIndex((item) => item.id === nextLog.id)
+  if (index >= 0) items[index] = nextLog
+  else items.unshift(nextLog)
+  logs.value = items.sort((left, right) => right.created_at.localeCompare(left.created_at))
+}
+
 const realtime = useRealtime((event: RealtimeEvent) => {
-  if (
-    (event.type === 'runtime.node.updated' || event.type === 'control.log.created' || event.type === 'control.log.updated') &&
-    event.payload.node_id === route.params.nodeId
-  ) {
-    void reloadNode()
+  if (event.type === 'endpoint.status.updated') {
+    const payload = event.payload as unknown as EndpointStatusUpdatedPayload
+    if (payload.node_id === route.params.nodeId) {
+      endpointStatus.value = payload.status
+    }
+  }
+  if (event.type === 'control.log.created' || event.type === 'control.log.updated') {
+    const payload = event.payload as unknown as ControlLogEventPayload
+    if (payload.node_id === route.params.nodeId) {
+      upsertLog(payload.log)
+    }
   }
 })
 
@@ -52,7 +70,7 @@ onMounted(async () => {
     await reloadNode()
     realtime.connect()
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '端点状态加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : '端点状态加载失败')
   }
 })
 </script>
@@ -75,11 +93,11 @@ onMounted(async () => {
           <div class="endpoint-card__title">运行状态</div>
           <el-descriptions :column="2" border>
             <el-descriptions-item label="节点">{{ endpointStatus.node.name }}</el-descriptions-item>
-            <el-descriptions-item label="类型">{{ endpointStatus.node.node_type }}</el-descriptions-item>
+            <el-descriptions-item label="类型">{{ nodeTypeLabel(endpointStatus.node.node_type) }}</el-descriptions-item>
             <el-descriptions-item label="连通状态">{{ endpointStatus.runtime.connectivity_state }}</el-descriptions-item>
             <el-descriptions-item label="WG 状态">{{ endpointStatus.runtime.wg_runtime_state }}</el-descriptions-item>
             <el-descriptions-item label="Peer">{{ endpointStatus.runtime.peers_online }} / {{ endpointStatus.runtime.peers_total }}</el-descriptions-item>
-            <el-descriptions-item label="最近在线">{{ endpointStatus.runtime.last_seen || '暂无' }}</el-descriptions-item>
+            <el-descriptions-item label="最近在线">{{ formatDateTime(endpointStatus.runtime.last_seen) }}</el-descriptions-item>
           </el-descriptions>
         </div>
 
@@ -96,7 +114,7 @@ onMounted(async () => {
         <div class="endpoint-card">
           <div class="endpoint-card__title">控制日志</div>
           <el-timeline>
-            <el-timeline-item v-for="log in logs" :key="log.id" :timestamp="log.created_at">
+            <el-timeline-item v-for="log in logs" :key="log.id" :timestamp="formatDateTime(log.created_at)">
               {{ log.action }} / {{ log.status }} / {{ log.summary }}
             </el-timeline-item>
           </el-timeline>

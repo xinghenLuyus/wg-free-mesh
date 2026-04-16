@@ -1,17 +1,31 @@
 <script setup lang="ts">
-import { Check, Refresh } from '@element-plus/icons-vue'
-import { ElMessage } from 'element-plus'
+import { Check, Document, EditPen, Refresh } from '@element-plus/icons-vue'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
-import type { SyncStatusRead } from '@/types/api'
+import { useRealtime } from '@/composables/useRealtime'
+import { toNodeUpdatePayload } from '@/utils/nodePayload'
+import { notify } from '@/utils/notify'
+import type { NodeApplyUpdatedPayload, RealtimeEvent, SyncStatusRead } from '@/types/api'
 
 const route = useRoute()
 
 const syncStatus = shallowRef<SyncStatusRead | null>(null)
 const previewContent = shallowRef('')
+const loading = shallowRef(false)
+const loadError = shallowRef('')
+const autoSyncSaving = shallowRef(false)
+let loadTicket = 0
+const realtime = useRealtime((event: RealtimeEvent) => {
+  if (event.type !== 'node.apply.updated') return
+  const payload = event.payload as unknown as NodeApplyUpdatedPayload
+  if (payload.config_id !== String(route.params.configId) || payload.node_id !== currentNodeId.value) return
+  syncStatus.value = payload.sync_status
+  previewContent.value = payload.preview.content
+  Object.assign(appliedState, payload.applied)
+})
 const appliedState = reactive({
   content: '',
   exists: false,
@@ -24,16 +38,28 @@ const appliedState = reactive({
 const currentNodeId = computed(() => String(route.params.nodeId))
 
 async function loadNodeState() {
+  const ticket = ++loadTicket
+  loading.value = true
+  loadError.value = ''
   const configId = String(route.params.configId)
   const nodeId = currentNodeId.value
-  const [status, preview, applied] = await Promise.all([
-    api.nodeSyncStatus(configId, nodeId),
-    api.wgPreview(configId, nodeId),
-    api.readAppliedConf(configId, nodeId),
-  ])
-  syncStatus.value = status
-  previewContent.value = preview.content
-  Object.assign(appliedState, applied)
+  try {
+    const [status, preview, applied] = await Promise.all([
+      api.nodeSyncStatus(configId, nodeId),
+      api.wgPreview(configId, nodeId),
+      api.readAppliedConf(configId, nodeId),
+    ])
+    if (ticket !== loadTicket) return
+    syncStatus.value = status
+    previewContent.value = preview.content
+    Object.assign(appliedState, applied)
+  } catch (error) {
+    if (ticket !== loadTicket) return
+    loadError.value = error instanceof ApiClientError ? error.message : '配置预览加载失败'
+    throw error
+  } finally {
+    if (ticket === loadTicket) loading.value = false
+  }
 }
 
 async function saveApplied() {
@@ -41,9 +67,9 @@ async function saveApplied() {
   try {
     await api.saveAppliedConf(configId, currentNodeId.value, appliedState.content)
     await loadNodeState()
-    ElMessage.success('同步态已保存')
+    notify.success('同步态已保存')
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '保存失败')
+    notify.error(error instanceof ApiClientError ? error.message : '保存失败')
   }
 }
 
@@ -51,60 +77,118 @@ async function syncNode() {
   const configId = String(route.params.configId)
   await api.syncNode(configId, currentNodeId.value)
   await loadNodeState()
-  ElMessage.success('已从系统态同步到同步态')
+  notify.success('已从系统态同步到同步态')
+}
+
+async function toggleAutoSync(nextValue: boolean | string | number) {
+  const enabled = Boolean(nextValue)
+  const nodeId = currentNodeId.value
+  try {
+    autoSyncSaving.value = true
+    const currentNode = await api.node(nodeId)
+    await api.updateNode(nodeId, toNodeUpdatePayload(currentNode, { auto_sync: enabled }))
+    if (syncStatus.value) {
+      syncStatus.value = { ...syncStatus.value, auto_sync: enabled }
+    }
+    notify.success(enabled ? '已开启自动同步' : '已关闭自动同步')
+  } catch (error) {
+    notify.error(error instanceof ApiClientError ? error.message : '自动同步状态保存失败')
+  } finally {
+    autoSyncSaving.value = false
+  }
 }
 
 watch(
   () => [route.params.configId, route.params.nodeId],
   async () => {
-    await loadNodeState()
+    try {
+      await loadNodeState()
+    } catch {
+      notify.error(loadError.value || '配置预览加载失败')
+    }
   },
 )
 
 onMounted(async () => {
   try {
     await loadNodeState()
+    realtime.connect()
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '配置应用加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : '配置预览加载失败')
   }
 })
 </script>
 
 <template>
   <section class="node-template">
-    <div v-if="syncStatus" class="content-band">
+    <div v-if="loading && !syncStatus" class="content-band view-feedback view-feedback--silent" aria-hidden="true"></div>
+    <div v-else-if="loadError && !syncStatus" class="content-band view-feedback view-feedback--error">{{ loadError }}</div>
+    <div v-else-if="syncStatus" class="content-band">
       <div class="template-toolbar">
         <div>
-          <h2>配置应用</h2>
+          <h2>配置预览</h2>
           <p>默认同步配置表示从系统态同步到同步态。下发态属于客户端流程。</p>
         </div>
         <div class="template-toolbar__actions">
-          <el-tag type="info">{{ syncStatus.status }}</el-tag>
+          <div class="auto-sync-toggle">
+            <div>
+              <strong>自动同步</strong>
+              <span>{{ syncStatus.auto_sync ? '系统态变更后自动写入同步态' : '当前仅保留手动同步' }}</span>
+            </div>
+            <el-switch
+              :model-value="syncStatus.auto_sync"
+              :loading="autoSyncSaving"
+              @change="toggleAutoSync"
+            />
+          </div>
           <el-button type="primary" :icon="Refresh" @click="syncNode">同步配置</el-button>
         </div>
       </div>
 
-      <div class="version-strip">
-        <span>系统态版本 {{ syncStatus.desired_version }}</span>
-        <span>同步态版本 {{ syncStatus.staged_version }}</span>
-      </div>
-
       <div class="apply-panels">
-        <div class="apply-panel">
-          <div class="apply-panel__header">
-            <span>系统态</span>
-            <span>只读</span>
+        <el-card shadow="never" class="apply-panel">
+          <template #header>
+            <div class="apply-panel__header">
+              <div class="apply-panel__title">
+                <el-icon><Document /></el-icon>
+                <div>
+                  <strong>系统态</strong>
+                  <span>系统生成，只读预览</span>
+                </div>
+              </div>
+              <el-tag type="info" effect="plain">只读</el-tag>
+            </div>
+          </template>
+          <div class="config-code-shell">
+            <el-scrollbar max-height="560px">
+              <pre class="config-code-block">{{ previewContent }}</pre>
+            </el-scrollbar>
           </div>
-          <el-input :model-value="previewContent" type="textarea" :rows="24" readonly />
-        </div>
+        </el-card>
 
-        <div class="apply-panel">
-          <div class="apply-panel__header">
-            <span>同步态</span>
-            <el-button size="small" type="primary" :icon="Check" @click="saveApplied">保存修改</el-button>
+        <el-card shadow="never" class="apply-panel">
+          <template #header>
+            <div class="apply-panel__header">
+              <div class="apply-panel__title">
+                <el-icon><EditPen /></el-icon>
+                <div>
+                  <strong>同步态</strong>
+                  <span>可在此手动调整并保存</span>
+                </div>
+              </div>
+              <el-button size="small" type="primary" :icon="Check" @click="saveApplied">保存修改</el-button>
+            </div>
+          </template>
+          <div class="config-code-shell config-code-shell--editable">
+            <el-input
+              v-model="appliedState.content"
+              type="textarea"
+              :rows="24"
+              resize="none"
+              class="config-code-editor"
+            />
           </div>
-          <el-input v-model="appliedState.content" type="textarea" :rows="24" />
-        </div>
+        </el-card>
       </div>
     </div>
   </section>
@@ -112,15 +196,77 @@ onMounted(async () => {
 
 <style scoped>
 .node-template { display: grid; gap: 20px; }
+.view-feedback { color: #556a62; }
+.view-feedback--silent { min-height: 140px; color: transparent; }
+.view-feedback--error { color: #9a4b4b; }
 .template-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .template-toolbar h2 { margin: 0; color: var(--app-text); font-size: 22px; }
 .template-toolbar p { margin: 8px 0 0; color: var(--app-muted); line-height: 1.6; }
 .template-toolbar__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.version-strip { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; color: #60736c; }
-.version-strip span { padding: 8px 12px; border: 1px solid #e0e8e4; border-radius: 8px; background: #f8fbf9; font-weight: 700; }
+.auto-sync-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 248px;
+  padding: 10px 14px;
+  border: 1px solid #dfe8e4;
+  border-radius: 8px;
+  background: #fbfcfb;
+}
+.auto-sync-toggle strong,
+.auto-sync-toggle span { display: block; }
+.auto-sync-toggle strong { color: var(--app-text); font-size: 13px; }
+.auto-sync-toggle span { margin-top: 4px; color: var(--app-muted); font-size: 12px; line-height: 1.4; }
 .apply-panels { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.apply-panel { display: grid; gap: 10px; min-width: 0; padding: 14px; border: 1px solid #e0e8e4; border-radius: 8px; background: #ffffff; box-shadow: 0 8px 20px rgba(42, 65, 58, 0.045); }
-.apply-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #213029; font-weight: 700; }
+.apply-panel { min-width: 0; border-color: #dfe8e4; background: linear-gradient(180deg, #ffffff 0%, #fbfcfb 100%); }
+.apply-panel :deep(.el-card__header) { padding: 16px 18px; border-bottom-color: #e6eeea; }
+.apply-panel :deep(.el-card__body) { padding: 18px; }
+.apply-panel__header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.apply-panel__title { display: flex; align-items: center; gap: 12px; color: #213029; }
+.apply-panel__title .el-icon { color: var(--app-primary); font-size: 18px; }
+.apply-panel__title strong { display: block; color: #213029; font-size: 16px; line-height: 1.2; }
+.apply-panel__title span { display: block; margin-top: 4px; color: var(--app-muted); font-size: 13px; line-height: 1.4; }
+.config-code-shell {
+  overflow: hidden;
+  min-height: 560px;
+  border: 1px solid #dfe8e4;
+  border-radius: 8px;
+  background:
+    linear-gradient(180deg, rgba(15, 139, 141, 0.04) 0%, rgba(15, 139, 141, 0) 56px),
+    #f7fbf9;
+}
+.config-code-shell--editable {
+  background:
+    linear-gradient(180deg, rgba(15, 139, 141, 0.05) 0%, rgba(15, 139, 141, 0) 56px),
+    #ffffff;
+}
+.config-code-shell :deep(.el-scrollbar__wrap) { padding: 18px; }
+.config-code-block {
+  margin: 0;
+  color: #23342e;
+  font-size: 13px;
+  line-height: 1.72;
+  font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.config-code-editor :deep(.el-textarea__inner) {
+  min-height: 560px !important;
+  padding: 18px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #23342e;
+  font-size: 13px;
+  line-height: 1.72;
+  font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+}
+.config-code-editor :deep(.el-textarea__inner:focus) { box-shadow: none; }
 @media (max-width: 1100px) { .apply-panels { grid-template-columns: 1fr; } }
-@media (max-width: 860px) { .template-toolbar { flex-direction: column; align-items: stretch; } }
+@media (max-width: 860px) {
+  .template-toolbar { flex-direction: column; align-items: stretch; }
+  .auto-sync-toggle { width: 100%; }
+}
 </style>

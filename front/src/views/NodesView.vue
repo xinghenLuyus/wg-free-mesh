@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ArrowLeft, Key, Plus } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import type { ConfigRead, NodeRead } from '@/types/api'
+import { notify } from '@/utils/notify'
 
 const route = useRoute()
 const router = useRouter()
@@ -18,6 +19,7 @@ const editingNodeId = shallowRef('')
 const form = reactive({
   name: '',
   ipv4_address: '',
+  ipv6_address: '',
   listen_port: 51820,
   virtual_ip: '',
   mtu: 1420,
@@ -32,6 +34,10 @@ const form = reactive({
 const nodeCount = computed(() => nodes.value.length)
 const dialogTitle = computed(() => (editingNodeId.value ? '编辑节点' : '新增节点'))
 
+function nodeTypeLabel(type: NodeRead['node_type']) {
+  return type === 'static' ? '静态节点' : '动态节点'
+}
+
 async function loadNodes() {
   const configId = String(route.params.configId)
   const configs = await api.configs()
@@ -44,6 +50,7 @@ function resetForm() {
   Object.assign(form, {
     name: '',
     ipv4_address: '',
+    ipv6_address: '',
     listen_port: 51820,
     virtual_ip: '',
     mtu: 1420,
@@ -67,6 +74,7 @@ function openEdit(node: NodeRead) {
   Object.assign(form, {
     name: node.name,
     ipv4_address: node.ipv4_address || '',
+    ipv6_address: node.ipv6_address || '',
     listen_port: node.listen_port || 51820,
     virtual_ip: node.virtual_ip || '',
     mtu: node.mtu || 1420,
@@ -95,15 +103,15 @@ async function submit() {
   try {
     if (editingNodeId.value) {
       await api.updateNode(editingNodeId.value, form)
-      ElMessage.success('节点已保存')
+      notify.success('节点已保存')
     } else {
       await api.createNode(String(route.params.configId), form)
-      ElMessage.success('节点已创建')
+      notify.success('节点已创建')
     }
     dialogVisible.value = false
     await loadNodes()
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '节点保存失败')
+    notify.error(error instanceof ApiClientError ? error.message : '节点保存失败')
   }
 }
 
@@ -116,10 +124,10 @@ async function deleteNode(node: NodeRead) {
     })
     await api.deleteNode(node.id)
     await loadNodes()
-    ElMessage.success('节点已删除')
+    notify.success('节点已删除')
   } catch (error) {
     if (error instanceof ApiClientError) {
-      ElMessage.error(error.message)
+      notify.error(error.message)
     }
   }
 }
@@ -139,7 +147,7 @@ onMounted(async () => {
   try {
     await loadNodes()
   } catch (error) {
-    ElMessage.error(error instanceof ApiClientError ? error.message : '节点加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : '节点加载失败')
   }
 })
 </script>
@@ -159,9 +167,12 @@ onMounted(async () => {
 
     <el-table :data="nodes" row-key="id">
       <el-table-column prop="name" label="名称" min-width="150" />
-      <el-table-column prop="node_type" label="类型" width="100" />
+      <el-table-column label="类型" width="110">
+        <template #default="{ row }">{{ nodeTypeLabel(row.node_type) }}</template>
+      </el-table-column>
       <el-table-column prop="virtual_ip" label="虚拟 IP" min-width="140" />
-      <el-table-column prop="ipv4_address" label="公网端点" min-width="150" />
+      <el-table-column prop="ipv4_address" label="公网 IPv4" min-width="160" />
+      <el-table-column prop="ipv6_address" label="公网 IPv6" min-width="160" />
       <el-table-column prop="listen_port" label="监听端口" width="100" />
       <el-table-column label="标签" min-width="140">
         <template #default="{ row }">
@@ -190,10 +201,19 @@ onMounted(async () => {
         <el-input v-model="form.name" />
       </el-form-item>
       <el-form-item label="类型">
-        <el-segmented v-model="form.node_type" :options="['dynamic', 'static']" />
+        <el-segmented
+          v-model="form.node_type"
+          :options="[
+            { label: '动态节点', value: 'dynamic' },
+            { label: '静态节点', value: 'static' },
+          ]"
+        />
       </el-form-item>
-      <el-form-item label="公网端点">
-        <el-input v-model="form.ipv4_address" />
+      <el-form-item label="公网 IPv4">
+        <el-input v-model="form.ipv4_address" placeholder="可填写 IP 或域名" />
+      </el-form-item>
+      <el-form-item label="公网 IPv6">
+        <el-input v-model="form.ipv6_address" placeholder="可填写 IP 或域名" />
       </el-form-item>
       <el-form-item label="监听端口">
         <el-input-number v-model="form.listen_port" :min="1" :max="65535" style="width: 100%" />

@@ -4,8 +4,9 @@ import { computed, onMounted, shallowRef } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 
 import { api } from '@/api/modules'
+import { useRealtime } from '@/composables/useRealtime'
 import { useAuthStore } from '@/stores/auth'
-import type { ConfigRead, SystemStatusRead } from '@/types/api'
+import type { ConfigListUpdatedPayload, ConfigRead, RealtimeEvent, SystemStatusRead } from '@/types/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,6 +14,14 @@ const authStore = useAuthStore()
 
 const configs = shallowRef<ConfigRead[]>([])
 const systemStatus = shallowRef<SystemStatusRead | null>(null)
+const realtime = useRealtime((event: RealtimeEvent) => {
+  if (event.type === 'config.list.updated') {
+    configs.value = (event.payload as unknown as ConfigListUpdatedPayload).configs
+  }
+  if ((event.type === 'system.status.snapshot' || event.type === 'system.status.updated') && event.payload) {
+    systemStatus.value = event.payload as unknown as SystemStatusRead
+  }
+})
 
 const topItems = [
   { path: '/', label: '首页', icon: House },
@@ -58,6 +67,7 @@ async function handleLogout() {
 onMounted(() => {
   void loadConfigs()
   void loadSystemStatus()
+  realtime.connect()
 })
 </script>
 
@@ -113,14 +123,21 @@ onMounted(() => {
     </aside>
 
     <main class="main">
-      <RouterView />
+      <RouterView v-slot="{ Component, route: viewRoute }">
+        <Transition name="route-panel" appear>
+          <component
+            :is="Component"
+            :key="`${viewRoute.matched[1]?.path || viewRoute.path}:${String(viewRoute.params.configId || '')}`"
+          />
+        </Transition>
+      </RouterView>
     </main>
   </div>
 </template>
 
 <style scoped>
 .shell { display: grid; grid-template-columns: 268px 1fr; min-height: 100vh; background: transparent; }
-.sidebar { position: sticky; top: 0; display: flex; flex-direction: column; height: 100vh; border-right: 1px solid rgba(216, 225, 221, 0.92); background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(12px); box-shadow: 12px 0 34px rgba(42, 65, 58, 0.06); }
+.sidebar { position: sticky; top: 0; display: flex; flex-direction: column; height: 100vh; min-height: 0; border-right: 1px solid rgba(216, 225, 221, 0.92); background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(12px); box-shadow: 12px 0 34px rgba(42, 65, 58, 0.06); }
 .sidebar__brand { padding: 24px 20px 18px; border-bottom: 1px solid #e5ece9; }
 .sidebar__brand h2 { margin: 0; color: #1f2d28; font-size: 22px; line-height: 1.15; letter-spacing: 0; }
 .sidebar__brand h2::after { content: "控制台"; display: block; margin-top: 6px; color: var(--app-muted); font-size: 12px; font-weight: 600; }
@@ -148,7 +165,8 @@ onMounted(() => {
 .main { min-width: 0; padding: 26px; }
 @media (max-width: 960px) {
   .shell { grid-template-columns: 1fr; }
-  .sidebar { position: static; height: auto; border-right: 0; border-bottom: 1px solid #d8e1dd; }
+  .sidebar { position: static; height: auto; min-height: auto; border-right: 0; border-bottom: 1px solid #d8e1dd; }
+  .sidebar__nav { overflow: visible; }
   .main { padding: 18px; }
 }
 </style>
