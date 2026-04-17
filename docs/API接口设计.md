@@ -1,6 +1,6 @@
 # API接口设计
 
-本文定义重构阶段新的前后端契约。目标不是照抄旧接口路径，而是在覆盖旧系统主要能力的前提下，统一为更稳定的 REST + WebSocket 结构。
+本文定义重构阶段新的前后端契约。目标不是照抄旧接口路径，而是在覆盖旧系统主要能力的前提下，统一为更稳定的 REST + SSE 结构。
 
 ## 设计原则
 
@@ -8,7 +8,7 @@
 - 所有响应统一使用 `{ success, data }` 或 `{ success, error }`
 - 先固化契约，再同步修改前后端
 - 客户端相关 enrollment、`.wgm`、`/api/client/enroll` 暂缓，不纳入本轮实现
-- 强实时场景优先使用 WebSocket，不依赖高频轮询
+- 强实时场景优先使用 SSE，不依赖高频轮询
 
 ## 认证与会话
 
@@ -440,35 +440,34 @@ Authorization: Bearer <access_token>
 - 用途：系统状态聚合
 - 约束：必须已登录
 
-## WebSocket
+## SSE 实时流
 
-### `GET /api/v1/ws/events?token={access_token}`
+### `GET /api/v1/events/stream`
 
-- 用途：订阅实时事件
-- 约束：连接时必须提供有效 token
+- 用途：订阅后台管理端实时事件
+- 约束：请求必须携带有效 Bearer Token
+- 协议：SSE
 - 当前事件类型：
-  - `runtime.snapshot.updated`
-  - `runtime.node.updated`
-  - `endpoint.status.updated`
   - `config.list.updated`
   - `config.overview.updated`
   - `node.workspace.updated`
   - `node.apply.updated`
   - `mesh.workspace.updated`
+  - `endpoint.status.updated`
   - `control.log.created`
   - `control.log.updated`
-  - `sync.status.updated`
   - `system.status.updated`
-  - `system.status.snapshot`
-  - `system.clock.tick`
+  - `system.clock.sync`
   - `settings.mqtt.updated`
   - `snapshot.list.updated`
 
 说明：
 
-- 建立连接后后端会立即推送一次 `system.status.snapshot`
-- 连接存活期间后端会按秒推送 `system.clock.tick`
-- 系统状态页删除手动刷新按钮，以 WebSocket 推送为准
+- 建立连接后后端应立即推送一次系统状态快照和一次 `system.clock.sync`
+- 连接存活期间后端低频推送 `system.clock.sync`
+- `system.clock.sync` 同时承担系统时间校时和连接活性信号，不再每秒推流
+- 无在线订阅者时，服务端不做空推送
+- 系统状态页删除手动刷新按钮，以 SSE 推送和前端本地走秒为准
 
 ## 本轮不包含
 

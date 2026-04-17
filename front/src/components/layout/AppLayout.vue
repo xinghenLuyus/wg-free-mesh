@@ -18,7 +18,7 @@ const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type === 'config.list.updated') {
     configs.value = (event.payload as unknown as ConfigListUpdatedPayload).configs
   }
-  if ((event.type === 'system.status.snapshot' || event.type === 'system.status.updated') && event.payload) {
+  if (event.type === 'system.status.updated' && event.payload) {
     systemStatus.value = event.payload as unknown as SystemStatusRead
   }
 })

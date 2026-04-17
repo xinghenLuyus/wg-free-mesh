@@ -11,7 +11,7 @@
 - WireGuard 配置预览
 - 系统态与同步态管理
 - 端点运行态、控制日志、批量 probe
-- WebSocket 实时事件
+- SSE 实时事件
 - MQTT 公网引导参数设置
 - 备份恢复
 - 系统状态聚合
@@ -61,28 +61,27 @@ cd src
 python -m fastapi dev app/main.py --host 127.0.0.1 --port 8000
 ```
 
-如果要排查移动端 WebSocket 频繁断开，建议改用可显式控制 keepalive 的启动方式：
+如果要排查移动端 SSE 长连接稳定性，建议使用普通 Uvicorn 启动方式观察日志：
 
 ```powershell
 cd src
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --ws-ping-interval 30 --ws-ping-timeout 30
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
-
-仓库代码本身不会写死 Uvicorn 的 WebSocket keepalive 参数，默认值由启动命令决定。
 
 可访问：
 
 - OpenAPI: `http://127.0.0.1:8000/docs`
 - 健康检查: `http://127.0.0.1:8000/api/v1/system/health`
-- WebSocket: `ws://127.0.0.1:8000/api/v1/ws/events`
+- SSE: `http://127.0.0.1:8000/api/v1/events/stream`
 
-WebSocket 需要附带 token：
+SSE 需要附带 Bearer Token：
 
-```text
-ws://127.0.0.1:8000/api/v1/ws/events?token=<access_token>
+```http
+GET /api/v1/events/stream HTTP/1.1
+Authorization: Bearer <access_token>
 ```
 
-`/api/v1/ws/events` 会记录连接 ID、客户端地址、用户、关闭 code 和连接存活时长，便于定位移动端短连接问题。
+`/api/v1/events/stream` 会记录连接 ID、客户端地址、用户和连接存活时长，便于定位移动端长连接问题。
 
 ## 测试
 

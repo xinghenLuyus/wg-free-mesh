@@ -15,4 +15,4 @@
 
 - 页面组件不直接拼 URL
 - 新增接口时，先更新 `docs/API接口设计.md`
-- WebSocket 实时消息不混进普通 HTTP 请求封装，单独由 composable 处理
+- SSE 实时消息不混进普通 HTTP 请求封装，单独由 composable 处理

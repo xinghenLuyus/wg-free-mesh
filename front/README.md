@@ -51,7 +51,7 @@
 - token 保存在 `localStorage`，刷新后通过 `/api/v1/auth/state` 重新校验。
 - 业务请求收到 `401` 会清理 token 并跳转登录页。
 - 收到 `AUTH_SETUP_REQUIRED` 会跳转初始化页。
-- WebSocket 连接需要把 token 放到查询参数中。
+- SSE 实时流通过 `Authorization: Bearer <token>` 访问，不把 token 放到 URL 查询参数中。
 
 ## 同步语义
 
@@ -90,7 +90,7 @@ pnpm run dev
 
 - 前端：`http://127.0.0.1:5173`
 - 开发态 `/api` 会代理到 `http://127.0.0.1:8000`
-- 开发态 WebSocket `/api/v1/ws/events` 也通过 Vite 代理转发到后端
+- 开发态 SSE `/api/v1/events/stream` 也通过 Vite 代理转发到后端
 
 ## 检查与构建
 

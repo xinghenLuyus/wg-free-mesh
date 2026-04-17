@@ -8,7 +8,7 @@
 - `config_service.py`：配置服务兼容入口，调用当前 SQLite store。
 - `node_service.py`：端点服务兼容入口，使用当前节点模型。
 - `mesh_service.py`：Mesh 服务兼容入口，使用当前 PeerLink 与 NodeType 模型。
-- `realtime_service.py`：WebSocket 实时事件发布和订阅。
+- `realtime_service.py`：SSE 实时事件发布和订阅。
 
 ## 约定
 

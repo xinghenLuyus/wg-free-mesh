@@ -310,12 +310,13 @@ export interface SystemStatusRead {
 }
 
 export interface RealtimeEvent<T = Record<string, unknown>> {
+  id?: string
   type: string
   timestamp: string
   payload: T
 }
 
-export interface SystemClockTickPayload {
+export interface SystemClockSyncPayload {
   timestamp: string
 }
 

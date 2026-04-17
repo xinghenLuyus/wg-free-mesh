@@ -1477,7 +1477,7 @@ class SQLiteStore:
                 "online_nodes": len([runtime for runtime in runtimes if runtime.online]),
                 "pending_sync_nodes": len([runtime for runtime in runtimes if runtime.config_sync_state != ConfigSyncState.in_sync]),
             },
-            "services": {"database": "ok", "mqtt": "deferred", "wireguard": "websocket"},
+            "services": {"database": "ok", "mqtt": "deferred", "wireguard": "deferred"},
             "timestamp": now_utc(),
         }
 

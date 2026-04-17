@@ -9,9 +9,12 @@ from app.domain.models import now_utc
 class RealtimeService:
     def __init__(self) -> None:
         self._subscribers: set[asyncio.Queue[dict[str, object]]] = set()
+        self._event_id = 0
 
     def make_event(self, event_type: str, payload: dict[str, object]) -> dict[str, object]:
+        self._event_id += 1
         return {
+            "id": str(self._event_id),
             "type": event_type,
             "timestamp": now_utc().isoformat(),
             "payload": payload,

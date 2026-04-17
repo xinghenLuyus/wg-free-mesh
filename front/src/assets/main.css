@@ -509,6 +509,85 @@ body {
 }
 
 @media (max-width: 780px) {
+  .content-band {
+    padding: 16px;
+  }
+
+  .el-overlay-dialog {
+    padding: 12px;
+  }
+
+  .el-dialog {
+    width: min(100%, calc(100vw - 24px)) !important;
+    margin: 0 auto !important;
+  }
+
+  .el-dialog__header {
+    padding: 16px 16px 12px;
+  }
+
+  .el-dialog__body {
+    padding: 16px;
+  }
+
+  .el-dialog__footer {
+    display: grid;
+    grid-auto-flow: row;
+    gap: 10px;
+    padding: 12px 16px 16px;
+  }
+
+  .el-dialog__footer .el-button {
+    width: 100%;
+    margin-left: 0 !important;
+  }
+
+  .dialog-intro,
+  .switch-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dialog-intro {
+    padding: 12px;
+  }
+
+  .dialog-intro__icon {
+    width: 40px;
+    height: 40px;
+  }
+
+  .dialog-form .form-grid,
+  .dialog-form .tag-manager__split,
+  .dialog-form .tag-create-panel,
+  .dialog-form .mesh-direction dl {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dialog-form .el-form-item {
+    margin-bottom: 14px;
+  }
+
+  .dialog-form .el-input-number,
+  .dialog-form .el-select,
+  .dialog-form .el-cascader,
+  .dialog-form .el-date-editor {
+    width: 100% !important;
+  }
+
+  .dialog-form .el-segmented {
+    width: 100%;
+  }
+
+  .dialog-form .el-segmented__group {
+    width: 100%;
+  }
+
+  .dialog-form .el-segmented__item {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
   .app-shell__aside {
     width: 72px !important;
   }

@@ -4,7 +4,7 @@ import { computed, onBeforeUnmount, onMounted, shallowRef } from 'vue'
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
-import type { HealthRead, RealtimeEvent, SystemClockTickPayload, SystemStatusRead } from '@/types/api'
+import type { HealthRead, RealtimeEvent, SystemClockSyncPayload, SystemStatusRead } from '@/types/api'
 import { formatDateTime } from '@/utils/dateTime'
 import { notify } from '@/utils/notify'
 
@@ -23,15 +23,13 @@ const serverClockText = computed(() => {
   return formatDateTime(new Date(current))
 })
 
-const websocketConnectionText = computed(() => {
+const streamConnectionText = computed(() => {
   if (realtime.state.value === 'connected' && realtime.connected.value) return '已连接'
   if (realtime.state.value === 'connecting') return '连接中'
   if (realtime.state.value === 'reconnecting') return '重连中'
   if (realtime.state.value === 'degraded') return '连接异常'
   return '已断开'
 })
-
-const websocketHeartbeatText = computed(() => formatDateTime(realtime.lastMessageAt.value ? new Date(realtime.lastMessageAt.value) : null))
 const realtimeBannerType = computed(() => (realtime.connected.value ? 'success' : 'warning'))
 const realtimeBannerText = computed(() => (realtime.connected.value ? '实时同步正常' : '实时同步断开'))
 
@@ -45,12 +43,12 @@ function syncServerClock(timestamp: string | null | undefined) {
 }
 
 const realtime = useRealtime((event: RealtimeEvent) => {
-  if (event.type === 'system.clock.tick' && health.value) {
-    const payload = event.payload as unknown as SystemClockTickPayload
+  if (event.type === 'system.clock.sync' && health.value) {
+    const payload = event.payload as unknown as SystemClockSyncPayload
     health.value = { ...health.value, timestamp: payload.timestamp }
     syncServerClock(payload.timestamp)
   }
-  if ((event.type === 'system.status.snapshot' || event.type === 'system.status.updated') && event.payload) {
+  if (event.type === 'system.status.updated' && event.payload) {
     status.value = event.payload as unknown as SystemStatusRead
   }
 })
@@ -111,17 +109,8 @@ onBeforeUnmount(() => {
       <el-descriptions-item label="待同步节点">{{ status.summary.pending_sync_nodes }}</el-descriptions-item>
       <el-descriptions-item label="数据库">{{ status.services.database }}</el-descriptions-item>
       <el-descriptions-item label="MQTT">{{ status.services.mqtt }}</el-descriptions-item>
-      <el-descriptions-item label="WebSocket 连接状态">
-        {{ websocketConnectionText }}
-      </el-descriptions-item>
-      <el-descriptions-item label="最近心跳">
-        {{ websocketHeartbeatText }}
-      </el-descriptions-item>
-      <el-descriptions-item label="重连次数">
-        {{ realtime.reconnectAttempts.value }}
-      </el-descriptions-item>
-      <el-descriptions-item v-if="realtime.error.value" label="连接备注">
-        {{ realtime.error.value }}
+      <el-descriptions-item label="实时连接状态">
+        {{ streamConnectionText }}
       </el-descriptions-item>
     </el-descriptions>
   </section>

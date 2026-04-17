@@ -5,7 +5,8 @@ import { readAuthToken } from '@/utils/authToken'
 
 type RealtimeState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'degraded'
 
-const HEARTBEAT_TIMEOUT_MS = 30_000
+const STREAM_URL = '/api/v1/events/stream'
+const INACTIVITY_TIMEOUT_MS = 45_000
 const WATCHDOG_INTERVAL_MS = 5_000
 const RECONNECT_BASE_MS = 3_000
 const RECONNECT_MAX_MS = 10_000
@@ -13,16 +14,15 @@ const RECONNECT_MAX_MS = 10_000
 const connected = shallowRef(false)
 const error = shallowRef('')
 const state = shallowRef<RealtimeState>('idle')
-const socket = shallowRef<WebSocket | null>(null)
 const lastMessageAt = shallowRef<number | null>(null)
-const lastOpenAt = shallowRef<number | null>(null)
-const lastCloseAt = shallowRef<number | null>(null)
-const lastCloseCode = shallowRef<number | null>(null)
-const reconnectAttempts = shallowRef(0)
 const listeners = new Set<(event: RealtimeEvent) => void>()
+
+const streamController = shallowRef<AbortController | null>(null)
 let reconnectTimer: number | null = null
 let watchdogTimer: number | null = null
 let manualClose = false
+let connectPromise: Promise<void> | null = null
+let reconnectCount = 0
 
 function clearReconnectTimer() {
   if (reconnectTimer !== null) {
@@ -38,27 +38,12 @@ function clearWatchdogTimer() {
   }
 }
 
-function startWatchdog() {
-  if (watchdogTimer !== null) return
-  watchdogTimer = window.setInterval(() => {
-    if (!listeners.size) return
-    if (!socket.value || socket.value.readyState !== WebSocket.OPEN) return
-    if (lastMessageAt.value === null) return
-    const elapsed = Date.now() - lastMessageAt.value
-    if (elapsed <= HEARTBEAT_TIMEOUT_MS) return
-    state.value = 'degraded'
-    connected.value = false
-    error.value = '实时连接心跳超时'
-    socket.value.close()
-  }, WATCHDOG_INTERVAL_MS)
-}
-
 function dispatch(event: RealtimeEvent) {
   for (const listener of listeners) listener(event)
 }
 
 function reconnectDelayMs() {
-  const next = RECONNECT_BASE_MS * Math.max(1, 2 ** Math.max(0, reconnectAttempts.value - 1))
+  const next = RECONNECT_BASE_MS * Math.max(1, 2 ** Math.max(0, reconnectCount - 1))
   return Math.min(RECONNECT_MAX_MS, next)
 }
 
@@ -67,71 +52,161 @@ function scheduleReconnect() {
   state.value = 'reconnecting'
   reconnectTimer = window.setTimeout(() => {
     reconnectTimer = null
-    ensureSocket()
+    void ensureStream()
   }, reconnectDelayMs())
 }
 
-function bindSocket(ws: WebSocket) {
-  ws.onopen = () => {
-    connected.value = true
-    error.value = ''
-    state.value = 'connected'
-    reconnectAttempts.value = 0
-    lastOpenAt.value = Date.now()
-    lastMessageAt.value = Date.now()
-    clearReconnectTimer()
-  }
-  ws.onclose = (event) => {
-    if (socket.value === ws) socket.value = null
+function closeStream() {
+  streamController.value?.abort()
+  streamController.value = null
+}
+
+function startWatchdog() {
+  if (watchdogTimer !== null) return
+  watchdogTimer = window.setInterval(() => {
+    if (!listeners.size) return
+    if (!streamController.value || !connected.value) return
+    if (lastMessageAt.value === null) return
+    const elapsed = Date.now() - lastMessageAt.value
+    if (elapsed <= INACTIVITY_TIMEOUT_MS) return
+    state.value = 'degraded'
     connected.value = false
-    lastCloseAt.value = Date.now()
-    lastCloseCode.value = event.code
-    if (!manualClose) {
-      error.value = '实时连接已断开'
-      reconnectAttempts.value += 1
-    } else {
-      state.value = 'idle'
+    error.value = '实时同步暂时中断'
+    closeStream()
+  }, WATCHDOG_INTERVAL_MS)
+}
+
+function parseSseFrame(frame: string): RealtimeEvent | null {
+  let eventType = 'message'
+  const dataLines: string[] = []
+  for (const line of frame.split('\n')) {
+    if (!line || line.startsWith(':')) continue
+    const separatorIndex = line.indexOf(':')
+    const field = separatorIndex >= 0 ? line.slice(0, separatorIndex) : line
+    const rawValue = separatorIndex >= 0 ? line.slice(separatorIndex + 1) : ''
+    const value = rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue
+    if (field === 'event') eventType = value || 'message'
+    if (field === 'data') dataLines.push(value)
+  }
+  if (!dataLines.length) return null
+
+  try {
+    const parsed = JSON.parse(dataLines.join('\n')) as Partial<RealtimeEvent>
+    return {
+      type: typeof parsed.type === 'string' && parsed.type ? parsed.type : eventType,
+      timestamp: typeof parsed.timestamp === 'string' ? parsed.timestamp : new Date().toISOString(),
+      payload: (parsed.payload ?? parsed) as Record<string, unknown>,
+      id: typeof parsed.id === 'string' ? parsed.id : undefined,
     }
-    scheduleReconnect()
-  }
-  ws.onerror = () => {
-    error.value = '实时连接发生错误'
-  }
-  ws.onmessage = (raw) => {
-    lastMessageAt.value = Date.now()
-    connected.value = true
-    state.value = 'connected'
-    const event = JSON.parse(raw.data) as RealtimeEvent
-    dispatch(event)
+  } catch {
+    return null
   }
 }
 
-function ensureSocket() {
-  if (!listeners.size) return
-  if (socket.value && (socket.value.readyState === WebSocket.OPEN || socket.value.readyState === WebSocket.CONNECTING)) return
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  const token = encodeURIComponent(readAuthToken())
+async function consumeStream(response: Response) {
+  const reader = response.body?.getReader()
+  if (!reader) {
+    throw new Error('实时事件流不可读')
+  }
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n')
+    let boundaryIndex = buffer.indexOf('\n\n')
+    while (boundaryIndex >= 0) {
+      const frame = buffer.slice(0, boundaryIndex)
+      buffer = buffer.slice(boundaryIndex + 2)
+      const event = parseSseFrame(frame)
+      if (event) {
+        lastMessageAt.value = Date.now()
+        connected.value = true
+        state.value = 'connected'
+        dispatch(event)
+      }
+      boundaryIndex = buffer.indexOf('\n\n')
+    }
+  }
+}
+
+async function openStream() {
+  const token = readAuthToken()
   if (!token) {
     connected.value = false
     state.value = 'idle'
     error.value = '缺少实时连接凭证'
     return
   }
+
   manualClose = false
-  state.value = reconnectAttempts.value > 0 ? 'reconnecting' : 'connecting'
-  const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws/events?token=${token}`)
-  socket.value = ws
-  bindSocket(ws)
+  const controller = new AbortController()
+  streamController.value = controller
+  state.value = reconnectCount > 0 ? 'reconnecting' : 'connecting'
+
+  const response = await fetch(STREAM_URL, {
+    method: 'GET',
+    headers: {
+      Accept: 'text/event-stream',
+      Authorization: `Bearer ${token}`,
+    },
+    cache: 'no-store',
+    signal: controller.signal,
+  })
+
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '')
+    throw new Error(detail || `实时事件流连接失败 (${response.status})`)
+  }
+
+  if (!response.body) {
+    throw new Error('实时事件流响应体为空')
+  }
+
+  connected.value = true
+  error.value = ''
+  state.value = 'connected'
+  reconnectCount = 0
+  lastMessageAt.value = Date.now()
+  clearReconnectTimer()
   startWatchdog()
+  await consumeStream(response)
 }
 
-function releaseSocket() {
+async function ensureStream() {
+  if (!listeners.size) return
+  if (streamController.value || connectPromise) return
+
+  connectPromise = openStream()
+    .catch((cause: unknown) => {
+      if (manualClose) return
+      error.value = cause instanceof Error ? cause.message : '实时同步已断开'
+      state.value = 'degraded'
+    })
+    .finally(() => {
+      const wasManualClose = manualClose
+      streamController.value = null
+      connectPromise = null
+      connected.value = false
+      if (wasManualClose || !listeners.size) {
+        state.value = 'idle'
+        return
+      }
+      reconnectCount += 1
+      if (!error.value) error.value = '实时同步已断开'
+      scheduleReconnect()
+    })
+
+  await connectPromise
+}
+
+function releaseStream() {
   if (listeners.size) return
   clearReconnectTimer()
   clearWatchdogTimer()
   manualClose = true
-  socket.value?.close()
-  socket.value = null
+  closeStream()
   connected.value = false
   state.value = 'idle'
 }
@@ -139,12 +214,12 @@ function releaseSocket() {
 export function useRealtime(onMessage: (event: RealtimeEvent) => void) {
   function connect() {
     listeners.add(onMessage)
-    ensureSocket()
+    void ensureStream()
   }
 
   function disconnect() {
     listeners.delete(onMessage)
-    releaseSocket()
+    releaseStream()
   }
 
   onBeforeUnmount(disconnect)
@@ -154,10 +229,6 @@ export function useRealtime(onMessage: (event: RealtimeEvent) => void) {
     error,
     state,
     lastMessageAt,
-    lastOpenAt,
-    lastCloseAt,
-    lastCloseCode,
-    reconnectAttempts,
     connect,
     disconnect,
   }
