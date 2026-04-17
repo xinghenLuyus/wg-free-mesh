@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from app.api.v1.routing import SessionProtectedAPIRouter
 from app.core.responses import ApiResponse, ok
+from app.core.validation import strip_optional_text, strip_required_text
 from app.services.control_plane_service import control_plane_service
 from app.services.auth_service import auth_service
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = SessionProtectedAPIRouter(prefix="/settings", tags=["settings"])
 
 
 class MqttSettingsRequest(BaseModel):
@@ -19,10 +20,30 @@ class MqttSettingsRequest(BaseModel):
     username: str = ""
     password: str = ""
 
+    @field_validator("host", "username", "password", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str:
+        return strip_optional_text(value) or ""
+
 
 class PasswordRequest(BaseModel):
     current_password: str = Field(min_length=1)
     new_password: str = Field(min_length=6)
+
+    @field_validator("current_password")
+    @classmethod
+    def validate_current_password(cls, value: str) -> str:
+        strip_required_text(value, "当前密码")
+        return value
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("新密码不能为空")
+        if len(value) < 6:
+            raise ValueError("新密码不能少于 6 个字符")
+        return value
 
 
 @router.get("/mqtt")

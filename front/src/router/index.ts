@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/auth'
 const ApplyView = () => import('@/views/ApplyView.vue')
 const ConfigOverviewView = () => import('@/views/ConfigOverviewView.vue')
 const ConfigWorkspaceLayout = () => import('@/views/ConfigWorkspaceLayout.vue')
+const DownloadConfigView = () => import('@/views/DownloadConfigView.vue')
 const EndpointsView = () => import('@/views/EndpointsView.vue')
 const HelpView = () => import('@/views/HelpView.vue')
 const HomeView = () => import('@/views/HomeView.vue')
@@ -45,6 +46,7 @@ export const router = createRouter({
                 { path: 'mesh', component: MeshView },
                 { path: 'apply', component: ApplyView },
                 { path: 'control', component: EndpointsView },
+                { path: 'download', component: DownloadConfigView },
               ],
             },
           ],

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { EditPen, Key, Plus } from '@element-plus/icons-vue'
+import type { FormInstance, FormRules } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
@@ -15,6 +16,7 @@ import type {
   PeerLinkDraftRead,
   RealtimeEvent,
 } from '@/types/api'
+import { requiredSelectionRule, requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
 
 const route = useRoute()
@@ -31,6 +33,7 @@ const draftRequestToken = shallowRef(0)
 const dialogVisible = shallowRef(false)
 const dialogMode = shallowRef<DialogMode>('create')
 const editingConnection = shallowRef<MeshConnectionRead | null>(null)
+const formRef = shallowRef<FormInstance>()
 
 const form = reactive({
   local_node_id: '',
@@ -67,6 +70,59 @@ const realtime = useRealtime((event: RealtimeEvent) => {
   workspace.value = payload.workspace
   nodes.value = payload.nodes
 })
+const formRules: FormRules<typeof form> = {
+  peer_node_id: [requiredSelectionRule('对端节点')],
+  forward_allowed_ips: [requiredTextRule('主向 AllowedIPs')],
+  reverse_allowed_ips: [requiredTextRule('反向 AllowedIPs')],
+  forward_manual_host: [
+    {
+      trigger: ['blur', 'change'],
+      validator: (_rule, value, callback) => {
+        if (form.forward_endpoint_mode === 'manual' && !String(value || '').trim()) {
+          callback(new Error('主向手动 Host 不能为空'))
+          return
+        }
+        callback()
+      },
+    },
+  ],
+  reverse_manual_host: [
+    {
+      trigger: ['blur', 'change'],
+      validator: (_rule, value, callback) => {
+        if (form.reverse_endpoint_mode === 'manual' && !String(value || '').trim()) {
+          callback(new Error('反向手动 Host 不能为空'))
+          return
+        }
+        callback()
+      },
+    },
+  ],
+  forward_manual_port: [
+    {
+      trigger: ['blur', 'change'],
+      validator: (_rule, value, callback) => {
+        if (form.forward_endpoint_mode === 'manual' && !value) {
+          callback(new Error('主向手动 Port 不能为空'))
+          return
+        }
+        callback()
+      },
+    },
+  ],
+  reverse_manual_port: [
+    {
+      trigger: ['blur', 'change'],
+      validator: (_rule, value, callback) => {
+        if (form.reverse_endpoint_mode === 'manual' && !value) {
+          callback(new Error('反向手动 Port 不能为空'))
+          return
+        }
+        callback()
+      },
+    },
+  ],
+}
 
 const endpointModeLabel: Record<EndpointMode, string> = {
   auto: '自动',
@@ -289,6 +345,8 @@ async function toggleConnection(connection: MeshConnectionRead, enabled: boolean
 }
 
 async function submit() {
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
   try {
     if (dialogMode.value === 'create') {
       await api.createPeerLink(String(route.params.configId), buildPayload())
@@ -384,7 +442,7 @@ onMounted(async () => {
               </div>
               <div>
                 <dt>Keepalive</dt>
-                <dd>{{ connection.forward.persistent_keepalive ?? '未设置' }}</dd>
+                <dd>{{ connection.forward.keepalive_display }}</dd>
               </div>
               <div>
                 <dt>地址族</dt>
@@ -405,11 +463,11 @@ onMounted(async () => {
           <p>连接关系只作用于当前节点和选定对端。</p>
         </div>
       </div>
-      <el-form v-loading="draftLoading" class="dialog-form" label-position="top">
+      <el-form ref="formRef" v-loading="draftLoading" :model="form" :rules="formRules" class="dialog-form" label-position="top">
         <el-form-item label="本地节点">
           <el-input :model-value="currentNode?.name || currentNodeId" disabled />
         </el-form-item>
-        <el-form-item label="对端节点">
+        <el-form-item label="对端节点" prop="peer_node_id" required>
           <el-select v-if="dialogMode === 'create'" v-model="form.peer_node_id" style="width: 100%">
             <el-option
               v-for="node in peerOptions"
@@ -439,7 +497,7 @@ onMounted(async () => {
             <strong>主向配置</strong>
             <span>{{ currentNode?.name || '当前节点' }} -> {{ selectedPeer?.name || '对端节点' }}</span>
           </div>
-          <el-form-item label="主向 AllowedIPs">
+          <el-form-item label="主向 AllowedIPs" prop="forward_allowed_ips" required>
             <el-input v-model="form.forward_allowed_ips" placeholder="默认使用对端虚拟 IP" />
           </el-form-item>
           <div class="form-grid">
@@ -458,10 +516,10 @@ onMounted(async () => {
             {{ forwardEndpointSummaryText }}
           </p>
           <div v-if="form.forward_endpoint_mode === 'manual'" class="form-grid">
-            <el-form-item label="主向手动 Host">
+            <el-form-item label="主向手动 Host" prop="forward_manual_host" required>
               <el-input v-model="form.forward_manual_host" placeholder="IP 或域名" />
             </el-form-item>
-            <el-form-item label="主向手动 Port">
+            <el-form-item label="主向手动 Port" prop="forward_manual_port" required>
               <el-input-number v-model="form.forward_manual_port" :min="1" :max="65535" style="width: 100%" />
             </el-form-item>
           </div>
@@ -472,7 +530,7 @@ onMounted(async () => {
             <strong>反向配置</strong>
             <span>{{ selectedPeer?.name || '对端节点' }} -> {{ currentNode?.name || '当前节点' }}</span>
           </div>
-          <el-form-item label="反向 AllowedIPs">
+          <el-form-item label="反向 AllowedIPs" prop="reverse_allowed_ips" required>
             <el-input v-model="form.reverse_allowed_ips" placeholder="默认使用当前节点虚拟 IP" />
           </el-form-item>
           <div class="form-grid">
@@ -491,10 +549,10 @@ onMounted(async () => {
             {{ reverseEndpointSummaryText }}
           </p>
           <div v-if="form.reverse_endpoint_mode === 'manual'" class="form-grid">
-            <el-form-item label="反向手动 Host">
+            <el-form-item label="反向手动 Host" prop="reverse_manual_host" required>
               <el-input v-model="form.reverse_manual_host" placeholder="IP 或域名" />
             </el-form-item>
-            <el-form-item label="反向手动 Port">
+            <el-form-item label="反向手动 Port" prop="reverse_manual_port" required>
               <el-input-number v-model="form.reverse_manual_port" :min="1" :max="65535" style="width: 100%" />
             </el-form-item>
           </div>

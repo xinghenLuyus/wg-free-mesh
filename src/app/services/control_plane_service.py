@@ -251,6 +251,9 @@ class ControlPlaneService:
     def read_applied_conf(self, config_id: str, node_id: str):
         return store.read_applied_conf(config_id, node_id)
 
+    def download_package(self, config_id: str, node_id: str):
+        return store.download_package(config_id, node_id)
+
     def save_applied_conf(self, config_id: str, node_id: str, content: str):
         return store.save_applied_conf(config_id, node_id, content)
 

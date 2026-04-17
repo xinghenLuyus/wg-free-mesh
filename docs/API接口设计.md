@@ -16,13 +16,18 @@
 
 - `setup_required`：数据库中没有有效管理员密码，只允许初始化相关接口。
 - `anonymous`：系统已初始化，但请求没有有效 Bearer Token。
-- `authenticated`：请求携带有效 Bearer Token，可以访问业务 API。
+- `authenticated`：请求携带有效后台会话 Bearer Token，可以访问业务 API。
 
-除健康检查、认证状态、初始化和登录接口外，业务接口必须携带：
+除健康检查、认证状态、初始化和登录接口外，业务接口默认必须携带后台会话令牌：
 
 ```text
 Authorization: Bearer <access_token>
 ```
+
+后台会话令牌与下载令牌分开：
+
+- `session` 令牌：登录后签发，拥有后台全局业务权限。
+- `download` 令牌：仅用于下载某个配置下某个节点的同步态配置，默认 5 分钟有效，不能用于创建、修改、删除或其它业务接口。
 
 ### `GET /api/v1/auth/state`
 
@@ -81,6 +86,13 @@ Authorization: Bearer <access_token>
   - `new_password`
 - 说明：修改密码后后端轮换 token secret，旧 token 立即失效。
 
+### 令牌类型
+
+- `session`：管理员后台会话令牌，权限视为 `["*"]`。
+- `download`：下载专用令牌，权限视为 `["config.node.download"]`，并绑定：
+  - `config_id`
+  - `node_id`
+
 ### 认证错误码
 
 - `AUTH_SETUP_REQUIRED`：系统尚未设置初始管理员密码，前端应跳转 `/setup`。
@@ -88,6 +100,9 @@ Authorization: Bearer <access_token>
 - `INVALID_TOKEN`：登录凭证无效。
 - `TOKEN_EXPIRED`：登录凭证过期。
 - `AUTH_FAILED`：用户名或密码错误。
+- `DOWNLOAD_TOKEN_REQUIRED`：缺少下载凭证。
+- `INVALID_DOWNLOAD_TOKEN`：下载凭证无效。
+- `DOWNLOAD_TOKEN_SCOPE_MISMATCH`：下载凭证与当前节点不匹配。
 
 ## 配置管理
 
@@ -347,6 +362,29 @@ Authorization: Bearer <access_token>
 ### `PUT /api/v1/configs/{config_id}/nodes/{node_id}/applied-conf`
 
 - 用途：保存服务端已应用配置
+
+### `GET /api/v1/configs/{config_id}/nodes/{node_id}/download-package`
+
+- 用途：获取下载配置页所需聚合数据
+- 返回内容：文件名、同步态配置文本、下载路径
+
+### `POST /api/v1/configs/{config_id}/nodes/{node_id}/download-token`
+
+- 用途：生成当前配置当前节点专用的临时下载令牌
+- 鉴权：必须携带后台会话 Bearer Token
+- 返回内容：
+  - `access_token`
+  - `token_type=download`
+  - `expires_at`
+  - `download_path`
+  - `filename`
+
+### `GET /api/v1/configs/{config_id}/nodes/{node_id}/download-conf?download_token=...`
+
+- 用途：直接下载当前节点 `.conf` 文件
+- 鉴权：只接受下载专用令牌
+- 约束：下载令牌必须匹配当前 `config_id` 和 `node_id`
+- 响应：`text/plain`，附带 `Content-Disposition`
 
 ### `POST /api/v1/configs/{config_id}/nodes/{node_id}/sync`
 

@@ -17,13 +17,33 @@ from app.repositories.sqlite import store
 
 ADMIN_USERNAME = "admin"
 ADMIN_DISPLAY_NAME = "管理员"
+SESSION_TOKEN_KIND = "session"
+DOWNLOAD_TOKEN_KIND = "download"
+GLOBAL_PERMISSION = "*"
+DOWNLOAD_PERMISSION = "config.node.download"
 
 
-@dataclass(frozen=True)
-class CurrentUser:
+@dataclass(frozen=True, kw_only=True)
+class TokenGrant:
+    token_kind: str
+    permissions: frozenset[str]
+    expires_at: datetime | None = None
+
+    def allows(self, permission: str) -> bool:
+        return GLOBAL_PERMISSION in self.permissions or permission in self.permissions
+
+
+@dataclass(frozen=True, kw_only=True)
+class CurrentUser(TokenGrant):
     username: str
     display_name: str
-    expires_at: datetime | None = None
+
+
+@dataclass(frozen=True, kw_only=True)
+class DownloadGrant(TokenGrant):
+    username: str
+    config_id: str
+    node_id: str
 
 
 class AuthService:
@@ -78,6 +98,48 @@ class AuthService:
         except AppError:
             return None
 
+    def create_download_token(self, *, config_id: str, node_id: str, user: CurrentUser) -> dict[str, object]:
+        token, expires_at = create_access_token(
+            subject=user.username,
+            secret=self._read_token_secret(),
+            expires_delta=timedelta(minutes=settings.auth_download_token_expire_minutes),
+            claims={
+                "kind": DOWNLOAD_TOKEN_KIND,
+                "permissions": [DOWNLOAD_PERMISSION],
+                "resource": {"config_id": config_id, "node_id": node_id},
+            },
+        )
+        return {
+            "access_token": token,
+            "token_type": "download",
+            "expires_at": expires_at.isoformat(),
+        }
+
+    def require_download_grant(self, token: str | None, *, config_id: str, node_id: str) -> DownloadGrant:
+        if not token:
+            raise AppError("DOWNLOAD_TOKEN_REQUIRED", "请先生成下载地址", 401)
+        payload = decode_access_token(token, self._read_token_secret())
+        if payload.get("kind") != DOWNLOAD_TOKEN_KIND:
+            raise AppError("INVALID_DOWNLOAD_TOKEN", "下载凭证无效", 401)
+        permissions = self._permissions_from_payload(payload)
+        if DOWNLOAD_PERMISSION not in permissions:
+            raise AppError("INVALID_DOWNLOAD_TOKEN", "下载凭证无效", 401)
+        resource = payload.get("resource")
+        if not isinstance(resource, dict):
+            raise AppError("INVALID_DOWNLOAD_TOKEN", "下载凭证无效", 401)
+        grant_config_id = str(resource.get("config_id") or "")
+        grant_node_id = str(resource.get("node_id") or "")
+        if grant_config_id != config_id or grant_node_id != node_id:
+            raise AppError("DOWNLOAD_TOKEN_SCOPE_MISMATCH", "下载凭证与当前节点不匹配", 403)
+        return DownloadGrant(
+            token_kind=DOWNLOAD_TOKEN_KIND,
+            permissions=frozenset(permissions),
+            expires_at=datetime.fromtimestamp(int(payload["exp"]), UTC),
+            username=str(payload.get("sub") or ADMIN_USERNAME),
+            config_id=grant_config_id,
+            node_id=grant_node_id,
+        )
+
     def _read_password_hash(self) -> str | None:
         current = store.read_setting(self.password_key)
         if current:
@@ -101,22 +163,53 @@ class AuthService:
 
     def _user_from_token(self, token: str) -> CurrentUser:
         payload = decode_access_token(token, self._read_token_secret())
+        if payload.get("kind") != SESSION_TOKEN_KIND:
+            raise AppError("INVALID_TOKEN", "登录凭证无效", 401)
         if payload.get("sub") != ADMIN_USERNAME:
             raise AppError("INVALID_TOKEN", "登录凭证无效", 401)
+        permissions = self._permissions_from_payload(payload)
+        if GLOBAL_PERMISSION not in permissions:
+            raise AppError("INVALID_TOKEN", "登录凭证无效", 401)
         expires_at = datetime.fromtimestamp(int(payload["exp"]), UTC)
-        return CurrentUser(ADMIN_USERNAME, ADMIN_DISPLAY_NAME, expires_at)
+        return CurrentUser(
+            token_kind=SESSION_TOKEN_KIND,
+            permissions=frozenset(permissions),
+            expires_at=expires_at,
+            username=ADMIN_USERNAME,
+            display_name=ADMIN_DISPLAY_NAME,
+        )
 
     def _token_session(self) -> dict[str, object]:
         token, expires_at = create_access_token(
             subject=ADMIN_USERNAME,
             secret=self._read_token_secret(),
             expires_delta=timedelta(minutes=settings.auth_token_expire_minutes),
+            claims={"kind": SESSION_TOKEN_KIND, "permissions": [GLOBAL_PERMISSION]},
         )
         return {
-            **self._state_payload(False, CurrentUser(ADMIN_USERNAME, ADMIN_DISPLAY_NAME, expires_at)),
+            **self._state_payload(
+                False,
+                CurrentUser(
+                    token_kind=SESSION_TOKEN_KIND,
+                    permissions=frozenset({GLOBAL_PERMISSION}),
+                    expires_at=expires_at,
+                    username=ADMIN_USERNAME,
+                    display_name=ADMIN_DISPLAY_NAME,
+                ),
+            ),
             "access_token": token,
             "token_type": "bearer",
         }
+
+    @staticmethod
+    def _permissions_from_payload(payload: dict[str, object]) -> list[str]:
+        raw = payload.get("permissions")
+        if not isinstance(raw, list):
+            raise AppError("INVALID_TOKEN", "登录凭证无效", 401)
+        permissions = [str(item).strip() for item in raw if str(item).strip()]
+        if not permissions:
+            raise AppError("INVALID_TOKEN", "登录凭证无效", 401)
+        return permissions
 
     @staticmethod
     def _state_payload(setup_required: bool, user: CurrentUser | None) -> dict[str, object]:

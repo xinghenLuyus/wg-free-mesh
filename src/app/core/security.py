@@ -69,6 +69,7 @@ def create_access_token(
     subject: str,
     secret: str,
     expires_delta: timedelta,
+    claims: dict[str, Any] | None = None,
 ) -> tuple[str, datetime]:
     now = datetime.now(UTC)
     expires_at = now + expires_delta
@@ -79,6 +80,8 @@ def create_access_token(
         "exp": int(expires_at.timestamp()),
         "jti": secrets.token_urlsafe(16),
     }
+    if claims:
+        payload.update(claims)
     signing_input = ".".join(
         [
             _b64encode(json.dumps(header, separators=(",", ":")).encode("utf-8")),

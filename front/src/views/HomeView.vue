@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Files, Plus } from '@element-plus/icons-vue'
+import type { FormInstance, FormRules } from 'element-plus'
 import { onMounted, reactive, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -7,6 +8,7 @@ import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
 import type { ConfigListUpdatedPayload, ConfigRead, RealtimeEvent } from '@/types/api'
+import { requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
 
 const router = useRouter()
@@ -18,6 +20,7 @@ const realtime = useRealtime((event: RealtimeEvent) => {
   }
 })
 const dialogVisible = shallowRef(false)
+const formRef = shallowRef<FormInstance>()
 const form = reactive({
   name: '',
   description: '',
@@ -28,12 +31,18 @@ const form = reactive({
   default_dns: '1.1.1.1',
   auto_sync: true,
 })
+const formRules: FormRules<typeof form> = {
+  name: [requiredTextRule('名称')],
+  virtual_subnet: [requiredTextRule('虚拟子网')],
+}
 
 async function load() {
   configs.value = await api.configs()
 }
 
 async function submit() {
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
   try {
     const config = await api.createConfig(form)
     dialogVisible.value = false
@@ -120,15 +129,15 @@ onMounted(async () => {
       </div>
     </div>
 
-    <el-form class="dialog-form" label-position="top">
-      <el-form-item label="名称">
+    <el-form ref="formRef" :model="form" :rules="formRules" class="dialog-form" label-position="top">
+      <el-form-item label="名称" prop="name" required>
         <el-input v-model="form.name" placeholder="例如：家庭 Mesh" />
       </el-form-item>
       <el-form-item label="描述">
         <el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选，写清楚这份配置的用途" />
       </el-form-item>
       <div class="form-grid">
-        <el-form-item label="虚拟子网">
+        <el-form-item label="虚拟子网" prop="virtual_subnet" required>
           <el-input v-model="form.virtual_subnet" />
         </el-form-item>
         <el-form-item label="默认监听端口">

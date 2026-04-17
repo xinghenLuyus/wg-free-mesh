@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { Key } from '@element-plus/icons-vue'
-import { computed, reactive } from 'vue'
+import type { FormInstance, FormRules } from 'element-plus'
+import { reactive, shallowRef } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+import { minLengthTextRule, requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
 
 const router = useRouter()
@@ -14,14 +16,27 @@ const form = reactive({
   password: '',
   confirmPassword: '',
 })
-
-const canSubmit = computed(() => form.password.length >= 6 && form.password === form.confirmPassword)
+const formRef = shallowRef<FormInstance>()
+const formRules: FormRules<typeof form> = {
+  password: [minLengthTextRule('密码', 6)],
+  confirmPassword: [
+    requiredTextRule('确认密码'),
+    {
+      trigger: ['blur', 'change'],
+      validator: (_rule, value, callback) => {
+        if (String(value || '') !== form.password) {
+          callback(new Error('两次输入的密码不一致'))
+          return
+        }
+        callback()
+      },
+    },
+  ],
+}
 
 async function submit() {
-  if (!canSubmit.value) {
-    notify.warning('请填写至少 6 位密码，并确认两次输入一致')
-    return
-  }
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
   try {
     await authStore.setup(form.password)
     notify.success('管理员密码已设置')
@@ -37,8 +52,8 @@ async function submit() {
     <div class="setup-panel">
       <h1 class="setup-title">设置管理员密码</h1>
       <p class="setup-description">首次使用前，请为 admin 设置初始密码。</p>
-      <el-form label-position="top" @submit.prevent="submit">
-        <el-form-item label="新密码">
+      <el-form ref="formRef" :model="form" :rules="formRules" label-position="top" @submit.prevent="submit">
+        <el-form-item label="新密码" prop="password" required>
           <el-input
             v-model="form.password"
             type="password"
@@ -47,7 +62,7 @@ async function submit() {
             :prefix-icon="Key"
           />
         </el-form-item>
-        <el-form-item label="确认密码">
+        <el-form-item label="确认密码" prop="confirmPassword" required>
           <el-input
             v-model="form.confirmPassword"
             type="password"

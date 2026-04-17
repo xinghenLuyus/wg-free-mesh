@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Path
-from pydantic import BaseModel, Field
+from fastapi import Path
+from pydantic import BaseModel, Field, field_validator
 
+from app.api.v1.routing import SessionProtectedAPIRouter
 from app.core.responses import ApiResponse, ok
+from app.core.validation import normalize_string_list, strip_optional_text, strip_required_text
 from app.services.control_plane_service import control_plane_service
 
-router = APIRouter(tags=["nodes"])
+router = SessionProtectedAPIRouter(tags=["nodes"])
 
 
 class NodeRequest(BaseModel):
@@ -25,13 +27,48 @@ class NodeRequest(BaseModel):
     private_key: str | None = None
     tags: list[str] = Field(default_factory=list)
 
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return strip_required_text(value, "名称")
+
+    @field_validator(
+        "ipv4_address",
+        "ipv6_address",
+        "virtual_ip",
+        "dns",
+        "public_key",
+        "private_key",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        return strip_optional_text(value)
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def normalize_tags(cls, value: object) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return normalize_string_list([str(item) for item in value])
+
 
 class PrivateKeyRequest(BaseModel):
     private_key: str = Field(min_length=1)
 
+    @field_validator("private_key")
+    @classmethod
+    def validate_private_key(cls, value: str) -> str:
+        return strip_required_text(value, "私钥")
+
 
 class VirtualIpRequest(BaseModel):
     virtual_ip: str = Field(min_length=1)
+
+    @field_validator("virtual_ip")
+    @classmethod
+    def validate_virtual_ip(cls, value: str) -> str:
+        return strip_required_text(value, "虚拟 IP")
 
 
 class TagRead(BaseModel):
@@ -43,9 +80,19 @@ class ApplyTagRequest(BaseModel):
     tag: str = Field(min_length=1, max_length=64)
     node_ids: list[str] = Field(default_factory=list)
 
+    @field_validator("tag")
+    @classmethod
+    def validate_tag(cls, value: str) -> str:
+        return strip_required_text(value, "标签")
+
 
 class CreateTagRequest(BaseModel):
     name: str = Field(min_length=1, max_length=64)
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return strip_required_text(value, "标签名称")
 
 
 class NodeTagsRequest(BaseModel):

@@ -27,6 +27,14 @@ export interface TokenSessionRead extends AuthStateRead {
   token_type: 'bearer'
 }
 
+export interface DownloadTokenRead {
+  access_token: string
+  token_type: 'download'
+  expires_at: string
+  download_path: string
+  filename: string
+}
+
 export type SessionRead = AuthStateRead
 
 export interface ConfigRead {
@@ -130,6 +138,7 @@ export interface PeerLinkDirectionDraftRead {
   endpoint_port_mode: 'ref_peer_listen_port'
   endpoint_manual_port: number | null
   endpoint_summary: string
+  keepalive_display: string
 }
 
 export interface PeerLinkDraftRead {
@@ -153,6 +162,7 @@ export interface MeshConnectionDirectionRead {
   endpoint_port_mode: 'ref_peer_listen_port' | 'manual'
   endpoint_manual_port: number | null
   endpoint_summary: string
+  keepalive_display: string
 }
 
 export interface MeshConnectionRead {
@@ -183,6 +193,16 @@ export interface WgPreviewRead {
   node_name: string
   content: string
   sha256: string
+}
+
+export interface DownloadPackageRead {
+  config_id: string
+  node_id: string
+  config_name: string
+  node_name: string
+  filename: string
+  content: string
+  download_path: string
 }
 
 export interface SyncStatusRead {

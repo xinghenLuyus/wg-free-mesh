@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeft, Delete, Key, Setting } from '@element-plus/icons-vue'
+import type { FormInstance, FormRules } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
@@ -8,6 +9,7 @@ import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
 import type { ConfigRead, EndpointStatusRead, NodeRead, NodeWorkspaceUpdatedPayload, RealtimeEvent, TagRead } from '@/types/api'
+import { requiredTextRule } from '@/utils/formRules'
 import { normalizeTags, toNodeUpdatePayload } from '@/utils/nodePayload'
 import { notify } from '@/utils/notify'
 
@@ -19,6 +21,7 @@ const node = shallowRef<NodeRead | null>(null)
 const configTags = shallowRef<TagRead[]>([])
 const endpointStatus = shallowRef<EndpointStatusRead | null>(null)
 const settingsVisible = shallowRef(false)
+const settingsFormRef = shallowRef<FormInstance>()
 const loading = shallowRef(false)
 const loadError = shallowRef('')
 let loadTicket = 0
@@ -46,16 +49,23 @@ const settingsForm = reactive({
   private_key: '',
   tags: [] as string[],
 })
+const settingsRules: FormRules<typeof settingsForm> = {
+  name: [requiredTextRule('名称')],
+  virtual_ip: [requiredTextRule('虚拟 IP')],
+}
 
 const tabs = computed(() => {
   const configId = String(route.params.configId)
   const nodeId = String(route.params.nodeId)
   return [
-    { label: 'Mesh 网络', path: `/configs/${configId}/nodes/${nodeId}/mesh` },
-    { label: '配置预览', path: `/configs/${configId}/nodes/${nodeId}/apply` },
-    { label: '端点控制', path: `/configs/${configId}/nodes/${nodeId}/control` },
+    { label: 'Mesh 网络', path: `/configs/${configId}/nodes/${nodeId}/mesh`, align: 'left' as const },
+    { label: '配置预览', path: `/configs/${configId}/nodes/${nodeId}/apply`, align: 'left' as const },
+    { label: '端点控制', path: `/configs/${configId}/nodes/${nodeId}/control`, align: 'left' as const },
+    { label: '下载配置', path: `/configs/${configId}/nodes/${nodeId}/download`, align: 'right' as const },
   ]
 })
+const primaryTabs = computed(() => tabs.value.filter((item) => item.align === 'left'))
+const actionTabs = computed(() => tabs.value.filter((item) => item.align === 'right'))
 
 const allTags = computed(() => configTags.value.map((item) => item.name))
 
@@ -130,6 +140,8 @@ async function autofillKeys() {
 
 async function saveNodeSettings() {
   if (!node.value) return
+  const valid = await settingsFormRef.value?.validate().catch(() => false)
+  if (!valid) return
   try {
     await api.updateNode(node.value.id, toNodeUpdatePayload(node.value, {
       name: settingsForm.name,
@@ -214,7 +226,7 @@ onMounted(async () => {
           <h1>{{ node.name }}</h1>
           <div class="node-header-card__tags">
             <el-tag type="info">{{ nodeTypeLabel(node.node_type) }}</el-tag>
-            <el-tag :type="endpointStatus?.runtime.online ? 'success' : 'info'">
+            <el-tag v-if="node.node_type === 'dynamic'" :type="endpointStatus?.runtime.online ? 'success' : 'info'">
               {{ endpointStatus?.runtime.online ? '在线' : '离线' }}
             </el-tag>
             <el-tag v-for="tag in node.tags" :key="tag" type="info">{{ tag }}</el-tag>
@@ -246,8 +258,9 @@ onMounted(async () => {
       </div>
 
       <div class="node-tabs">
+        <div class="node-tabs__group">
         <RouterLink
-          v-for="tab in tabs"
+          v-for="tab in primaryTabs"
           :key="tab.path"
           :to="tab.path"
           class="node-tab"
@@ -255,6 +268,18 @@ onMounted(async () => {
         >
           {{ tab.label }}
         </RouterLink>
+        </div>
+        <div class="node-tabs__group node-tabs__group--right">
+          <RouterLink
+            v-for="tab in actionTabs"
+            :key="tab.path"
+            :to="tab.path"
+            class="node-tab node-tab--action"
+            :class="{ 'node-tab--active': route.path === tab.path }"
+          >
+            {{ tab.label }}
+          </RouterLink>
+        </div>
       </div>
     </div>
 
@@ -276,8 +301,8 @@ onMounted(async () => {
         </div>
       </div>
 
-      <el-form class="dialog-form" label-position="top">
-        <el-form-item label="名称">
+      <el-form ref="settingsFormRef" :model="settingsForm" :rules="settingsRules" class="dialog-form" label-position="top">
+        <el-form-item label="名称" prop="name" required>
           <el-input v-model="settingsForm.name" />
         </el-form-item>
         <el-form-item label="类型">
@@ -299,7 +324,7 @@ onMounted(async () => {
           <el-form-item label="监听端口">
             <el-input-number v-model="settingsForm.listen_port" :min="1" :max="65535" style="width: 100%" />
           </el-form-item>
-          <el-form-item label="虚拟 IP">
+          <el-form-item label="虚拟 IP" prop="virtual_ip" required>
             <el-input v-model="settingsForm.virtual_ip" />
           </el-form-item>
           <el-form-item label="MTU">
@@ -360,8 +385,11 @@ onMounted(async () => {
 .node-prop-item { display: grid; gap: 8px; padding: 14px; border: 1px solid #e0e8e4; border-radius: 8px; background: #f8fbf9; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75); }
 .node-prop-label { color: #73877f; font-size: 12px; font-weight: 650; }
 .node-prop-value { color: #21302a; font-weight: 750; word-break: break-word; }
-.node-tabs { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; padding-top: 18px; border-top: 1px solid #e0e8e4; }
+.node-tabs { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid #e0e8e4; }
+.node-tabs__group { display: flex; flex-wrap: wrap; gap: 10px; }
+.node-tabs__group--right { justify-content: flex-end; }
 .node-tab { min-height: 40px; padding: 10px 16px; border: 1px solid #d8e1dd; border-radius: 8px; color: #4b5f58; background: #fff; text-decoration: none; font-weight: 700; transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease; }
+.node-tab--action { border-color: #bfd7d0; background: #f7fbf9; color: #2f5f57; }
 .node-tab:hover { transform: translateY(-1px); border-color: #9bc8bf; background: #f7fbf9; }
 .node-tab:focus-visible { outline: 0; box-shadow: var(--app-focus); }
 .node-tab--active { color: #0f7375; border-color: #0f8b8d; background: #eef8f7; }
@@ -380,8 +408,9 @@ onMounted(async () => {
 .switch-row span { margin-top: 4px; color: var(--app-muted); font-size: 13px; }
 @media (max-width: 1100px) { .node-props-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) {
-  .node-header-card__top, .node-header-card__main, .switch-row { flex-direction: column; align-items: stretch; }
+  .node-header-card__top, .node-header-card__main, .switch-row, .node-tabs { flex-direction: column; align-items: stretch; }
   .node-header-card__actions { justify-content: flex-start; }
   .node-props-grid, .form-grid { grid-template-columns: 1fr; }
+  .node-tabs__group--right { justify-content: flex-start; }
 }
 </style>

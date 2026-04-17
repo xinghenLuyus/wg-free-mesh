@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/wg_free_mesh.db"
     mqtt_url: str = "mqtt://localhost:1883"
     auth_token_expire_minutes: int = 1440
+    auth_download_token_expire_minutes: int = 5
 
     @property
     def sqlite_path(self) -> str:

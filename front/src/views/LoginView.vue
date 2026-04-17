@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { Key, User } from '@element-plus/icons-vue'
-import { reactive } from 'vue'
+import type { FormInstance, FormRules } from 'element-plus'
+import { reactive, shallowRef } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { useAuthStore } from '@/stores/auth'
+import { requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
 
 const router = useRouter()
@@ -15,8 +17,15 @@ const form = reactive({
   username: 'admin',
   password: '',
 })
+const formRef = shallowRef<FormInstance>()
+const formRules: FormRules<typeof form> = {
+  username: [requiredTextRule('用户名')],
+  password: [requiredTextRule('密码')],
+}
 
 async function submit() {
+  const valid = await formRef.value?.validate().catch(() => false)
+  if (!valid) return
   try {
     await authStore.login(form.username, form.password)
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
@@ -32,12 +41,19 @@ async function submit() {
     <div class="login-panel">
       <h1 class="login-title">WG Free Mesh</h1>
       <p class="login-description">请输入登录信息</p>
-      <el-form label-position="top" @submit.prevent="submit">
-        <el-form-item label="用户名">
-          <el-input v-model="form.username" autocomplete="username" :prefix-icon="User" />
+      <el-form ref="formRef" :model="form" :rules="formRules" label-position="top" @submit.prevent="submit">
+        <el-form-item label="用户名" prop="username" required>
+          <el-input v-model="form.username" autocomplete="username" :prefix-icon="User" @keyup.enter="submit" />
         </el-form-item>
-        <el-form-item label="密码">
-          <el-input v-model="form.password" type="password" show-password autocomplete="current-password" :prefix-icon="Key" />
+        <el-form-item label="密码" prop="password" required>
+          <el-input
+            v-model="form.password"
+            type="password"
+            show-password
+            autocomplete="current-password"
+            :prefix-icon="Key"
+            @keyup.enter="submit"
+          />
         </el-form-item>
         <el-button type="primary" style="width: 100%" :loading="authStore.loading" @click="submit">
           登录

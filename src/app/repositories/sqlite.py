@@ -110,6 +110,10 @@ def _endpoint_family_or_none(payload: dict[str, object]) -> str | None:
     return "ipv6" if family == "ipv6" else "ipv4"
 
 
+def _endpoint_family_value(value: object) -> str:
+    return "ipv6" if str(value or "ipv4") == "ipv6" else "ipv4"
+
+
 def _endpoint_family_from_row(value: object) -> EndpointFamily | None:
     if not value:
         return None
@@ -330,6 +334,8 @@ def _snapshot_from_row(row: Row) -> SnapshotInfo:
 
 
 def validate_config_name(name: str) -> None:
+    if not name.strip():
+        raise AppError("INVALID_CONFIG_NAME", "名称不能为空", 400)
     if not CONFIG_NAME_RE.match(name):
         raise AppError("INVALID_CONFIG_NAME", "配置名称不是有效的 WireGuard 隧道名", 400)
     upper_name = name.upper()
@@ -350,6 +356,12 @@ def normalize_allowed_ips(value: str) -> str:
         if token not in normalized:
             normalized.append(token)
     return ",".join(normalized)
+
+
+def _safe_conf_filename(value: str) -> str:
+    cleaned = re.sub(r'[^a-zA-Z0-9._-]+', "-", value.strip())
+    cleaned = cleaned.strip("-._")
+    return cleaned or "wireguard"
 
 
 class SQLiteStore:
@@ -544,9 +556,12 @@ class SQLiteStore:
         private_key, generated_public = generate_key_pair()
         private_key = str(payload.get("private_key") or "").strip() or private_key
         public_key = str(payload.get("public_key") or "").strip() or derive_public_key(private_key) or generated_public
+        node_name = str(payload["name"]).strip()
+        if not node_name:
+            raise AppError("INVALID_NODE_NAME", "名称不能为空", 400)
         node = Node(
             config_id=config_id,
-            name=str(payload["name"]).strip(),
+            name=node_name,
             ipv4_address=str(payload.get("ipv4_address") or "") or None,
             ipv6_address=str(payload.get("ipv6_address") or "") or None,
             listen_port=_int_or_none(payload.get("listen_port")),
@@ -642,6 +657,8 @@ class SQLiteStore:
                 "updated_at": now_utc(),
             }
         )
+        if not updated.name:
+            raise AppError("INVALID_NODE_NAME", "名称不能为空", 400)
         if payload.get("private_key") and not payload.get("public_key"):
             updated = updated.model_copy(update={"public_key": derive_public_key(updated.private_key)})
         validation = self.validate_virtual_ip(current.config_id, updated.virtual_ip or "", exclude_node_id=node_id)
@@ -822,7 +839,7 @@ class SQLiteStore:
             "peer_node": peer_node.model_dump(mode="json"),
             "endpoint_ref_family": family,
             "forward": self._peer_link_direction_draft(config, local_node, peer_node, family, 25),
-            "reverse": self._peer_link_direction_draft(config, peer_node, local_node, family, None),
+            "reverse": self._peer_link_direction_draft(config, peer_node, local_node, family, 25),
             "warnings": warnings,
         }
 
@@ -864,7 +881,7 @@ class SQLiteStore:
         }
 
     def create_peer_link_group(self, config_id: str, payload: dict[str, object]) -> list[PeerLink]:
-        self.get_config(config_id)
+        config = self.get_config(config_id)
         forward = _link_payload(payload, "forward")
         reverse = _link_payload(payload, "reverse")
         local_node = self.get_node(str(forward["local_node_id"]))
@@ -896,6 +913,7 @@ class SQLiteStore:
         with connect() as connection:
             for item in rows:
                 item_payload = cast(dict[str, object], item["payload"])
+                item_peer_node = peer_node if item["direction"] == "forward" else local_node
                 connection.execute(
                     """
                     INSERT INTO peer_links
@@ -913,7 +931,7 @@ class SQLiteStore:
                         item["direction"],
                         int(bool(payload.get("enabled", item_payload.get("enabled", True)))),
                         normalize_allowed_ips(str(item_payload["allowed_ips"])),
-                        _int_or_none(item_payload.get("persistent_keepalive")),
+                        self._effective_keepalive(config, item_peer_node, item_payload),
                         str(payload.get("preshared_key") or item_payload.get("preshared_key") or "") or None,
                         str(item_payload.get("endpoint_mode", "auto")),
                         _endpoint_family_or_none(item_payload),
@@ -934,10 +952,12 @@ class SQLiteStore:
             if not rows:
                 raise AppError("PEER_LINK_NOT_FOUND", "链路组不存在", 404)
             config_id = rows[0]["config_id"]
+            config = self.get_config(config_id)
             for row in rows:
                 direction = str(row["direction"])
                 data = _link_payload(payload, direction, row)
                 self._validate_link_endpoint_settings(data)
+                peer_node = self.get_node(str(data.get("peer_node_id", row["peer_node_id"])))
                 connection.execute(
                     """
                     UPDATE peer_links
@@ -949,7 +969,7 @@ class SQLiteStore:
                     (
                         int(bool(payload.get("enabled", _bool_value(row["enabled"])))),
                         normalize_allowed_ips(str(data.get("allowed_ips", row["allowed_ips"]))),
-                        _int_or_none(data.get("persistent_keepalive")) if "persistent_keepalive" in data else row["persistent_keepalive"],
+                        self._effective_keepalive(config, peer_node, data),
                         str(payload.get("preshared_key") or data.get("preshared_key") or row["preshared_key"] or "") or None,
                         str(data.get("endpoint_mode", row["endpoint_mode"])),
                         _endpoint_family_or_none(data),
@@ -1208,7 +1228,7 @@ class SQLiteStore:
             endpoint = self._resolve_endpoint(config, peer_node, link)
             if endpoint:
                 lines.append(f"Endpoint = {endpoint}")
-            if link.persistent_keepalive:
+            if endpoint and link.persistent_keepalive:
                 lines.append(f"PersistentKeepalive = {link.persistent_keepalive}")
         content = "\n".join(lines) + "\n"
         return {"node_id": node_id, "node_name": node.name, "content": content, "sha256": sha256_text(content)}
@@ -1316,6 +1336,21 @@ class SQLiteStore:
             "source": "server_applied",
             "desired_version": state.desired_version,
             "staged_version": state.staged_version,
+        }
+
+    def download_package(self, config_id: str, node_id: str) -> dict[str, object]:
+        node = self.get_node(node_id)
+        config = self.get_config(config_id)
+        applied = self.read_applied_conf(config_id, node_id)
+        file_stem = f"{_safe_conf_filename(config.name)}-{_safe_conf_filename(node.name)}"
+        return {
+            "config_id": config_id,
+            "node_id": node_id,
+            "config_name": config.name,
+            "node_name": node.name,
+            "filename": f"{file_stem}.conf",
+            "content": applied["content"],
+            "download_path": f"/api/v1/configs/{config_id}/nodes/{node_id}/download-conf",
         }
 
     def save_applied_conf(self, config_id: str, node_id: str, content: str) -> dict[str, object]:
@@ -1552,6 +1587,49 @@ class SQLiteStore:
         family = "ipv6" if link.endpoint_ref_family == EndpointFamily.ipv6 else "ipv4"
         return self._endpoint_preview_text(config, peer_node, family)
 
+    def _draft_endpoint_summary(self, config: Config, peer_node: Node, endpoint_mode: str, family: str, manual_host: str | None, manual_port: int | None) -> str:
+        if endpoint_mode == EndpointMode.none.value:
+            return "不写 Endpoint"
+        if endpoint_mode == EndpointMode.manual.value:
+            if not manual_host or not manual_port:
+                return "手动模式需填写 Host 和 Port"
+            endpoint = f"[{manual_host}]:{manual_port}" if _is_ipv6_literal(manual_host) else f"{manual_host}:{manual_port}"
+            return f"手动使用 {endpoint}"
+        return self._endpoint_preview_text(config, peer_node, family)
+
+    def _payload_has_endpoint(
+        self,
+        config: Config,
+        peer_node: Node,
+        payload: dict[str, object],
+    ) -> bool:
+        endpoint_mode = str(payload.get("endpoint_mode", EndpointMode.auto.value))
+        if endpoint_mode == EndpointMode.none.value:
+            return False
+        if endpoint_mode == EndpointMode.manual.value:
+            return bool(_str_or_none(payload.get("endpoint_manual_host")) and _int_or_none(payload.get("endpoint_manual_port")))
+
+        family = _endpoint_family_value(payload.get("endpoint_ref_family"))
+        port = peer_node.listen_port or config.default_listen_port
+        return bool(self._endpoint_host_for_family(peer_node, family) and port)
+
+    def _effective_keepalive(
+        self,
+        config: Config,
+        peer_node: Node,
+        payload: dict[str, object],
+    ) -> int | None:
+        if not self._payload_has_endpoint(config, peer_node, payload):
+            return None
+        return _int_or_none(payload.get("persistent_keepalive"))
+
+    def _keepalive_display(self, keepalive: int | None, has_endpoint: bool) -> str:
+        if not has_endpoint:
+            return "/"
+        if keepalive is None:
+            return "未设置"
+        return str(keepalive)
+
     def _peer_link_direction_card(
         self,
         config: Config,
@@ -1572,7 +1650,9 @@ class SQLiteStore:
                 "endpoint_port_mode": EndpointPortMode.ref_peer_listen_port.value,
                 "endpoint_manual_port": None,
                 "endpoint_summary": "缺少反向连接",
+                "keepalive_display": "/",
             }
+        has_endpoint = self._resolve_endpoint(config, peer_node, link) is not None
         return {
             "link_id": link.id,
             "local_node_id": link.local_node_id,
@@ -1585,6 +1665,7 @@ class SQLiteStore:
             "endpoint_port_mode": link.endpoint_port_mode,
             "endpoint_manual_port": link.endpoint_manual_port,
             "endpoint_summary": self._peer_link_endpoint_summary(config, peer_node, link),
+            "keepalive_display": self._keepalive_display(link.persistent_keepalive, has_endpoint),
         }
 
     def _peer_link_direction_draft(
@@ -1595,17 +1676,20 @@ class SQLiteStore:
         family: str,
         persistent_keepalive: int | None,
     ) -> dict[str, object]:
+        has_endpoint = bool(self._endpoint_host_for_family(peer_node, family) and (peer_node.listen_port or config.default_listen_port))
+        effective_keepalive = persistent_keepalive if has_endpoint else None
         return {
             "local_node_id": local_node.id,
             "peer_node_id": peer_node.id,
             "allowed_ips": peer_node.virtual_ip or "",
-            "persistent_keepalive": persistent_keepalive,
+            "persistent_keepalive": effective_keepalive,
             "endpoint_mode": EndpointMode.auto.value,
             "endpoint_ref_family": family,
             "endpoint_manual_host": "",
             "endpoint_port_mode": EndpointPortMode.ref_peer_listen_port.value,
             "endpoint_manual_port": None,
             "endpoint_summary": self._endpoint_preview_text(config, peer_node, family),
+            "keepalive_display": self._keepalive_display(effective_keepalive, has_endpoint),
         }
 
     def _validate_endpoint_references(self, config_id: str, current: Node, updated: Node) -> None:

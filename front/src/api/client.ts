@@ -77,7 +77,13 @@ function normalizeError(error: unknown): ApiClientError {
   if (error instanceof AxiosError) {
     const data = error.response?.data as ApiErrorResponse | undefined
     if (data?.error) {
-      return new ApiClientError(data.error.message, data.error.code, data.error.detail, error.response?.status ?? 0)
+      const fallbackMessage =
+        typeof data.error.detail?.message === 'string'
+          ? data.error.detail.message
+          : Array.isArray(data.error.detail?.errors) && data.error.detail.errors.length
+            ? String((data.error.detail.errors[0] as { msg?: string }).msg || data.error.message)
+            : data.error.message
+      return new ApiClientError(fallbackMessage, data.error.code, data.error.detail, error.response?.status ?? 0)
     }
     return new ApiClientError(error.message, 'REQUEST_FAILED', {}, error.response?.status ?? 0)
   }

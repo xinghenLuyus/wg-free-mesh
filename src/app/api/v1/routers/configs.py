@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
+from app.api.v1.routing import SessionProtectedAPIRouter
+from app.core.validation import strip_optional_text, strip_required_text
 from app.core.responses import ApiResponse, ok
 from app.services.control_plane_service import control_plane_service
 
-router = APIRouter(prefix="/configs", tags=["configs"])
+router = SessionProtectedAPIRouter(prefix="/configs", tags=["configs"])
 
 
 class ConfigCreateRequest(BaseModel):
@@ -20,6 +21,21 @@ class ConfigCreateRequest(BaseModel):
     default_mtu: int | None = Field(default=None, ge=576, le=65535)
     default_dns: str | None = None
     auto_sync: bool = True
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        return strip_required_text(value, "名称")
+
+    @field_validator("description", "virtual_subnet", mode="before")
+    @classmethod
+    def normalize_text(cls, value: str | None) -> str:
+        return str(value or "").strip()
+
+    @field_validator("default_dns", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        return strip_optional_text(value)
 
 
 class ConfigUpdateRequest(ConfigCreateRequest):

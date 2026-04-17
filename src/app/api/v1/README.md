@@ -6,5 +6,5 @@
 
 - `router.py` 汇总 v1 下的所有业务 router。
 - `routers/` 下按业务域拆分文件。
+- 默认受后台会话保护的业务域优先使用 `routing.py` 中的 `SessionProtectedAPIRouter`，把鉴权收束在路由模块内部；只有下载等例外能力再单独声明专用 router。
 - 修改路径、请求体、响应体或错误码时，同步更新 `docs/API契约原则.md` 和 `docs/后端设计.md`。
-

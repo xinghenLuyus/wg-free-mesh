@@ -6,7 +6,7 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
 import { useAuthStore } from '@/stores/auth'
-import type { ConfigListUpdatedPayload, ConfigRead, RealtimeEvent, SystemStatusRead } from '@/types/api'
+import type { ConfigListUpdatedPayload, ConfigRead, HealthRead, RealtimeEvent, SystemStatusRead } from '@/types/api'
 
 const route = useRoute()
 const router = useRouter()
@@ -14,6 +14,7 @@ const authStore = useAuthStore()
 
 const configs = shallowRef<ConfigRead[]>([])
 const systemStatus = shallowRef<SystemStatusRead | null>(null)
+const health = shallowRef<HealthRead | null>(null)
 const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type === 'config.list.updated') {
     configs.value = (event.payload as unknown as ConfigListUpdatedPayload).configs
@@ -46,6 +47,7 @@ const systemStatusType = computed<'success' | 'warning' | 'info'>(() => {
   if (systemStatus.value.summary.online_nodes > 0) return 'success'
   return 'info'
 })
+const brandMeta = computed(() => (health.value?.version ? `控制台 · v${health.value.version}` : '控制台'))
 
 async function loadConfigs() {
   configs.value = await api.configs()
@@ -53,6 +55,10 @@ async function loadConfigs() {
 
 async function loadSystemStatus() {
   systemStatus.value = await api.systemStatus()
+}
+
+async function loadHealth() {
+  health.value = await api.health()
 }
 
 function isConfigActive(configId: string) {
@@ -67,6 +73,7 @@ async function handleLogout() {
 onMounted(() => {
   void loadConfigs()
   void loadSystemStatus()
+  void loadHealth()
   realtime.connect()
 })
 </script>
@@ -76,6 +83,7 @@ onMounted(() => {
     <aside class="sidebar">
       <div class="sidebar__brand">
         <h2>WG Free Mesh</h2>
+        <div class="sidebar__brand-meta">{{ brandMeta }}</div>
       </div>
 
       <nav class="sidebar__nav">
@@ -153,7 +161,7 @@ onMounted(() => {
 }
 .sidebar__brand { padding: 26px 22px 18px; border-bottom: 1px solid #e5ece9; }
 .sidebar__brand h2 { margin: 0; color: #1f2d28; font-size: 22px; line-height: 1.15; letter-spacing: 0; }
-.sidebar__brand h2::after { content: "控制台"; display: block; margin-top: 6px; color: var(--app-muted); font-size: 12px; font-weight: 600; }
+.sidebar__brand-meta { margin-top: 6px; color: var(--app-muted); font-size: 12px; font-weight: 600; }
 .sidebar__nav { flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; overflow: auto; padding: 16px 14px 20px; }
 .sidebar-link, .sidebar-logout {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid transparent;

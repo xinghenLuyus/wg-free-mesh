@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Check, Connection, Delete, Files, Lock, Plus } from '@element-plus/icons-vue'
+import type { FormInstance, FormRules } from 'element-plus'
 import { onMounted, reactive, shallowRef } from 'vue'
 
 import { ApiClientError } from '@/api/client'
@@ -7,6 +8,7 @@ import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
 import type { MqttSettingsUpdatedPayload, RealtimeEvent, SnapshotListUpdatedPayload, SnapshotRead } from '@/types/api'
 import { formatDateTime } from '@/utils/dateTime'
+import { minLengthTextRule, requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
 
 const mqttForm = reactive({
@@ -21,6 +23,15 @@ const passwordForm = reactive({
   current_password: '',
   new_password: '',
 })
+const mqttFormRef = shallowRef<FormInstance>()
+const passwordFormRef = shallowRef<FormInstance>()
+const mqttRules: FormRules<typeof mqttForm> = {
+  host: [requiredTextRule('Host')],
+}
+const passwordRules: FormRules<typeof passwordForm> = {
+  current_password: [requiredTextRule('当前密码')],
+  new_password: [minLengthTextRule('新密码', 6)],
+}
 
 const snapshots = shallowRef<SnapshotRead[]>([])
 const mqttTestResult = shallowRef('')
@@ -39,6 +50,8 @@ async function load() {
 }
 
 async function saveMqtt() {
+  const valid = await mqttFormRef.value?.validate().catch(() => false)
+  if (!valid) return
   try {
     Object.assign(mqttForm, await api.updateMqttSettings({ ...mqttForm }))
     notify.success('MQTT 配置已保存')
@@ -48,6 +61,8 @@ async function saveMqtt() {
 }
 
 async function testMqtt() {
+  const valid = await mqttFormRef.value?.validate().catch(() => false)
+  if (!valid) return
   try {
     const result = await api.testMqttSettings({ ...mqttForm })
     mqttTestResult.value = `${result.success ? '连接成功' : '连接失败'} / ${result.message}`
@@ -59,6 +74,8 @@ async function testMqtt() {
 }
 
 async function savePassword() {
+  const valid = await passwordFormRef.value?.validate().catch(() => false)
+  if (!valid) return
   try {
     await api.changePassword(passwordForm.current_password, passwordForm.new_password)
     passwordForm.current_password = ''
@@ -127,11 +144,11 @@ onMounted(async () => {
         </div>
       </div>
 
-      <el-form class="settings-form" label-position="top">
-        <el-form-item label="当前密码">
+      <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" class="settings-form" label-position="top">
+        <el-form-item label="当前密码" prop="current_password" required>
           <el-input v-model="passwordForm.current_password" type="password" show-password autocomplete="current-password" />
         </el-form-item>
-        <el-form-item label="新密码">
+        <el-form-item label="新密码" prop="new_password" required>
           <el-input v-model="passwordForm.new_password" type="password" show-password autocomplete="new-password" />
         </el-form-item>
         <el-button type="primary" :icon="Check" @click="savePassword">修改密码</el-button>
@@ -147,9 +164,9 @@ onMounted(async () => {
         </div>
       </div>
 
-      <el-form class="settings-form" label-position="top">
+      <el-form ref="mqttFormRef" :model="mqttForm" :rules="mqttRules" class="settings-form" label-position="top">
         <div class="form-grid">
-          <el-form-item label="Host">
+          <el-form-item label="Host" prop="host" required>
             <el-input v-model="mqttForm.host" placeholder="broker.example.com" />
           </el-form-item>
           <el-form-item label="Port">

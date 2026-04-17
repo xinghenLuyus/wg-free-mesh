@@ -12,6 +12,7 @@ import type {
   PeerLinkDraftRead,
   PeerLinkRead,
   AuthStateRead,
+  DownloadTokenRead,
   TokenSessionRead,
   SnapshotRead,
   SyncStatusRead,
@@ -19,6 +20,7 @@ import type {
   TagRead,
   RuntimeSnapshotItem,
   WgPreviewRead,
+  DownloadPackageRead,
 } from '@/types/api'
 
 export const api = {
@@ -108,6 +110,10 @@ export const api = {
     request<{ content: string; exists: boolean; node_name: string; node_type: string; desired_version: number; staged_version: number }>(
       `/configs/${configId}/nodes/${nodeId}/applied-conf`,
     ),
+  downloadPackage: (configId: string, nodeId: string) =>
+    request<DownloadPackageRead>(`/configs/${configId}/nodes/${nodeId}/download-package`),
+  createDownloadToken: (configId: string, nodeId: string) =>
+    request<DownloadTokenRead>(`/configs/${configId}/nodes/${nodeId}/download-token`, { method: 'POST' }),
   saveAppliedConf: (configId: string, nodeId: string, content: string) =>
     request<SyncStatusRead>(`/configs/${configId}/nodes/${nodeId}/applied-conf`, {
       method: 'PUT',

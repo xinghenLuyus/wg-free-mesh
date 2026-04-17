@@ -4,11 +4,17 @@ from typing import Any
 
 from fastapi import APIRouter
 from pydantic import BaseModel, Field
+from fastapi.responses import PlainTextResponse
 
+from app.api.v1.deps import CurrentUserDep, DownloadGrantDep
+from app.api.v1.routing import SessionProtectedAPIRouter
 from app.core.responses import ApiResponse, ok
+from app.schemas.auth import DownloadTokenRead
 from app.services.control_plane_service import control_plane_service
+from app.services.auth_service import auth_service
 
-router = APIRouter(tags=["endpoints"])
+router = SessionProtectedAPIRouter(tags=["endpoints"])
+download_router = APIRouter(tags=["endpoints"])
 
 
 class AppliedConfRequest(BaseModel):
@@ -36,6 +42,26 @@ def sync_status_for_node(config_id: str, node_id: str) -> ApiResponse[dict[str, 
 @router.get("/configs/{config_id}/nodes/{node_id}/applied-conf")
 def read_applied_conf(config_id: str, node_id: str) -> ApiResponse[dict[str, Any]]:
     return ok(control_plane_service.read_applied_conf(config_id, node_id))
+
+
+@router.get("/configs/{config_id}/nodes/{node_id}/download-package")
+def download_package(config_id: str, node_id: str) -> ApiResponse[dict[str, Any]]:
+    return ok(control_plane_service.download_package(config_id, node_id))
+
+
+@router.post("/configs/{config_id}/nodes/{node_id}/download-token")
+def create_download_token(config_id: str, node_id: str, user: CurrentUserDep) -> ApiResponse[DownloadTokenRead]:
+    package = control_plane_service.download_package(config_id, node_id)
+    token_payload = auth_service.create_download_token(config_id=config_id, node_id=node_id, user=user)
+    return ok(
+        DownloadTokenRead(
+            access_token=str(token_payload["access_token"]),
+            token_type=str(token_payload["token_type"]),
+            expires_at=str(token_payload["expires_at"]),
+            download_path=f'{package["download_path"]}?download_token={token_payload["access_token"]}',
+            filename=str(package["filename"]),
+        )
+    )
 
 
 @router.put("/configs/{config_id}/nodes/{node_id}/applied-conf")
@@ -90,3 +116,12 @@ async def endpoint_control(config_id: str, node_id: str, payload: ControlRequest
 @router.post("/configs/{config_id}/endpoint/probe-batch")
 async def probe_batch(config_id: str, payload: ProbeBatchRequest) -> ApiResponse[dict[str, Any]]:
     return ok(await control_plane_service.probe_batch(config_id, payload.node_ids))
+
+
+@download_router.get("/configs/{config_id}/nodes/{node_id}/download-conf")
+def download_conf(config_id: str, node_id: str, _: DownloadGrantDep) -> PlainTextResponse:
+    package = control_plane_service.download_package(config_id, node_id)
+    response = PlainTextResponse(str(package["content"]), media_type="text/plain; charset=utf-8")
+    response.headers["Content-Disposition"] = f'attachment; filename="{package["filename"]}"'
+    response.headers["Cache-Control"] = "no-store"
+    return response

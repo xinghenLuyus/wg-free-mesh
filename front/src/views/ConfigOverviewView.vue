@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { CollectionTag, Key, Plus, Setting } from '@element-plus/icons-vue'
+import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -8,6 +9,7 @@ import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
 import type { ConfigOverviewNodeCardRead, ConfigOverviewRead, ConfigOverviewUpdatedPayload, NodeRead, RealtimeEvent, TagRead } from '@/types/api'
+import { requiredTextRule } from '@/utils/formRules'
 import { normalizeTags } from '@/utils/nodePayload'
 import { notify } from '@/utils/notify'
 
@@ -40,6 +42,8 @@ const realtime = useRealtime((event: RealtimeEvent) => {
   fullNodes.value = payload.overview.nodes
   tags.value = payload.tags
 })
+const settingsFormRef = shallowRef<FormInstance>()
+const createFormRef = shallowRef<FormInstance>()
 
 const settingsForm = reactive({
   name: '',
@@ -66,6 +70,14 @@ const createForm = reactive({
   private_key: '',
   tags_text: '',
 })
+const settingsRules: FormRules<typeof settingsForm> = {
+  name: [requiredTextRule('名称')],
+  virtual_subnet: [requiredTextRule('虚拟网段')],
+}
+const createRules: FormRules<typeof createForm> = {
+  name: [requiredTextRule('名称')],
+  virtual_ip: [requiredTextRule('虚拟 IP')],
+}
 
 const nodeCards = computed(() => overview.value?.node_cards ?? [])
 
@@ -258,6 +270,8 @@ async function deleteTag(tag: string) {
 }
 
 async function saveSettings() {
+  const valid = await settingsFormRef.value?.validate().catch(() => false)
+  if (!valid) return
   try {
     await api.updateConfig(String(route.params.configId), { ...settingsForm })
     settingsVisible.value = false
@@ -312,6 +326,8 @@ async function autofillVirtualIp() {
 }
 
 async function createNode() {
+  const valid = await createFormRef.value?.validate().catch(() => false)
+  if (!valid) return
   const tags = createForm.tags_text
     .split(',')
     .map((item) => item.trim())
@@ -444,7 +460,7 @@ onMounted(async () => {
         >
           <div class="node-card__head">
             <h3>{{ node.name }}</h3>
-            <el-tag :type="node.online ? 'success' : 'info'">{{ node.online ? '在线' : '离线' }}</el-tag>
+            <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'">{{ node.online ? '在线' : '离线' }}</el-tag>
           </div>
           <dl class="node-card__meta">
             <div>
@@ -481,7 +497,7 @@ onMounted(async () => {
           <div class="node-strip-card__main">
             <div class="node-strip-card__title">
               <h3>{{ node.name }}</h3>
-              <el-tag :type="node.online ? 'success' : 'info'" size="small">{{ node.online ? '在线' : '离线' }}</el-tag>
+              <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'" size="small">{{ node.online ? '在线' : '离线' }}</el-tag>
             </div>
             <div class="node-strip-card__tags">
               <el-tag v-for="tag in node.tags" :key="tag" type="info" size="small">{{ tag }}</el-tag>
@@ -507,11 +523,11 @@ onMounted(async () => {
           <p>这些字段用于生成系统态配置，并可自动同步到同步态。</p>
         </div>
       </div>
-      <el-form class="dialog-form" label-position="top">
-        <el-form-item label="名称"><el-input v-model="settingsForm.name" /></el-form-item>
+      <el-form ref="settingsFormRef" :model="settingsForm" :rules="settingsRules" class="dialog-form" label-position="top">
+        <el-form-item label="名称" prop="name" required><el-input v-model="settingsForm.name" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="settingsForm.description" type="textarea" :rows="3" /></el-form-item>
         <div class="form-grid">
-          <el-form-item label="虚拟网段"><el-input v-model="settingsForm.virtual_subnet" /></el-form-item>
+          <el-form-item label="虚拟网段" prop="virtual_subnet" required><el-input v-model="settingsForm.virtual_subnet" /></el-form-item>
           <el-form-item label="默认监听端口">
             <el-input-number v-model="settingsForm.default_listen_port" :min="1" :max="65535" style="width: 100%" />
           </el-form-item>
@@ -549,8 +565,8 @@ onMounted(async () => {
           <p>端点创建后会出现在当前配置的节点网格中。</p>
         </div>
       </div>
-      <el-form class="dialog-form" label-position="top">
-        <el-form-item label="名称"><el-input v-model="createForm.name" placeholder="例如：office-gateway" /></el-form-item>
+      <el-form ref="createFormRef" :model="createForm" :rules="createRules" class="dialog-form" label-position="top">
+        <el-form-item label="名称" prop="name" required><el-input v-model="createForm.name" placeholder="例如：office-gateway" /></el-form-item>
         <el-form-item label="类型">
           <el-segmented
             v-model="createForm.node_type"
@@ -563,7 +579,7 @@ onMounted(async () => {
         <div class="form-grid">
           <el-form-item label="公网 IPv4"><el-input v-model="createForm.ipv4_address" placeholder="可填写 IP 或域名" /></el-form-item>
           <el-form-item label="公网 IPv6"><el-input v-model="createForm.ipv6_address" placeholder="可填写 IP 或域名" /></el-form-item>
-          <el-form-item label="虚拟 IP">
+          <el-form-item label="虚拟 IP" prop="virtual_ip" required>
             <el-input v-model="createForm.virtual_ip">
               <template #append><el-button @click="autofillVirtualIp">推荐</el-button></template>
             </el-input>

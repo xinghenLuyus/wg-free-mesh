@@ -3,13 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 
-from fastapi import APIRouter, Body, File, UploadFile
+from fastapi import Body, File, UploadFile
 from fastapi.responses import FileResponse
 
+from app.api.v1.routing import SessionProtectedAPIRouter
 from app.core.responses import ApiResponse, ok
 from app.services.control_plane_service import control_plane_service
 
-router = APIRouter(prefix="/backups", tags=["backups"])
+router = SessionProtectedAPIRouter(prefix="/backups", tags=["backups"])
 
 
 @router.post("/snapshot")

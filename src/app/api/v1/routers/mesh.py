@@ -2,13 +2,15 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Query
-from pydantic import BaseModel, Field
+from fastapi import Query
+from pydantic import BaseModel, Field, field_validator
 
+from app.api.v1.routing import SessionProtectedAPIRouter
+from app.core.validation import strip_optional_text, strip_required_text
 from app.core.responses import ApiResponse, ok
 from app.services.control_plane_service import control_plane_service
 
-router = APIRouter(tags=["mesh"])
+router = SessionProtectedAPIRouter(tags=["mesh"])
 
 
 class PeerLinkDirectionRequest(BaseModel):
@@ -25,6 +27,31 @@ class PeerLinkDirectionRequest(BaseModel):
     notes: str = ""
     enabled: bool = True
 
+    @field_validator("local_node_id")
+    @classmethod
+    def validate_local_node_id(cls, value: str) -> str:
+        return strip_required_text(value, "本地节点")
+
+    @field_validator("peer_node_id")
+    @classmethod
+    def validate_peer_node_id(cls, value: str) -> str:
+        return strip_required_text(value, "对端节点")
+
+    @field_validator("allowed_ips")
+    @classmethod
+    def validate_allowed_ips(cls, value: str) -> str:
+        return strip_required_text(value, "AllowedIPs")
+
+    @field_validator("endpoint_manual_host", "preshared_key", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        return strip_optional_text(value)
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def normalize_notes(cls, value: str | None) -> str:
+        return str(value or "").strip()
+
 
 class PeerLinkGroupRequest(BaseModel):
     forward: PeerLinkDirectionRequest
@@ -32,6 +59,16 @@ class PeerLinkGroupRequest(BaseModel):
     preshared_key: str | None = None
     notes: str = ""
     enabled: bool = True
+
+    @field_validator("preshared_key", mode="before")
+    @classmethod
+    def normalize_optional_text(cls, value: str | None) -> str | None:
+        return strip_optional_text(value)
+
+    @field_validator("notes", mode="before")
+    @classmethod
+    def normalize_notes(cls, value: str | None) -> str:
+        return str(value or "").strip()
 
 
 class WgPreviewResponse(BaseModel):
@@ -52,6 +89,7 @@ class PeerLinkDirectionDraftResponse(BaseModel):
     endpoint_port_mode: str
     endpoint_manual_port: int | None
     endpoint_summary: str
+    keepalive_display: str
 
 
 class PeerLinkDraftResponse(BaseModel):
@@ -75,6 +113,7 @@ class MeshConnectionDirectionResponse(BaseModel):
     endpoint_port_mode: str
     endpoint_manual_port: int | None
     endpoint_summary: str
+    keepalive_display: str
 
 
 class MeshConnectionResponse(BaseModel):
