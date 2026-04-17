@@ -8,6 +8,7 @@ import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
 import type { DownloadPackageRead, NodeApplyUpdatedPayload, RealtimeEvent } from '@/types/api'
+import { formatDateTime } from '@/utils/dateTime'
 import { notify } from '@/utils/notify'
 
 const route = useRoute()
@@ -19,13 +20,15 @@ const loading = shallowRef(false)
 const loadError = shallowRef('')
 const generatingLink = shallowRef(false)
 const generatingShell = shallowRef(false)
+const downloadingConf = shallowRef(false)
 const downloadUrl = shallowRef('')
 const shellCommand = shallowRef('')
 let loadTicket = 0
 const tokenCache = reactive({
   downloadUrl: '',
   shellUrl: '',
-  expiresAt: '',
+  linkExpiresAt: '',
+  shellExpiresAt: '',
 })
 
 const realtime = useRealtime((event: RealtimeEvent) => {
@@ -40,6 +43,8 @@ const qrHelpText = computed(() =>
     ? '展开后生成二维码，手机 WireGuard App 可直接扫码导入。'
     : '当前同步态配置为空，暂时无法生成二维码。',
 )
+const linkExpiresAtText = computed(() => formatDateTime(tokenCache.linkExpiresAt, ''))
+const shellExpiresAtText = computed(() => formatDateTime(tokenCache.shellExpiresAt, ''))
 
 async function generateQrCode(content: string) {
   if (!content.trim()) {
@@ -56,21 +61,23 @@ async function generateQrCode(content: string) {
 function resetGeneratedOutputs() {
   tokenCache.downloadUrl = ''
   tokenCache.shellUrl = ''
-  tokenCache.expiresAt = ''
+  tokenCache.linkExpiresAt = ''
+  tokenCache.shellExpiresAt = ''
   downloadUrl.value = ''
   shellCommand.value = ''
 }
 
-async function issueDownloadUrl(target: 'download' | 'shell') {
+async function issueDownloadUrl(target: 'link' | 'shell' | 'browser') {
   if (!downloadPackage.value) return ''
   const token = await api.createDownloadToken(String(route.params.configId), String(route.params.nodeId))
   const nextUrl = new URL(token.download_path, window.location.origin).toString()
-  tokenCache.expiresAt = token.expires_at
-  if (target === 'download') {
+  if (target === 'link') {
     tokenCache.downloadUrl = nextUrl
+    tokenCache.linkExpiresAt = token.expires_at
     downloadUrl.value = nextUrl
-  } else {
+  } else if (target === 'shell') {
     tokenCache.shellUrl = nextUrl
+    tokenCache.shellExpiresAt = token.expires_at
   }
   return nextUrl
 }
@@ -128,7 +135,7 @@ async function createAndCopyDownloadUrl() {
   if (!downloadPackage.value) return
   generatingLink.value = true
   try {
-    const nextUrl = await issueDownloadUrl('download')
+    const nextUrl = await issueDownloadUrl('link')
     await copyText(nextUrl, '下载地址已复制')
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : '下载地址生成失败')
@@ -139,11 +146,14 @@ async function createAndCopyDownloadUrl() {
 
 async function downloadConfFile() {
   if (!downloadPackage.value) return
+  downloadingConf.value = true
   try {
-    const nextUrl = await issueDownloadUrl('download')
+    const nextUrl = await issueDownloadUrl('browser')
     window.location.assign(nextUrl)
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : '下载地址生成失败')
+  } finally {
+    downloadingConf.value = false
   }
 }
 
@@ -208,7 +218,7 @@ onMounted(async () => {
           <p>生成当前节点专用的短时下载能力，用于复制下载地址、扫码导入或生成安装命令。</p>
         </div>
         <div class="template-toolbar__actions">
-          <el-button type="primary" :icon="Download" @click="downloadConfFile">.conf 下载</el-button>
+          <el-button type="primary" :icon="Download" :loading="downloadingConf" @click="downloadConfFile">.conf 下载</el-button>
         </div>
       </div>
 
@@ -235,7 +245,7 @@ onMounted(async () => {
             :rows="3"
             resize="none"
           />
-          <p v-if="tokenCache.expiresAt" class="download-card__meta">地址有效期至 {{ tokenCache.expiresAt }}</p>
+          <p v-if="tokenCache.linkExpiresAt" class="download-card__meta">地址有效期至 {{ linkExpiresAtText }}</p>
         </article>
 
         <article class="download-card">
@@ -279,6 +289,7 @@ onMounted(async () => {
             :model-value="shellCommand"
             class="download-output"
           />
+          <p v-if="tokenCache.shellExpiresAt" class="download-card__meta">命令有效期至 {{ shellExpiresAtText }}</p>
         </article>
       </div>
     </div>
