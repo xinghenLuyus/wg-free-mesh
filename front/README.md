@@ -90,6 +90,7 @@ pnpm run dev
 
 - 前端：`http://127.0.0.1:5173`
 - 开发态 `/api` 会代理到 `http://127.0.0.1:8000`
+- 开发态 WebSocket `/api/v1/ws/events` 也通过 Vite 代理转发到后端
 
 ## 检查与构建
 

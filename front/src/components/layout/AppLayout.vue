@@ -136,12 +136,25 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.shell { display: grid; grid-template-columns: 268px 1fr; min-height: 100vh; background: transparent; }
-.sidebar { position: sticky; top: 0; display: flex; flex-direction: column; height: 100vh; min-height: 0; border-right: 1px solid rgba(216, 225, 221, 0.92); background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(12px); box-shadow: 12px 0 34px rgba(42, 65, 58, 0.06); }
-.sidebar__brand { padding: 24px 20px 18px; border-bottom: 1px solid #e5ece9; }
+.shell { display: grid; grid-template-columns: 292px minmax(0, 1fr); min-height: 100vh; padding: 14px; gap: 14px; background: transparent; }
+.sidebar {
+  position: sticky;
+  top: 14px;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 28px);
+  min-height: 0;
+  border: 1px solid rgba(216, 225, 221, 0.96);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 20px 44px rgba(42, 65, 58, 0.11);
+  overflow: hidden;
+}
+.sidebar__brand { padding: 26px 22px 18px; border-bottom: 1px solid #e5ece9; }
 .sidebar__brand h2 { margin: 0; color: #1f2d28; font-size: 22px; line-height: 1.15; letter-spacing: 0; }
 .sidebar__brand h2::after { content: "控制台"; display: block; margin-top: 6px; color: var(--app-muted); font-size: 12px; font-weight: 600; }
-.sidebar__nav { flex: 1 1 auto; display: flex; flex-direction: column; gap: 5px; overflow: auto; padding: 14px 12px 20px; }
+.sidebar__nav { flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; overflow: auto; padding: 16px 14px 20px; }
 .sidebar-link, .sidebar-logout {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid transparent;
   border-radius: 8px; color: #4b5f58; background: transparent; text-decoration: none; font: inherit; cursor: pointer; text-align: left;
@@ -151,21 +164,30 @@ onMounted(() => {
 .sidebar-link:focus-visible, .sidebar-logout:focus-visible, .sidebar-system-status:focus-visible { outline: 0; box-shadow: var(--app-focus); }
 .sidebar-link--active { color: #0f7375; border-color: #bfe0da; background: #eaf7f5; font-weight: 750; }
 .sidebar-link .el-icon, .sidebar-logout .el-icon { font-size: 17px; }
-.sidebar-divider { height: 1px; margin: 12px 8px; background: #e0e8e4; }
+.sidebar-divider { height: 1px; margin: 12px 10px; background: #e0e8e4; }
 .sidebar-section { padding: 4px 12px 8px; color: #7a8c85; font-size: 12px; font-weight: 800; letter-spacing: 0; }
 .sidebar-configs { display: grid; gap: 5px; }
 .sidebar-link--config span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.sidebar-system-status { margin: 0 12px 14px; padding: 14px 12px; border: 1px solid #d8e1dd; border-radius: 8px; background: linear-gradient(180deg, #ffffff 0%, #f7fbf9 100%); text-align: left; cursor: pointer; box-shadow: var(--app-shadow-sm); }
+.sidebar-system-status {
+  margin: 0 14px 14px;
+  padding: 16px 14px;
+  border: 1px solid #d8e1dd;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbf9 100%);
+  text-align: left;
+  cursor: pointer;
+  box-shadow: var(--app-shadow-sm);
+}
 .sidebar-system-status__main { display: flex; align-items: center; gap: 8px; }
 .sidebar-system-status__dot { width: 10px; height: 10px; border-radius: 999px; background: #9aa9a3; box-shadow: 0 0 0 4px rgba(154, 169, 163, 0.12); }
 .sidebar-system-status__dot[data-type='success'] { background: #2f9e44; box-shadow: 0 0 0 4px rgba(47, 158, 68, 0.13); }
 .sidebar-system-status__dot[data-type='warning'] { background: #d98c21; box-shadow: 0 0 0 4px rgba(217, 140, 33, 0.13); }
 .sidebar-system-status__text { color: #213029; font-size: 13px; font-weight: 750; }
 .sidebar-system-status__meta { margin-top: 8px; color: #6d8079; font-size: 12px; }
-.main { min-width: 0; padding: 26px; }
+.main { min-width: 0; padding: 12px 12px 12px 0; }
 @media (max-width: 960px) {
-  .shell { grid-template-columns: 1fr; }
-  .sidebar { position: static; height: auto; min-height: auto; border-right: 0; border-bottom: 1px solid #d8e1dd; }
+  .shell { grid-template-columns: 1fr; padding: 0; gap: 0; }
+  .sidebar { position: static; top: auto; height: auto; min-height: auto; border: 0; border-bottom: 1px solid #d8e1dd; border-radius: 0; box-shadow: none; }
   .sidebar__nav { overflow: visible; }
   .main { padding: 18px; }
 }

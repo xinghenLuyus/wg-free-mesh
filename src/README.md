@@ -61,6 +61,15 @@ cd src
 python -m fastapi dev app/main.py --host 127.0.0.1 --port 8000
 ```
 
+如果要排查移动端 WebSocket 频繁断开，建议改用可显式控制 keepalive 的启动方式：
+
+```powershell
+cd src
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --ws-ping-interval 30 --ws-ping-timeout 30
+```
+
+仓库代码本身不会写死 Uvicorn 的 WebSocket keepalive 参数，默认值由启动命令决定。
+
 可访问：
 
 - OpenAPI: `http://127.0.0.1:8000/docs`
@@ -72,6 +81,8 @@ WebSocket 需要附带 token：
 ```text
 ws://127.0.0.1:8000/api/v1/ws/events?token=<access_token>
 ```
+
+`/api/v1/ws/events` 会记录连接 ID、客户端地址、用户、关闭 code 和连接存活时长，便于定位移动端短连接问题。
 
 ## 测试
 

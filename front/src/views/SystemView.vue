@@ -23,7 +23,17 @@ const serverClockText = computed(() => {
   return formatDateTime(new Date(current))
 })
 
-const websocketConnectionText = computed(() => (realtime.connected ? '已连接' : '已断开'))
+const websocketConnectionText = computed(() => {
+  if (realtime.state.value === 'connected' && realtime.connected.value) return '已连接'
+  if (realtime.state.value === 'connecting') return '连接中'
+  if (realtime.state.value === 'reconnecting') return '重连中'
+  if (realtime.state.value === 'degraded') return '连接异常'
+  return '已断开'
+})
+
+const websocketHeartbeatText = computed(() => formatDateTime(realtime.lastMessageAt.value ? new Date(realtime.lastMessageAt.value) : null))
+const realtimeBannerType = computed(() => (realtime.connected.value ? 'success' : 'warning'))
+const realtimeBannerText = computed(() => (realtime.connected.value ? '实时同步正常' : '实时同步断开'))
 
 function syncServerClock(timestamp: string | null | undefined) {
   if (!timestamp) return
@@ -78,8 +88,8 @@ onBeforeUnmount(() => {
         <h1 class="page-title">系统状态</h1>
         <p class="page-description">这里查看健康检查和服务聚合状态。</p>
       </div>
-      <el-tag :type="realtime.connected ? 'success' : 'warning'">
-        {{ realtime.connected ? '实时同步正常' : '实时同步断开' }}
+      <el-tag :type="realtimeBannerType">
+        {{ realtimeBannerText }}
       </el-tag>
     </div>
   </section>
@@ -103,6 +113,15 @@ onBeforeUnmount(() => {
       <el-descriptions-item label="MQTT">{{ status.services.mqtt }}</el-descriptions-item>
       <el-descriptions-item label="WebSocket 连接状态">
         {{ websocketConnectionText }}
+      </el-descriptions-item>
+      <el-descriptions-item label="最近心跳">
+        {{ websocketHeartbeatText }}
+      </el-descriptions-item>
+      <el-descriptions-item label="重连次数">
+        {{ realtime.reconnectAttempts.value }}
+      </el-descriptions-item>
+      <el-descriptions-item v-if="realtime.error.value" label="连接备注">
+        {{ realtime.error.value }}
       </el-descriptions-item>
     </el-descriptions>
   </section>
