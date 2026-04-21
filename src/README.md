@@ -63,19 +63,19 @@ cd src
 python -m pip install -e .[dev]
 ```
 
-启动后端：
+开发启动后端：
 
 ```powershell
 cd src
-python -m fastapi dev app/main.py --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --timeout-graceful-shutdown 1
 ```
 
-如果要排查移动端 SSE 长连接稳定性，建议使用普通 Uvicorn 启动方式观察日志：
+说明：
 
-```powershell
-cd src
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
+- 当前项目包含 SSE 长连接。
+- `fastapi dev` / `fastapi run` 不支持 `--timeout-graceful-shutdown` 参数。
+- 为避免浏览器仍然保持连接时拖住后端退出，开发启动命令统一使用 `uvicorn`，并增加 `--timeout-graceful-shutdown 1` 作为停机兜底。
+
 
 可访问：
 
@@ -121,6 +121,7 @@ python -m pytest -q
 - 生产态由 FastAPI 同时提供 API 和前端静态资源
 - FastAPI 优先读取根目录 `front/dist`
 - Docker 镜像会先构建前端，再把 `dist` 复制进后端镜像
+- 生产启动命令同样带 `--timeout-graceful-shutdown 1`，避免 SSE 长连接阻塞停机
 
 ## 目录索引
 

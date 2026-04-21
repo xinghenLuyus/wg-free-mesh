@@ -27,7 +27,7 @@ docker compose up --build
 
 ```powershell
 cd src
-python -m fastapi dev app/main.py --host 127.0.0.1 --port 8000
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --timeout-graceful-shutdown 1
 ```
 
 前端：

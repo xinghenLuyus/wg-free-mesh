@@ -14,12 +14,17 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.errors import install_exception_handlers
 from app.infrastructure.database import init_database
+from app.services.realtime_service import realtime_service
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     init_database()
-    yield
+    realtime_service.startup()
+    try:
+        yield
+    finally:
+        await realtime_service.shutdown()
 
 
 def create_app() -> FastAPI:

@@ -7,7 +7,6 @@ services:
       WFM_DEBUG: "false"
       WFM_CORS_ORIGINS: '["http://localhost:8000"]'
       WFM_MQTT_URL: "mqtt://mqtt:1883"
-      WFM_DATABASE_URL: "sqlite:///./data/wg_free_mesh.db"
     ports:
       - "8000:8000"
     volumes:

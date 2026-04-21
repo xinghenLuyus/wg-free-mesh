@@ -69,6 +69,8 @@ async def stream_events(request: Request, user: CurrentUserDep) -> StreamingResp
                 realtime_service.make_event("system.clock.sync", {"timestamp": now_utc().isoformat(), "timezone": settings.timezone})
             )
             while True:
+                if realtime_service.shutting_down:
+                    break
                 if await request.is_disconnected():
                     break
                 timeout = max(0.0, next_clock - loop.time())
@@ -83,6 +85,8 @@ async def stream_events(request: Request, user: CurrentUserDep) -> StreamingResp
                     )
                     next_clock = loop.time() + SSE_CLOCK_SYNC_INTERVAL_SECONDS
                     continue
+                if event is None:
+                    break
                 yield _sse_frame(event)
         except asyncio.CancelledError:
             raise
