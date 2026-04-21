@@ -82,7 +82,7 @@ async function submit() {
   padding: 30px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--app-overlay-strong);
   box-shadow: var(--app-shadow-lg);
   backdrop-filter: blur(10px);
 }

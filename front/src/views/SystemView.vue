@@ -128,7 +128,7 @@ onBeforeUnmount(() => {
   padding: 24px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
+  background: linear-gradient(180deg, var(--app-surface) 0%, var(--app-surface-sunken) 100%);
   box-shadow: var(--app-shadow-md);
 }
 

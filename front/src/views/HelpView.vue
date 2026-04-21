@@ -21,7 +21,7 @@ const { t } = useI18n()
   padding: 24px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
+  background: linear-gradient(180deg, var(--app-surface-elevated) 0%, var(--app-surface) 100%);
   box-shadow: var(--app-shadow-md);
 }
 
@@ -44,7 +44,7 @@ const { t } = useI18n()
   place-items: center;
   width: 52px;
   height: 52px;
-  border: 1px solid #bfe0da;
+  border: 1px solid var(--app-border-accent);
   border-radius: 8px;
   background: var(--app-primary-soft);
   color: var(--app-primary);
@@ -54,12 +54,12 @@ const { t } = useI18n()
 }
 
 .placeholder-text {
-  color: #213029;
+  color: var(--app-text-strong);
   font-size: 16px;
   font-weight: 600;
 }
 
 .placeholder-desc {
-  color: #70837c;
+  color: var(--app-faint);
 }
 </style>

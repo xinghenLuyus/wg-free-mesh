@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Check, Connection, Delete, Files, Lock, Monitor, Plus, Setting } from '@element-plus/icons-vue'
 import type { FormInstance, FormItemRule, FormRules } from 'element-plus'
-import { nextTick, onMounted, reactive, shallowRef } from 'vue'
+import { computed, nextTick, onMounted, reactive, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import { ApiClientError } from '@/api/client'
@@ -10,8 +10,14 @@ import { useRealtime } from '@/composables/useRealtime'
 import { SUPPORTED_LOCALES } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
 import { usePreferencesStore } from '@/stores/preferences'
-import type { AppLocale, AppThemeMode } from '@/types/api'
-import type { MqttSettingsUpdatedPayload, RealtimeEvent, SnapshotListUpdatedPayload, SnapshotRead } from '@/types/api'
+import type {
+  AppLocale,
+  AppThemeMode,
+  MqttSettingsUpdatedPayload,
+  RealtimeEvent,
+  SnapshotListUpdatedPayload,
+  SnapshotRead,
+} from '@/types/api'
 import { formatDateTime } from '@/utils/dateTime'
 import { requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
@@ -98,6 +104,10 @@ const themeOptions: Array<{ value: AppThemeMode; labelKey: string }> = [
   { value: 'light', labelKey: 'theme.light' },
   { value: 'dark', labelKey: 'theme.dark' },
 ]
+
+const themeSegmentedOptions = computed(() =>
+  themeOptions.map((option) => ({ label: t(option.labelKey), value: option.value })),
+)
 
 function localeLabel(locale: AppLocale | string) {
   return locale === 'en-US' ? t('locale.enUS') : t('locale.zhCN')
@@ -250,14 +260,13 @@ onMounted(async () => {
       </div>
       <el-form class="settings-form settings-form--compact" label-position="top">
         <el-form-item :label="t('theme.label')" required>
-          <el-select v-model="selectedThemeMode" :loading="preferencesStore.loading" @change="saveThemeMode">
-            <el-option
-              v-for="option in themeOptions"
-              :key="option.value"
-              :label="t(option.labelKey)"
-              :value="option.value"
-            />
-          </el-select>
+          <el-segmented
+            v-model="selectedThemeMode"
+            class="theme-mode-segmented"
+            :disabled="preferencesStore.loading"
+            :options="themeSegmentedOptions"
+            @change="saveThemeMode"
+          />
         </el-form-item>
       </el-form>
     </article>
@@ -406,7 +415,7 @@ onMounted(async () => {
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(15, 139, 141, 0.1), transparent 45%),
-    linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
+    linear-gradient(180deg, var(--app-surface) 0%, var(--app-surface-sunken) 100%);
   box-shadow: var(--app-shadow-md);
 }
 
@@ -442,7 +451,7 @@ onMounted(async () => {
   padding: 20px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfcfb 100%);
+  background: linear-gradient(180deg, var(--app-surface) 0%, var(--app-surface-elevated) 100%);
   box-shadow: var(--app-shadow-sm);
 }
 
@@ -472,7 +481,7 @@ onMounted(async () => {
   place-items: center;
   width: 42px;
   height: 42px;
-  border: 1px solid #bfe0da;
+  border: 1px solid var(--app-border-accent);
   border-radius: 8px;
   background: var(--app-primary-soft);
   color: var(--app-primary);
@@ -503,6 +512,72 @@ onMounted(async () => {
   align-content: start;
 }
 
+:deep(.theme-mode-segmented.el-segmented) {
+  width: 100%;
+  min-height: 40px;
+  padding: 2px;
+  border: 1px solid var(--app-border-soft);
+  border-radius: 8px;
+  background: var(--app-surface);
+  box-shadow: none;
+}
+
+.theme-mode-segmented :deep(.el-segmented__group) {
+  width: 100%;
+}
+
+.theme-mode-segmented :deep(.el-segmented__item) {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 6px;
+  color: var(--app-muted);
+  transition: color 160ms ease, background-color 160ms ease;
+}
+
+.theme-mode-segmented :deep(.el-segmented__item-label) {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0;
+}
+
+.theme-mode-segmented :deep(.el-segmented__item.is-selected) {
+  color: var(--app-text-strong);
+}
+
+.theme-mode-segmented :deep(.el-segmented__item-selected) {
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-surface-sunken);
+  box-shadow: none;
+}
+
+:root[data-theme='dark'] :deep(.theme-mode-segmented.el-segmented) {
+  border-color: var(--app-border);
+  background: var(--app-surface-sunken);
+  box-shadow: none;
+}
+
+:root[data-theme='dark'] .theme-mode-segmented :deep(.el-segmented__item) {
+  color: var(--app-faint);
+}
+
+:root[data-theme='dark'] .theme-mode-segmented :deep(.el-segmented__item:hover:not(.is-selected)) {
+  background: color-mix(in srgb, var(--app-surface-interactive) 88%, transparent);
+  color: var(--app-text);
+}
+
+:root[data-theme='dark'] .theme-mode-segmented :deep(.el-segmented__item.is-selected) {
+  color: var(--app-text-strong);
+}
+
+:root[data-theme='dark'] .theme-mode-segmented :deep(.el-segmented__item-selected) {
+  border-color: var(--app-border-strong);
+  background: var(--app-surface-elevated);
+  box-shadow: none;
+}
+
 .credential-autocomplete-anchor {
   position: fixed;
   width: 1px;
@@ -525,9 +600,9 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 16px;
   padding: 14px;
-  border: 1px solid #e1ebe7;
+  border: 1px solid var(--app-border-soft);
   border-radius: 8px;
-  background: #f8fbf9;
+  background: var(--app-surface-sunken);
 }
 
 .switch-row strong,
@@ -554,10 +629,10 @@ onMounted(async () => {
 
 .result-callout {
   padding: 12px 14px;
-  border: 1px solid #cfe3dc;
+  border: 1px solid var(--app-border-accent);
   border-radius: 8px;
-  background: #f1f8f6;
-  color: #285b52;
+  background: var(--app-info-soft);
+  color: color-mix(in srgb, var(--app-text) 82%, var(--app-primary));
   font-weight: 650;
 }
 
@@ -572,10 +647,10 @@ onMounted(async () => {
   gap: 16px;
   align-items: center;
   padding: 14px;
-  border: 1px solid #e0e8e4;
+  border: 1px solid var(--app-border-soft);
   border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 8px 20px rgba(42, 65, 58, 0.045);
+  background: var(--app-surface);
+  box-shadow: var(--app-shadow-sm);
 }
 
 .snapshot-card__main {

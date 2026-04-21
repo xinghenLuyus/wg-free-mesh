@@ -298,9 +298,9 @@ onMounted(async () => {
 
 <style scoped>
 .node-template { display: grid; gap: 20px; }
-.view-feedback { color: #556a62; }
+.view-feedback { color: var(--app-muted); }
 .view-feedback--silent { min-height: 140px; color: transparent; }
-.view-feedback--error { color: #9a4b4b; }
+.view-feedback--error { color: var(--app-danger-text); }
 .template-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .template-toolbar h2 { margin: 0; color: var(--app-text); font-size: 22px; }
 .template-toolbar p { margin: 8px 0 0; color: var(--app-muted); line-height: 1.6; }
@@ -310,9 +310,9 @@ onMounted(async () => {
   display: grid;
   gap: 14px;
   padding: 18px;
-  border: 1px solid #e0e8e4;
+  border: 1px solid var(--app-border-soft);
   border-radius: 8px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfcfb 100%);
+  background: linear-gradient(180deg, var(--app-surface-elevated) 0%, var(--app-surface) 100%);
   box-shadow: var(--app-shadow-sm);
 }
 .download-card__head {
@@ -356,27 +356,27 @@ onMounted(async () => {
 }
 .download-card__meta {
   margin: -4px 0 0;
-  color: #6b7f79;
+  color: var(--app-faint);
   font-size: 12px;
 }
 .download-action {
-  --el-button-text-color: #1f2b26;
-  --el-button-bg-color: #ffffff;
-  --el-button-border-color: #d8e1dd;
-  --el-button-hover-text-color: #16211d;
-  --el-button-hover-bg-color: #f7fbf9;
-  --el-button-hover-border-color: #b8c9c3;
-  --el-button-active-text-color: #16211d;
-  --el-button-active-bg-color: #eef5f2;
-  --el-button-active-border-color: #aebfb9;
+  --el-button-text-color: var(--app-text-strong);
+  --el-button-bg-color: var(--app-surface-elevated);
+  --el-button-border-color: var(--app-border-soft);
+  --el-button-hover-text-color: var(--app-text-strong);
+  --el-button-hover-bg-color: var(--app-surface-sunken);
+  --el-button-hover-border-color: var(--app-border-accent);
+  --el-button-active-text-color: var(--app-text-strong);
+  --el-button-active-bg-color: var(--app-surface-selected);
+  --el-button-active-border-color: var(--app-border-accent);
   font-weight: 700;
   box-shadow: none;
 }
 .download-output :deep(.el-textarea__inner) {
   min-height: 96px;
-  border-color: #dfe8e4;
-  background: #f7fbf9;
-  color: #213029;
+  border-color: var(--app-border-soft);
+  background: var(--app-surface-sunken);
+  color: var(--app-text-strong);
   font-size: 13px;
   line-height: 1.7;
   font-family: "JetBrains Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
@@ -387,9 +387,9 @@ onMounted(async () => {
   place-items: center;
   min-height: 280px;
   padding: 16px;
-  border: 1px solid #e0e8e4;
+  border: 1px solid var(--app-border-soft);
   border-radius: 8px;
-  background: #f7fbf9;
+  background: var(--app-surface-sunken);
 }
 .qr-panel__image {
   width: min(100%, 320px);

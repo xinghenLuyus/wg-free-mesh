@@ -376,7 +376,7 @@ onMounted(async () => {
 
 <style scoped>
 .node-workspace { display: grid; gap: 20px; }
-.node-header-card { padding: 22px; border: 1px solid var(--app-border); border-radius: 8px; background: linear-gradient(180deg, #ffffff 0%, #fbfdfc 100%); box-shadow: var(--app-shadow-md); }
+.node-header-card { padding: 22px; border: 1px solid var(--app-border); border-radius: 8px; background: linear-gradient(180deg, var(--app-surface) 0%, var(--app-surface-elevated) 100%); box-shadow: var(--app-shadow-md); }
 .node-header-card__top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .node-header-card__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
 .node-header-card__config { color: var(--app-muted); font-weight: 650; }
@@ -384,27 +384,27 @@ onMounted(async () => {
 .node-header-card__main h1 { margin: 0; color: var(--app-text); font-size: 30px; line-height: 1.2; }
 .node-header-card__tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .node-props-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
-.node-prop-item { display: grid; gap: 8px; padding: 14px; border: 1px solid #e0e8e4; border-radius: 8px; background: #f8fbf9; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75); }
-.node-prop-label { color: #73877f; font-size: 12px; font-weight: 650; }
-.node-prop-value { color: #21302a; font-weight: 750; word-break: break-word; }
-.node-tabs { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid #e0e8e4; }
+.node-prop-item { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-sunken); box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent); }
+.node-prop-label { color: var(--app-faint); font-size: 12px; font-weight: 650; }
+.node-prop-value { color: var(--app-text-strong); font-weight: 750; word-break: break-word; }
+.node-tabs { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--app-border-soft); }
 .node-tabs__group { display: flex; flex-wrap: wrap; gap: 10px; }
 .node-tabs__group--right { justify-content: flex-end; }
-.node-tab { min-height: 40px; padding: 10px 16px; border: 1px solid #d8e1dd; border-radius: 8px; color: #4b5f58; background: #fff; text-decoration: none; font-weight: 700; transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease; }
-.node-tab--action { border-color: #bfd7d0; background: #f7fbf9; color: #2f5f57; }
-.node-tab:hover { transform: translateY(-1px); border-color: #9bc8bf; background: #f7fbf9; }
+.node-tab { min-height: 40px; padding: 10px 16px; border: 1px solid var(--app-border); border-radius: 8px; color: color-mix(in srgb, var(--app-text) 72%, var(--app-muted)); background: var(--app-surface); text-decoration: none; font-weight: 700; transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease; }
+.node-tab--action { border-color: var(--app-border-accent); background: var(--app-surface-interactive); color: color-mix(in srgb, var(--app-text) 84%, var(--app-primary)); }
+.node-tab:hover { transform: translateY(-1px); border-color: var(--app-border-accent); background: var(--app-surface-interactive); box-shadow: var(--app-shadow-sm); }
 .node-tab:focus-visible { outline: 0; box-shadow: var(--app-focus); }
-.node-tab--active { color: #0f7375; border-color: #0f8b8d; background: #eef8f7; }
-.view-feedback { padding: 18px 20px; border: 1px solid #d8e1dd; border-radius: 8px; background: #f8fbf9; color: #556a62; box-shadow: var(--app-shadow-sm); }
+.node-tab--active { color: var(--app-primary-strong); border-color: var(--app-primary); background: var(--app-surface-selected); }
+.view-feedback { padding: 18px 20px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-sunken); color: color-mix(in srgb, var(--app-text) 68%, var(--app-muted)); box-shadow: var(--app-shadow-sm); }
 .view-feedback--silent { min-height: 88px; background: transparent; border-color: transparent; box-shadow: none; }
-.view-feedback--error { border-color: #f0d4d4; background: #fff7f7; color: #9a4b4b; }
-.dialog-intro { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; padding: 14px; border: 1px solid #e1ebe7; border-radius: 8px; background: #f8fbf9; }
-.dialog-intro__icon { display: inline-grid; flex: 0 0 auto; place-items: center; width: 42px; height: 42px; border: 1px solid #bfe0da; border-radius: 8px; background: var(--app-primary-soft); color: var(--app-primary); }
+.view-feedback--error { border-color: var(--app-danger-border); background: var(--app-danger-soft); color: var(--app-danger-text); }
+.dialog-intro { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; padding: 14px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-sunken); }
+.dialog-intro__icon { display: inline-grid; flex: 0 0 auto; place-items: center; width: 42px; height: 42px; border: 1px solid var(--app-border-accent); border-radius: 8px; background: var(--app-primary-soft); color: var(--app-primary); }
 .dialog-intro h3 { margin: 0; color: var(--app-text); }
 .dialog-intro p { margin: 5px 0 0; color: var(--app-muted); line-height: 1.5; }
 .dialog-form { display: grid; gap: 2px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
-.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px; border: 1px solid #e1ebe7; border-radius: 8px; background: #fbfcfb; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-elevated); }
 .switch-row strong, .switch-row span { display: block; }
 .switch-row strong { color: var(--app-text); }
 .switch-row span { margin-top: 4px; color: var(--app-muted); font-size: 13px; }

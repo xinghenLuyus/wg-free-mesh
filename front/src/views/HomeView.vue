@@ -179,7 +179,7 @@ onMounted(async () => {
   border-radius: 8px;
   background:
     linear-gradient(135deg, rgba(15, 139, 141, 0.1), transparent 46%),
-    linear-gradient(180deg, #ffffff 0%, #f8fbf9 100%);
+    linear-gradient(180deg, var(--app-surface-elevated) 0%, var(--app-surface) 100%);
   box-shadow: var(--app-shadow-md);
 }
 
@@ -222,7 +222,7 @@ onMounted(async () => {
   padding: 18px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: linear-gradient(180deg, #ffffff 0%, #fbfcfb 100%);
+  background: linear-gradient(180deg, var(--app-surface-elevated) 0%, var(--app-surface) 100%);
   box-shadow: var(--app-shadow-sm);
   cursor: pointer;
   text-align: left;
@@ -234,7 +234,7 @@ onMounted(async () => {
 
 .config-card:hover {
   transform: translateY(-3px);
-  border-color: #9bc8bf;
+  border-color: var(--app-border-accent);
   box-shadow: var(--app-shadow-md);
 }
 
@@ -257,7 +257,7 @@ onMounted(async () => {
   place-items: center;
   width: 42px;
   height: 42px;
-  border: 1px solid #bfe0da;
+  border: 1px solid var(--app-border-accent);
   border-radius: 8px;
   background: var(--app-primary-soft);
   color: var(--app-primary);
@@ -270,7 +270,7 @@ onMounted(async () => {
 
 .config-card__body h3 {
   margin: 0;
-  color: #213029;
+  color: var(--app-text-strong);
   font-size: 20px;
   line-height: 1.25;
 }
@@ -291,9 +291,9 @@ onMounted(async () => {
 .config-card__meta div {
   min-width: 0;
   padding: 10px;
-  border: 1px solid #e1ebe7;
+  border: 1px solid var(--app-border-soft);
   border-radius: 8px;
-  background: #f7fbf9;
+  background: var(--app-surface-sunken);
 }
 
 .config-card__meta dt {
@@ -318,7 +318,7 @@ onMounted(async () => {
   padding: 24px;
   border: 1px dashed var(--app-border-strong);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--app-overlay);
   color: var(--app-muted);
   text-align: center;
 }
@@ -333,9 +333,9 @@ onMounted(async () => {
   gap: 12px;
   margin-bottom: 18px;
   padding: 14px;
-  border: 1px solid #e1ebe7;
+  border: 1px solid var(--app-border-soft);
   border-radius: 8px;
-  background: #f8fbf9;
+  background: var(--app-surface-sunken);
 }
 
 .dialog-intro h3 {
@@ -366,9 +366,9 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 16px;
   padding: 14px;
-  border: 1px solid #e1ebe7;
+  border: 1px solid var(--app-border-soft);
   border-radius: 8px;
-  background: #fbfcfb;
+  background: var(--app-surface-interactive);
 }
 
 .switch-row strong,

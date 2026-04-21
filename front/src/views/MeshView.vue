@@ -599,42 +599,42 @@ onMounted(async () => {
 .connection-list { display: grid; gap: 8px; }
 .mesh-card { min-width: 0; }
 .mesh-card--disabled .mesh-direction {
-  background: #f3f6f5;
+  background: var(--app-surface-sunken);
   box-shadow: none;
 }
 .mesh-card--disabled .mesh-direction__title,
 .mesh-card--disabled .mesh-direction dd,
 .mesh-card--disabled .peer-switch {
-  color: #8a9a94;
+  color: var(--app-faint);
 }
 .mesh-card--disabled .mesh-direction dt,
 .mesh-card--disabled .mesh-direction__actions {
   opacity: 0.72;
 }
-.peer-switch { display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 4px 8px; border: 1px solid #dce7e3; border-radius: 8px; background: #f8fbf9; color: #4b6259; font-size: 12px; font-weight: 750; }
-.mesh-direction { padding: 10px 12px; border: 1px solid #d8e1dd; border-radius: 8px; background: #ffffff; box-shadow: var(--app-shadow-sm); }
+.peer-switch { display: inline-flex; align-items: center; gap: 7px; min-height: 30px; padding: 4px 8px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-sunken); color: color-mix(in srgb, var(--app-text) 70%, var(--app-muted)); font-size: 12px; font-weight: 750; }
+.mesh-direction { padding: 10px 12px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface); box-shadow: var(--app-shadow-sm); }
 .mesh-direction__head { display: grid; grid-template-columns: minmax(180px, 1fr) auto; align-items: center; gap: 10px; }
 .mesh-direction__identity { min-width: 0; }
 .mesh-direction__title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.mesh-direction__title { color: #21302a; font-size: 17px; font-weight: 850; line-height: 1.25; }
+.mesh-direction__title { color: var(--app-text-strong); font-size: 17px; font-weight: 850; line-height: 1.25; }
 .mesh-direction__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .mesh-direction dl { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(220px, 1.5fr) minmax(80px, 0.6fr) minmax(70px, 0.5fr); gap: 10px; margin: 10px 0 0; }
-.mesh-direction dt { color: #73877f; font-size: 12px; font-weight: 650; }
-.mesh-direction dd { margin: 4px 0 0; overflow: hidden; color: #21302a; font-size: 13px; font-weight: 700; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
-.empty-state { display: grid; place-items: center; min-height: 170px; border: 1px dashed var(--app-border-strong); border-radius: 8px; background: rgba(255, 255, 255, 0.72); color: var(--app-muted); }
-.dialog-intro { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; padding: 14px; border: 1px solid #e1ebe7; border-radius: 8px; background: #f8fbf9; }
-.dialog-intro__icon { display: inline-grid; flex: 0 0 auto; place-items: center; width: 42px; height: 42px; border: 1px solid #bfe0da; border-radius: 8px; background: var(--app-primary-soft); color: var(--app-primary); }
+.mesh-direction dt { color: var(--app-faint); font-size: 12px; font-weight: 650; }
+.mesh-direction dd { margin: 4px 0 0; overflow: hidden; color: var(--app-text-strong); font-size: 13px; font-weight: 700; line-height: 1.35; text-overflow: ellipsis; white-space: nowrap; }
+.empty-state { display: grid; place-items: center; min-height: 170px; border: 1px dashed var(--app-border-strong); border-radius: 8px; background: color-mix(in srgb, var(--app-overlay) 85%, transparent); color: var(--app-muted); }
+.dialog-intro { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; padding: 14px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-sunken); }
+.dialog-intro__icon { display: inline-grid; flex: 0 0 auto; place-items: center; width: 42px; height: 42px; border: 1px solid var(--app-border-accent); border-radius: 8px; background: var(--app-primary-soft); color: var(--app-primary); }
 .dialog-intro h3 { margin: 0; color: var(--app-text); }
 .dialog-intro p { margin: 5px 0 0; color: var(--app-muted); line-height: 1.5; }
 .dialog-form { display: grid; gap: 2px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
 .field-hint { margin: 8px 0 0; color: var(--app-muted); font-size: 13px; line-height: 1.5; }
-.draft-warnings { display: grid; gap: 6px; margin: 0 0 10px; padding: 10px 12px; border: 1px solid #f0d9a6; border-radius: 8px; background: #fffaf0; color: #8a5a13; font-size: 13px; line-height: 1.5; }
-.connection-panel { display: grid; gap: 2px; margin: 8px 0 12px; padding: 14px; border: 1px solid #e1ebe7; border-radius: 8px; background: #fbfdfc; }
+.draft-warnings { display: grid; gap: 6px; margin: 0 0 10px; padding: 10px 12px; border: 1px solid var(--app-warning-border); border-radius: 8px; background: var(--app-warning-soft); color: var(--app-warning-text); font-size: 13px; line-height: 1.5; }
+.connection-panel { display: grid; gap: 2px; margin: 8px 0 12px; padding: 14px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-elevated); }
 .connection-panel__head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 8px; color: var(--app-text); }
 .connection-panel__head span { color: var(--app-muted); font-size: 13px; }
-.endpoint-summary { margin: -2px 0 12px; padding: 9px 10px; border-radius: 8px; background: #f3f8f6; color: #4a625a; font-size: 13px; line-height: 1.5; }
-.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px; border: 1px solid #e1ebe7; border-radius: 8px; background: #fff; }
+.endpoint-summary { margin: -2px 0 12px; padding: 9px 10px; border-radius: 8px; background: var(--app-info-soft); color: color-mix(in srgb, var(--app-text) 70%, var(--app-muted)); font-size: 13px; line-height: 1.5; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface); }
 .switch-row strong, .switch-row span { display: block; }
 .switch-row strong { color: var(--app-text); }
 .switch-row span { margin-top: 4px; color: var(--app-muted); font-size: 13px; }

@@ -133,8 +133,8 @@ onMounted(async () => {
 .template-toolbar h2 { margin: 0; color: var(--app-text); font-size: 22px; }
 .template-toolbar p { margin: 8px 0 0; color: var(--app-muted); line-height: 1.6; }
 .endpoint-panels { display: grid; gap: 20px; }
-.endpoint-card { display: grid; gap: 14px; padding: 16px; border: 1px solid #e0e8e4; border-radius: 8px; background: #ffffff; box-shadow: 0 8px 20px rgba(42, 65, 58, 0.045); }
-.endpoint-card__title { color: #213029; font-size: 17px; font-weight: 750; }
+.endpoint-card { display: grid; gap: 14px; padding: 16px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-elevated); box-shadow: var(--app-shadow-sm); }
+.endpoint-card__title { color: var(--app-text-strong); font-size: 17px; font-weight: 750; }
 .endpoint-controls { display: flex; flex-wrap: wrap; gap: 10px; }
 .empty-state { display: grid; place-items: center; min-height: 120px; border: 1px dashed var(--app-border-strong); border-radius: 8px; color: var(--app-muted); }
 @media (max-width: 860px) { .template-toolbar { flex-direction: column; align-items: stretch; } }
