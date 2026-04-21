@@ -238,7 +238,7 @@ class SQLiteStore:
             )
         return self.get_config(config.id)
 
-    def update_config(self, config_id: str, payload: dict[str, object]) -> Config:
+    def update_config(self, config_id: str, payload: dict[str, object]) -> dict[str, object]:
         current = self.get_config(config_id)
         updated = current.model_copy(
             update={
@@ -281,8 +281,40 @@ class SQLiteStore:
                     config_id,
                 ),
             )
+        node_ids = [node.id for node in self.list_nodes(config_id)]
+        affected_node_ids: set[str] = set(node_ids)
+        change_hints: list[dict[str, object]] = []
+
+        if current.default_listen_port != updated.default_listen_port:
+            nodes_by_id = {node.id: node for node in self.list_nodes(config_id)}
+            recalculated_node_ids = {
+                node.id for node in nodes_by_id.values() if node.listen_port is None
+            }
+            for link in self.list_peer_links(config_id):
+                peer_node = nodes_by_id.get(link.peer_node_id)
+                if (
+                    link.endpoint_mode == EndpointMode.auto
+                    and peer_node is not None
+                    and peer_node.listen_port is None
+                ):
+                    recalculated_node_ids.add(link.local_node_id)
+            if recalculated_node_ids:
+                change_hints.append(
+                    {
+                        "code": "CONFIG_ENDPOINTS_RECALCULATED",
+                        "level": "info",
+                        "count": len(recalculated_node_ids),
+                    }
+                )
+                affected_node_ids.update(recalculated_node_ids)
+
         self.refresh_config_state(config_id)
-        return self.get_config(config_id)
+        config = self.get_config(config_id)
+        return {
+            **config.model_dump(mode="json"),
+            "change_hints": change_hints,
+            "affected_node_ids": sorted(affected_node_ids),
+        }
 
     def delete_config(self, config_id: str) -> None:
         self.get_config(config_id)
@@ -332,25 +364,28 @@ class SQLiteStore:
         raise AppError("IP_POOL_EXHAUSTED", "No available address in the virtual subnet", 400)
 
     def validate_virtual_ip(self, config_id: str, value: str, exclude_node_id: str | None = None) -> dict[str, object]:
-        config = self.get_config(config_id)
         if not value.strip():
             return {"valid": False, "warning": "Virtual IP is required"}
         try:
-            network = ipaddress.ip_network(config.virtual_subnet, strict=False)
             iface = ipaddress.ip_interface(value)
         except ValueError:
             return {"valid": False, "warning": "IP format is invalid"}
-        if iface.ip not in network:
-            return {"valid": False, "warning": f"{value} is not in subnet {config.virtual_subnet}"}
         for node in self.list_nodes(config_id):
             if node.id == exclude_node_id:
                 continue
             if node.virtual_ip == value:
                 return {"valid": False, "warning": f"{value} is already used by node {node.name}"}
+            if node.virtual_ip:
+                try:
+                    existing = ipaddress.ip_interface(node.virtual_ip)
+                except ValueError:
+                    continue
+                if existing.ip == iface.ip:
+                    return {"valid": False, "warning": f"{iface.ip} is already used by node {node.name}"}
         return {"valid": True, "warning": ""}
 
     def create_node(self, config_id: str, payload: dict[str, object]) -> Node:
-        self.get_config(config_id)
+        config = self.get_config(config_id)
         private_key, generated_public = generate_key_pair()
         private_key = str(payload.get("private_key") or "").strip() or private_key
         public_key = str(payload.get("public_key") or "").strip() or derive_public_key(private_key) or generated_public
@@ -366,7 +401,7 @@ class SQLiteStore:
             virtual_ip=str(payload.get("virtual_ip") or "") or self.suggest_virtual_ip(config_id),
             mtu=_int_or_none(payload.get("mtu")),
             dns=str(payload.get("dns") or "") or None,
-            auto_sync=bool(payload.get("auto_sync", True)),
+            auto_sync=config.auto_sync if payload.get("auto_sync") is None else bool(payload.get("auto_sync")),
             node_type=_node_type_value(payload.get("node_type", NodeType.dynamic)),
             public_key=public_key,
             private_key=private_key,
@@ -436,7 +471,7 @@ class SQLiteStore:
         self.refresh_config_state(config_id)
         return self.get_node(node.id)
 
-    def update_node(self, node_id: str, payload: dict[str, object]) -> Node:
+    def update_node(self, node_id: str, payload: dict[str, object]) -> dict[str, object]:
         current = self.get_node(node_id)
         updated = current.model_copy(
             update={
@@ -462,7 +497,7 @@ class SQLiteStore:
         validation = self.validate_virtual_ip(current.config_id, updated.virtual_ip or "", exclude_node_id=node_id)
         if not validation["valid"]:
             raise AppError("INVALID_VIRTUAL_IP", str(validation["warning"]), 400)
-        self._validate_endpoint_references(current.config_id, current, updated)
+        dependency_changes = self._validate_endpoint_references(current.config_id, current, updated)
         with connect() as connection:
             connection.execute(
                 """
@@ -488,8 +523,20 @@ class SQLiteStore:
                     node_id,
                 ),
             )
+            keepalive_clear_ids = cast(list[str], dependency_changes["keepalive_clear_ids"])
+            if keepalive_clear_ids:
+                placeholders = ",".join("?" for _ in keepalive_clear_ids)
+                connection.execute(
+                    f"UPDATE peer_links SET persistent_keepalive = NULL, updated_at = ? WHERE id IN ({placeholders})",
+                    (updated.updated_at.isoformat(), *keepalive_clear_ids),
+                )
         self.refresh_config_state(current.config_id)
-        return self.get_node(node_id)
+        node = self.get_node(node_id)
+        return {
+            **node.model_dump(mode="json"),
+            "change_hints": dependency_changes["change_hints"],
+            "affected_node_ids": dependency_changes["affected_node_ids"],
+        }
 
     def list_tags(self, config_id: str) -> list[dict[str, object]]:
         self.get_config(config_id)
@@ -606,6 +653,93 @@ class SQLiteStore:
             ).fetchall()
         return [_peer_link_from_row(row) for row in rows]
 
+    def _peer_link_groups(self, config_id: str) -> dict[str, list[PeerLink]]:
+        groups: dict[str, list[PeerLink]] = {}
+        for link in self.list_peer_links(config_id):
+            groups.setdefault(link.link_group_id, []).append(link)
+        return groups
+
+    def _link_endpoint_state(self, config: Config, peer_node: Node, link: PeerLink | None) -> str:
+        if link is None:
+            return "missing"
+        if link.endpoint_mode == EndpointMode.none:
+            return "disabled"
+        return "resolved" if self._resolve_endpoint(config, peer_node, link) else "unresolved"
+
+    def _connection_integrity(
+        self,
+        config: Config,
+        local_node: Node,
+        peer_node: Node,
+        forward: PeerLink | None,
+        reverse: PeerLink | None,
+    ) -> dict[str, object]:
+        if forward is None or reverse is None:
+            return {"status": "healthy", "message": ""}
+
+        forward_state = self._link_endpoint_state(config, peer_node, forward)
+        reverse_state = self._link_endpoint_state(config, local_node, reverse)
+        if forward_state == "unresolved" and reverse_state == "unresolved":
+            return {
+                "status": "broken",
+                "message": f"Mesh link between {local_node.name} and {peer_node.name} is broken because both sides have no public endpoint.",
+            }
+        return {"status": "healthy", "message": ""}
+
+    def _reconcile_node_dependency_changes(self, config_id: str, current: Node, updated: Node) -> dict[str, object]:
+        links = self.list_peer_links(config_id)
+        nodes_by_id = {node.id: node for node in self.list_nodes(config_id)}
+        nodes_by_id[current.id] = updated
+        config = self.get_config(config_id)
+
+        affected_node_ids: set[str] = {current.id}
+        keepalive_clear_ids: set[str] = set()
+        related_group_ids: set[str] = set()
+        recalculated_endpoint_node_ids: set[str] = set()
+        hints: list[dict[str, object]] = []
+
+        public_endpoint_changed = (
+            current.ipv4_address != updated.ipv4_address
+            or current.ipv6_address != updated.ipv6_address
+            or current.listen_port != updated.listen_port
+        )
+        virtual_ip_changed = current.virtual_ip != updated.virtual_ip
+
+        for link in links:
+            if current.id not in {link.local_node_id, link.peer_node_id}:
+                continue
+            affected_node_ids.add(link.local_node_id)
+            affected_node_ids.add(link.peer_node_id)
+            related_group_ids.add(link.link_group_id)
+            if public_endpoint_changed and link.peer_node_id == current.id and link.endpoint_mode == EndpointMode.auto:
+                recalculated_endpoint_node_ids.add(link.local_node_id)
+                if link.persistent_keepalive is not None and self._resolve_endpoint(config, updated, link) is None:
+                    keepalive_clear_ids.add(link.id)
+
+        if public_endpoint_changed and recalculated_endpoint_node_ids:
+            hints.append(
+                {
+                    "code": "NODE_ENDPOINTS_RECALCULATED",
+                    "level": "info",
+                    "count": len(recalculated_endpoint_node_ids),
+                    "cleared_keepalive_count": len(keepalive_clear_ids),
+                }
+            )
+        if virtual_ip_changed and related_group_ids:
+            hints.append(
+                {
+                    "code": "VIRTUAL_IP_CHANGED_REVIEW_ALLOWED_IPS",
+                    "level": "warning",
+                    "count": len(related_group_ids),
+                }
+            )
+
+        return {
+            "affected_node_ids": sorted(affected_node_ids),
+            "keepalive_clear_ids": sorted(keepalive_clear_ids),
+            "change_hints": hints,
+        }
+
     def build_peer_link_draft(
         self,
         config_id: str,
@@ -648,6 +782,7 @@ class SQLiteStore:
             raise AppError("NODE_CONFIG_MISMATCH", "Node does not belong to this config", 400)
 
         links = self.list_peer_links(config_id)
+        nodes_by_id = {item.id: item for item in self.list_nodes(config_id)}
         reverse_by_group: dict[str, PeerLink] = {}
         for link in links:
             if link.peer_node_id == node_id:
@@ -658,7 +793,8 @@ class SQLiteStore:
             if link.local_node_id != node_id:
                 continue
             reverse = reverse_by_group.get(link.link_group_id)
-            peer_node = self.get_node(link.peer_node_id)
+            peer_node = nodes_by_id[link.peer_node_id]
+            integrity = self._connection_integrity(config, node, peer_node, link, reverse)
             connections.append(
                 {
                     "link_group_id": link.link_group_id,
@@ -670,6 +806,8 @@ class SQLiteStore:
                     "updated_at": max(link.updated_at, reverse.updated_at if reverse else link.updated_at).isoformat(),
                     "forward": self._peer_link_direction_card(config, node, peer_node, link),
                     "reverse": self._peer_link_direction_card(config, peer_node, node, reverse) if reverse else None,
+                    "integrity_status": integrity["status"],
+                    "integrity_message": integrity["message"],
                 }
             )
         return {
@@ -1035,6 +1173,8 @@ class SQLiteStore:
         config = self.get_config(config_id)
         peer_links = self.list_peer_links(config_id)
         nodes = self.list_nodes(config_id)
+        mesh_validation = self._validate_mesh_payload(config_id)
+        topology_valid = bool(mesh_validation["valid"])
         for node in nodes:
             preview = self.build_wg_preview(config_id, node.id)
             with connect() as connection:
@@ -1047,7 +1187,7 @@ class SQLiteStore:
                 staged_sha = state.staged_sha256
                 staged_version = state.staged_version
                 now = now_utc().isoformat()
-                if config.auto_sync and node.auto_sync:
+                if node.auto_sync and topology_valid:
                     staged_text = desired_text
                     staged_sha = desired_sha
                     staged_version = desired_version
@@ -1066,7 +1206,7 @@ class SQLiteStore:
                         staged_text,
                         staged_sha,
                         staged_version,
-                        now if config.auto_sync and node.auto_sync else state.staged_updated_at.isoformat() if state.staged_updated_at else None,
+                        now if node.auto_sync and topology_valid else state.staged_updated_at.isoformat() if state.staged_updated_at else None,
                         now,
                         node.id,
                     ),
@@ -1101,9 +1241,11 @@ class SQLiteStore:
         return result
 
     def get_sync_status_for_node(self, config_id: str, node_id: str) -> dict[str, object]:
+        self.get_config(config_id)
         node = self.get_node(node_id)
         state = self.get_node_config_state(config_id, node_id)
         runtime = self.get_runtime(config_id, node_id)
+        mesh_validation = self._validate_mesh_payload(config_id)
         return {
             "node_id": node.id,
             "node_name": node.name,
@@ -1119,6 +1261,8 @@ class SQLiteStore:
             "reported_local_version": state.reported_local_version,
             "status": self._sync_status_from_state(state),
             "runtime_status": runtime.config_sync_state,
+            "topology_valid": bool(mesh_validation["valid"]),
+            "topology_messages": cast(list[str], mesh_validation["errors"] if not mesh_validation["valid"] else mesh_validation["warnings"]),
         }
 
     def read_applied_conf(self, config_id: str, node_id: str) -> dict[str, object]:
@@ -1171,12 +1315,18 @@ class SQLiteStore:
 
     def sync_node(self, config_id: str, node_id: str, requested_by: str = "manual") -> dict[str, object]:
         del requested_by
+        mesh_validation = self._validate_mesh_payload(config_id)
+        if not mesh_validation["valid"]:
+            raise AppError("TOPOLOGY_INVALID", "Please resolve topology validation before syncing.", 409, {"messages": mesh_validation["errors"]})
         preview = self.build_wg_preview(config_id, node_id)
         result = self.save_applied_conf(config_id, node_id, str(preview["content"]))
         state = self.get_node_config_state(config_id, node_id)
         return {"message": "Node config synced", "staged_version": state.staged_version, "staged_sha256": state.staged_sha256, "sync_status": result}
 
     def sync_all(self, config_id: str) -> dict[str, object]:
+        mesh_validation = self._validate_mesh_payload(config_id)
+        if not mesh_validation["valid"]:
+            raise AppError("TOPOLOGY_INVALID", "Please resolve topology validation before syncing.", 409, {"messages": mesh_validation["errors"]})
         synced: list[str] = []
         for node in self.list_nodes(config_id):
             self.sync_node(config_id, node.id, requested_by="sync-all")
@@ -1494,8 +1644,8 @@ class SQLiteStore:
             "keepalive_display": self._keepalive_display(effective_keepalive, has_endpoint),
         }
 
-    def _validate_endpoint_references(self, config_id: str, current: Node, updated: Node) -> None:
-        return None
+    def _validate_endpoint_references(self, config_id: str, current: Node, updated: Node) -> dict[str, object]:
+        return self._reconcile_node_dependency_changes(config_id, current, updated)
 
     def _validate_link_endpoint_settings(
         self,
@@ -1510,19 +1660,36 @@ class SQLiteStore:
             return
 
     def _validate_mesh_payload(self, config_id: str) -> dict[str, object]:
-        messages: list[str] = []
+        errors: list[str] = []
+        warnings: list[str] = []
         links = self.list_peer_links(config_id)
-        nodes = {node.id: node for node in self.list_nodes(config_id)}
-        if not links:
-            messages.append("Current config has no peer links.")
-        for link in links:
-            if link.local_node_id == link.peer_node_id:
-                messages.append(f"Node {link.local_node_id} has a self link.")
-            if link.peer_node_id not in nodes:
-                messages.append(f"Link {link.id} points to a missing node.")
-            if not link.allowed_ips:
-                messages.append(f"Link {link.id} is missing allowed_ips.")
-        return {"valid": not messages, "messages": messages or ["Topology check passed."]}
+        node_list = self.list_nodes(config_id)
+        nodes = {node.id: node for node in node_list}
+        config = self.get_config(config_id)
+        if len(node_list) >= 2 and not links:
+            warnings.append("Current config has no peer links.")
+
+        for group_id, group_links in self._peer_link_groups(config_id).items():
+            if not group_links:
+                continue
+            forward = next((item for item in group_links if item.direction == "forward"), group_links[0])
+            reverse = next((item for item in group_links if item.direction == "reverse"), None)
+            local_node = nodes.get(forward.local_node_id)
+            peer_node = nodes.get(forward.peer_node_id)
+            if local_node is None or peer_node is None:
+                continue
+            integrity = self._connection_integrity(config, local_node, peer_node, forward, reverse)
+            group_enabled = forward.enabled or (reverse.enabled if reverse else False)
+            if group_enabled and str(integrity["status"]) == "broken":
+                errors.append(str(integrity["message"]) or f"Mesh link group {group_id} is broken.")
+
+        messages = errors or warnings or ["Topology check passed."]
+        return {
+            "valid": not errors,
+            "messages": messages,
+            "errors": errors,
+            "warnings": warnings,
+        }
 
     def _resolve_endpoint(self, config: Config, peer_node: Node, link: PeerLink) -> str | None:
         if link.endpoint_mode == "none":

@@ -20,6 +20,7 @@
 - `validation.py`
   - `strip_required_text(...)` / `strip_optional_text(...)`：基础字符串清洗。
   - `normalize_string_list(...)`：字符串数组去空、去重与标准化。
+  - `normalize_cidr(...)`：校验并标准化 CIDR 网段字符串，供配置创建与更新复用。
 
 ## 约定
 

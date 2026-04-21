@@ -61,6 +61,18 @@ export interface ConfigRead {
   updated_at: string
 }
 
+export interface ChangeHintRead {
+  code: string
+  level: 'info' | 'warning'
+  count?: number
+  cleared_keepalive_count?: number
+}
+
+export interface ConfigMutationRead extends ConfigRead {
+  change_hints: ChangeHintRead[]
+  affected_node_ids: string[]
+}
+
 export interface ConfigOverviewNodeCardRead {
   id: string
   name: string
@@ -107,6 +119,11 @@ export interface NodeRead {
   tags: string[]
   created_at: string
   updated_at: string
+}
+
+export interface NodeMutationRead extends NodeRead {
+  change_hints: ChangeHintRead[]
+  affected_node_ids: string[]
 }
 
 export interface TagRead {
@@ -183,6 +200,8 @@ export interface MeshConnectionRead {
   updated_at: string
   forward: MeshConnectionDirectionRead
   reverse: MeshConnectionDirectionRead | null
+  integrity_status: 'healthy' | 'broken'
+  integrity_message: string
 }
 
 export interface MeshWorkspaceRead {
@@ -194,6 +213,8 @@ export interface MeshWorkspaceRead {
 export interface MeshValidationRead {
   valid: boolean
   messages: string[]
+  errors: string[]
+  warnings: string[]
 }
 
 export interface WgPreviewRead {
@@ -228,6 +249,8 @@ export interface SyncStatusRead {
   reported_local_version: number
   status: string
   runtime_status: string
+  topology_valid: boolean
+  topology_messages: string[]
 }
 
 export interface RuntimeSnapshotItem {

@@ -10,6 +10,7 @@ import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
 import type { ConfigRead, EndpointStatusRead, NodeRead, NodeWorkspaceUpdatedPayload, RealtimeEvent, TagRead } from '@/types/api'
+import { notifyChangeHints } from '@/utils/changeHints'
 import { requiredTextRule } from '@/utils/formRules'
 import { normalizeTags, toNodeUpdatePayload } from '@/utils/nodePayload'
 import { notify } from '@/utils/notify'
@@ -145,7 +146,7 @@ async function saveNodeSettings() {
   const valid = await settingsFormRef.value?.validate().catch(() => false)
   if (!valid) return
   try {
-    await api.updateNode(node.value.id, toNodeUpdatePayload(node.value, {
+    const result = await api.updateNode(node.value.id, toNodeUpdatePayload(node.value, {
       name: settingsForm.name,
       ipv4_address: settingsForm.ipv4_address || null,
       ipv6_address: settingsForm.ipv6_address || null,
@@ -157,11 +158,12 @@ async function saveNodeSettings() {
       node_type: settingsForm.node_type,
       public_key: settingsForm.public_key,
       private_key: settingsForm.private_key,
+      tags: normalizeTags(settingsForm.tags),
     }))
-    await api.replaceNodeTags(node.value.id, normalizeTags(settingsForm.tags))
     settingsVisible.value = false
     await load()
     notify.success(t('nodeWorkspace.settingsSaved'))
+    notifyChangeHints(result.change_hints)
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.settingsSaveFailed'))
   }

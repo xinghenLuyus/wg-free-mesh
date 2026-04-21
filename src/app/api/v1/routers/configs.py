@@ -5,8 +5,8 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.v1.routing import SessionProtectedAPIRouter
-from app.core.validation import strip_optional_text, strip_required_text
 from app.core.responses import ApiResponse, ok
+from app.core.validation import normalize_cidr, strip_optional_text, strip_required_text
 from app.services.control_plane_service import control_plane_service
 
 router = SessionProtectedAPIRouter(prefix="/configs", tags=["configs"])
@@ -31,6 +31,11 @@ class ConfigCreateRequest(BaseModel):
     @classmethod
     def normalize_text(cls, value: str | None) -> str:
         return str(value or "").strip()
+
+    @field_validator("virtual_subnet")
+    @classmethod
+    def validate_virtual_subnet(cls, value: str) -> str:
+        return normalize_cidr(value, "Virtual subnet")
 
     @field_validator("default_dns", mode="before")
     @classmethod
@@ -63,11 +68,15 @@ def get_config(config_id: str) -> ApiResponse[dict[str, Any]]:
 
 @router.put("/{config_id}")
 async def update_config(config_id: str, payload: ConfigUpdateRequest) -> ApiResponse[dict[str, Any]]:
-    config = control_plane_service.update_config(config_id, payload.model_dump())
+    result = control_plane_service.update_config(config_id, payload.model_dump())
     await control_plane_service.publish_configs()
     await control_plane_service.publish_config_overview(config_id)
+    for node_id in result.get("affected_node_ids", []):
+        await control_plane_service.publish_node_workspace(config_id, str(node_id))
+        await control_plane_service.publish_node_apply(config_id, str(node_id))
+        await control_plane_service.publish_mesh_workspace(config_id, str(node_id))
     await control_plane_service.publish_system_status()
-    return ok(config.model_dump(mode="json"))
+    return ok(result)
 
 
 @router.delete("/{config_id}")

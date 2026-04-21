@@ -9,7 +9,7 @@ import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
 import type { ConfigListUpdatedPayload, ConfigRead, RealtimeEvent } from '@/types/api'
-import { requiredTextRule } from '@/utils/formRules'
+import { cidrRule, requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
 
 const router = useRouter()
@@ -35,7 +35,7 @@ const form = reactive({
 })
 const formRules: FormRules<typeof form> = {
   name: [requiredTextRule('fields.name')],
-  virtual_subnet: [requiredTextRule('home.virtualSubnetField')],
+  virtual_subnet: [cidrRule('home.virtualSubnetField')],
 }
 
 async function load() {

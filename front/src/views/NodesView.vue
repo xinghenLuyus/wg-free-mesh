@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import type { ConfigRead, NodeRead } from '@/types/api'
+import { notifyChangeHints } from '@/utils/changeHints'
 import { notify } from '@/utils/notify'
 
 const route = useRoute()
@@ -104,8 +105,9 @@ async function autofillVirtualIp() {
 async function submit() {
   try {
     if (editingNodeId.value) {
-      await api.updateNode(editingNodeId.value, form)
+      const result = await api.updateNode(editingNodeId.value, form)
       notify.success(t('nodes.saved'))
+      notifyChangeHints(result.change_hints)
     } else {
       await api.createNode(String(route.params.configId), form)
       notify.success(t('nodes.created'))

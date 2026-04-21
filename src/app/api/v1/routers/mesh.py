@@ -126,6 +126,8 @@ class MeshConnectionResponse(BaseModel):
     updated_at: str
     forward: MeshConnectionDirectionResponse
     reverse: MeshConnectionDirectionResponse | None
+    integrity_status: str
+    integrity_message: str
 
 
 class MeshWorkspaceResponse(BaseModel):

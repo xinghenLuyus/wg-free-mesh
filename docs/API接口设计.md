@@ -182,6 +182,8 @@ Authorization: Bearer <access_token>
   - `default_mtu`
   - `default_dns`
   - `auto_sync`
+- 约束：
+  - `virtual_subnet` 必须是合法的 CIDR 网段字符串
 
 ### `GET /api/v1/configs/{config_id}`
 
@@ -190,6 +192,15 @@ Authorization: Bearer <access_token>
 ### `PUT /api/v1/configs/{config_id}`
 
 - 用途：更新配置
+- 响应会额外返回：
+  - `change_hints`
+  - `affected_node_ids`
+
+说明：
+
+- `virtual_subnet` 当前仅作为推荐虚拟 IP 的来源，不再作为节点虚拟 IP 的硬性限制边界。
+- 为了保证推荐虚拟 IP 能力稳定可用，`virtual_subnet` 仍必须保存为合法的 CIDR 网段字符串。
+- 当 `default_listen_port` 变更导致一批端点需要按默认端口重算时，后端会通过 `change_hints` 返回提示信息。
 
 ### `DELETE /api/v1/configs/{config_id}`
 
@@ -247,6 +258,16 @@ Authorization: Bearer <access_token>
 ### `PUT /api/v1/nodes/{node_id}`
 
 - 用途：更新节点
+- 响应会额外返回：
+  - `change_hints`
+  - `affected_node_ids`
+
+说明：
+
+- 节点更新会经过后端依赖钩子，扫描受影响的 Mesh 连接。
+- 节点设置中的基础字段和 `tags` 应通过同一次 `PUT /api/v1/nodes/{node_id}` 保存，避免前端拆成多次请求造成部分成功、部分失败。
+- 当公网入口或监听端口变化导致相关 auto Endpoint 重算时，后端会同步清空已失效的 `persistent_keepalive`。
+- 当 `virtual_ip` 变更时，后端不会自动改写 `allowed_ips`，只会返回提示，由用户手工确认。
 
 ### `DELETE /api/v1/nodes/{node_id}`
 
@@ -315,7 +336,15 @@ Authorization: Bearer <access_token>
 - `connections` 按 `link_group_id` 聚合双向连接。
 - 每个连接包含对端节点、启用状态、PSK 是否配置、备注、更新时间、主向参数和反向参数。
 - 主向表示当前节点到对端节点，反向表示对端节点到当前节点。
+- 每个连接额外返回：
+  - `integrity_status`：`healthy | broken`
+  - `integrity_message`
 - 前端不得自行从两条 peer link 拼接 Mesh 连接卡片。
+
+说明补充：
+
+- 当一组 Mesh 双向连接在需要 Endpoint 的情况下两侧都无法解析公网入口时，后端会把该连接标记为 `broken`。
+- `broken` 连接不自动删除，而是保留参数、前端显示红色标签，并由拓扑校验报错。
 
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/peer-link-draft`
 
@@ -400,6 +429,24 @@ Authorization: Bearer <access_token>
 ### `POST /api/v1/configs/{config_id}/mesh/validate`
 
 - 用途：校验当前配置 mesh 是否存在明显问题
+- 响应：
+  - `valid`
+  - `messages`
+  - `errors`
+  - `warnings`
+
+说明：
+
+- `errors` 表示真正导致拓扑校验失败的问题。
+- `warnings` 表示提示型信息，不会单独让拓扑失败。
+- 当前拓扑校验只保留正常业务流里真正有意义的结果：
+  - Mesh 连接断裂会进入 `errors`
+  - 配置存在节点但还没有任何 Peer 连接会进入 `warnings`
+- 那些已经在正常写入链路中被后端业务函数拦住的情况，不再重复由拓扑校验兜底。
+
+同步约束：
+
+- 只要 `mesh/validate` 返回 `valid=false`，该配置下所有节点的系统态到同步态同步都必须视为阻塞状态。
 
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/wg-preview`
 
@@ -414,6 +461,14 @@ Authorization: Bearer <access_token>
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/sync-status`
 
 - 用途：获取单个节点同步状态
+- 返回补充：
+  - `topology_valid`
+  - `topology_messages`
+
+说明：
+
+- 当 `topology_valid=false` 时，前端必须禁用“自动同步”和“立即同步”入口。
+- `topology_messages` 用于直接展示当前阻塞同步的拓扑问题。
 
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/applied-conf`
 
@@ -449,10 +504,12 @@ Authorization: Bearer <access_token>
 ### `POST /api/v1/configs/{config_id}/nodes/{node_id}/sync`
 
 - 用途：同步单个节点配置
+- 约束：当拓扑校验失败时，后端必须拒绝执行并返回 `TOPOLOGY_INVALID`
 
 ### `POST /api/v1/configs/{config_id}/sync-all`
 
 - 用途：同步整个配置下全部节点
+- 约束：当拓扑校验失败时，后端必须拒绝执行并返回 `TOPOLOGY_INVALID`
 
 ## 端点控制与运行状态
 

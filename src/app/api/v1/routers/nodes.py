@@ -21,7 +21,7 @@ class NodeRequest(BaseModel):
     virtual_ip: str | None = None
     mtu: int | None = Field(default=None, ge=576, le=65535)
     dns: str | None = None
-    auto_sync: bool = True
+    auto_sync: bool | None = None
     node_type: str = "dynamic"
     public_key: str | None = None
     private_key: str | None = None
@@ -123,14 +123,17 @@ def get_node(node_id: str) -> ApiResponse[dict[str, Any]]:
 
 @router.put("/nodes/{node_id}")
 async def update_node(node_id: str, payload: NodeRequest) -> ApiResponse[dict[str, Any]]:
-    node = control_plane_service.update_node(node_id, payload.model_dump())
+    result = control_plane_service.update_node(node_id, payload.model_dump())
+    node_config_id = str(result["config_id"])
+    affected_node_ids = [str(item) for item in result.get("affected_node_ids", [result["id"]])]
     await control_plane_service.publish_configs()
-    await control_plane_service.publish_config_overview(node.config_id)
-    await control_plane_service.publish_node_workspace(node.config_id, node.id)
-    await control_plane_service.publish_node_apply(node.config_id, node.id)
-    await control_plane_service.publish_mesh_workspace(node.config_id, node.id)
+    await control_plane_service.publish_config_overview(node_config_id)
+    for affected_node_id in affected_node_ids:
+        await control_plane_service.publish_node_workspace(node_config_id, affected_node_id)
+        await control_plane_service.publish_node_apply(node_config_id, affected_node_id)
+        await control_plane_service.publish_mesh_workspace(node_config_id, affected_node_id)
     await control_plane_service.publish_system_status()
-    return ok(node.model_dump(mode="json"))
+    return ok(result)
 
 
 @router.get("/configs/{config_id}/tags")

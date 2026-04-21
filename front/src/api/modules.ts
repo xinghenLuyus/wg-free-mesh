@@ -1,5 +1,6 @@
 import { request } from '@/api/client'
 import type {
+  ConfigMutationRead,
   ConfigOverviewRead,
   ConfigRead,
   ControlLogRead,
@@ -9,6 +10,7 @@ import type {
   MeshValidationRead,
   MeshWorkspaceRead,
   MqttSettingsRead,
+  NodeMutationRead,
   NodeRead,
   PeerLinkDraftRead,
   PeerLinkRead,
@@ -49,7 +51,7 @@ export const api = {
   createConfig: (payload: Record<string, unknown>) =>
     request<ConfigRead>('/configs', { method: 'POST', data: payload }),
   updateConfig: (configId: string, payload: Record<string, unknown>) =>
-    request<ConfigRead>(`/configs/${configId}`, { method: 'PUT', data: payload }),
+    request<ConfigMutationRead>(`/configs/${configId}`, { method: 'PUT', data: payload }),
   deleteConfig: (configId: string) =>
     request<{ message: string }>(`/configs/${configId}`, { method: 'DELETE' }),
 
@@ -58,7 +60,7 @@ export const api = {
   createNode: (configId: string, payload: Record<string, unknown>) =>
     request<NodeRead>(`/configs/${configId}/nodes`, { method: 'POST', data: payload }),
   updateNode: (nodeId: string, payload: Record<string, unknown>) =>
-    request<NodeRead>(`/nodes/${nodeId}`, { method: 'PUT', data: payload }),
+    request<NodeMutationRead>(`/nodes/${nodeId}`, { method: 'PUT', data: payload }),
   deleteNode: (nodeId: string) =>
     request<{ message: string }>(`/nodes/${nodeId}`, { method: 'DELETE' }),
   tags: (configId: string) => request<TagRead[]>(`/configs/${configId}/tags`),

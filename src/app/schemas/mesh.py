@@ -29,3 +29,5 @@ class MeshLinkRead(BaseModel):
 class MeshValidationRead(BaseModel):
     valid: bool
     messages: list[str]
+    errors: list[str] = []
+    warnings: list[str] = []

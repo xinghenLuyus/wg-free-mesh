@@ -10,7 +10,8 @@ import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
 import type { ConfigOverviewNodeCardRead, ConfigOverviewRead, ConfigOverviewUpdatedPayload, NodeRead, RealtimeEvent, TagRead } from '@/types/api'
-import { requiredTextRule } from '@/utils/formRules'
+import { notifyChangeHints } from '@/utils/changeHints'
+import { cidrRule, requiredTextRule } from '@/utils/formRules'
 import { normalizeTags } from '@/utils/nodePayload'
 import { notify } from '@/utils/notify'
 
@@ -74,7 +75,7 @@ const createForm = reactive({
 })
 const settingsRules: FormRules<typeof settingsForm> = {
   name: [requiredTextRule('fields.name')],
-  virtual_subnet: [requiredTextRule('configOverview.virtualSubnet')],
+  virtual_subnet: [cidrRule('configOverview.virtualSubnet')],
 }
 const createRules: FormRules<typeof createForm> = {
   name: [requiredTextRule('fields.name')],
@@ -275,10 +276,11 @@ async function saveSettings() {
   const valid = await settingsFormRef.value?.validate().catch(() => false)
   if (!valid) return
   try {
-    await api.updateConfig(String(route.params.configId), { ...settingsForm })
+    const result = await api.updateConfig(String(route.params.configId), { ...settingsForm })
     settingsVisible.value = false
     await load()
     notify.success(t('configOverview.configSaved'))
+    notifyChangeHints(result.change_hints)
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('configOverview.configSaveFailed'))
   }

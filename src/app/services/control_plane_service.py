@@ -231,19 +231,7 @@ class ControlPlaneService:
         store.delete_peer_link_group(group_id)
 
     def validate_mesh(self, config_id: str) -> dict[str, object]:
-        messages: list[str] = []
-        links = store.list_peer_links(config_id)
-        nodes = {node.id: node for node in store.list_nodes(config_id)}
-        if not links:
-            messages.append("Current config has no peer links.")
-        for link in links:
-            if link.local_node_id == link.peer_node_id:
-                messages.append(f"Node {link.local_node_id} has a self link.")
-            if link.peer_node_id not in nodes:
-                messages.append(f"Link {link.id} points to a missing node.")
-            if not link.allowed_ips:
-                messages.append(f"Link {link.id} is missing allowed_ips.")
-        return {"valid": not messages, "messages": messages or ["Topology check passed."]}
+        return store._validate_mesh_payload(config_id)
 
     def build_wg_preview(self, config_id: str, node_id: str):
         return store.build_wg_preview(config_id, node_id)

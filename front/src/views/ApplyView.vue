@@ -7,6 +7,7 @@ import { useRoute } from 'vue-router'
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
+import { translateMeshText } from '@/utils/meshText'
 import { toNodeUpdatePayload } from '@/utils/nodePayload'
 import { notify } from '@/utils/notify'
 import type { NodeApplyUpdatedPayload, RealtimeEvent, SyncStatusRead } from '@/types/api'
@@ -38,6 +39,12 @@ const appliedState = reactive({
 })
 
 const currentNodeId = computed(() => String(route.params.nodeId))
+const topologyBlocked = computed(() => syncStatus.value ? !syncStatus.value.topology_valid : false)
+const topologyMessages = computed(() => syncStatus.value?.topology_messages ?? [])
+
+function meshText(message: string) {
+  return translateMeshText(message, t)
+}
 
 async function loadNodeState() {
   const ticket = ++loadTicket
@@ -77,9 +84,13 @@ async function saveApplied() {
 
 async function syncNode() {
   const configId = String(route.params.configId)
-  await api.syncNode(configId, currentNodeId.value)
-  await loadNodeState()
-  notify.success(t('apply.synced'))
+  try {
+    await api.syncNode(configId, currentNodeId.value)
+    await loadNodeState()
+    notify.success(t('apply.synced'))
+  } catch (error) {
+    notify.error(error instanceof ApiClientError ? error.message : t('apply.syncFailed'))
+  }
 }
 
 async function toggleAutoSync(nextValue: boolean | string | number) {
@@ -89,9 +100,7 @@ async function toggleAutoSync(nextValue: boolean | string | number) {
     autoSyncSaving.value = true
     const currentNode = await api.node(nodeId)
     await api.updateNode(nodeId, toNodeUpdatePayload(currentNode, { auto_sync: enabled }))
-    if (syncStatus.value) {
-      syncStatus.value = { ...syncStatus.value, auto_sync: enabled }
-    }
+    await loadNodeState()
     notify.success(enabled ? t('apply.autoSyncEnabledToast') : t('apply.autoSyncDisabledToast'))
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('apply.autoSyncSaveFailed'))
@@ -135,17 +144,43 @@ onMounted(async () => {
           <div class="auto-sync-toggle">
             <div>
               <strong>{{ t('apply.autoSync') }}</strong>
-              <span>{{ syncStatus.auto_sync ? t('apply.autoSyncEnabled') : t('apply.autoSyncDisabled') }}</span>
+              <span>
+                {{
+                  topologyBlocked
+                    ? t('apply.topologyBlockedStatus')
+                    : syncStatus.auto_sync
+                      ? t('apply.autoSyncEnabled')
+                      : t('apply.autoSyncDisabled')
+                }}
+              </span>
             </div>
             <el-switch
               :model-value="syncStatus.auto_sync"
+              :disabled="topologyBlocked"
               :loading="autoSyncSaving"
               @change="toggleAutoSync"
             />
           </div>
-          <el-button type="primary" :icon="Refresh" @click="syncNode">{{ t('apply.syncConfig') }}</el-button>
+          <el-button type="primary" :icon="Refresh" :disabled="topologyBlocked" @click="syncNode">
+            {{ t('apply.syncConfig') }}
+          </el-button>
         </div>
       </div>
+
+      <el-alert
+        v-if="topologyBlocked"
+        type="error"
+        :title="t('apply.topologyBlockedTitle')"
+        :description="t('apply.topologyBlockedDescription')"
+        :closable="false"
+        class="apply-topology-alert"
+      >
+        <template #default>
+          <ul class="apply-topology-alert__list">
+            <li v-for="item in topologyMessages" :key="item">{{ meshText(item) }}</li>
+          </ul>
+        </template>
+      </el-alert>
 
       <div class="apply-panels">
         <el-card shadow="never" class="apply-panel">
@@ -205,6 +240,8 @@ onMounted(async () => {
 .template-toolbar h2 { margin: 0; color: var(--app-text); font-size: 22px; }
 .template-toolbar p { margin: 8px 0 0; color: var(--app-muted); line-height: 1.6; }
 .template-toolbar__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.apply-topology-alert { margin-bottom: 16px; }
+.apply-topology-alert__list { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }
 .auto-sync-toggle {
   display: flex;
   align-items: center;

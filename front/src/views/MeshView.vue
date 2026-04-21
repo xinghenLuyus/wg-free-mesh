@@ -18,6 +18,7 @@ import type {
   RealtimeEvent,
 } from '@/types/api'
 import { requiredSelectionRule, requiredTextRule } from '@/utils/formRules'
+import { translateMeshText } from '@/utils/meshText'
 import { notify } from '@/utils/notify'
 
 const route = useRoute()
@@ -146,7 +147,11 @@ function directionTitle(direction: MeshConnectionDirectionRead | null, fallback:
 function endpointSummary(summary: string | undefined, mode: EndpointMode, host: string, port: number | null) {
   if (mode === 'none') return t('mesh.noneEndpoint')
   if (mode === 'manual') return host && port ? t('mesh.manualUseHostPort') : t('mesh.manualNeedHostPort')
-  return summary || t('mesh.readingDraft')
+  return summary ? translateMeshText(summary, t) : t('mesh.readingDraft')
+}
+
+function meshText(value: string | undefined) {
+  return translateMeshText(String(value || ''), t)
 }
 
 const forwardEndpointSummaryText = computed(() => {
@@ -398,8 +403,8 @@ onMounted(async () => {
         </div>
         <div class="template-toolbar__actions">
           <el-button type="primary" :icon="Plus" @click="openCreate">{{ t('mesh.newConnection') }}</el-button>
-          <el-tag v-if="validation" :type="validation.valid ? 'success' : 'warning'">
-            {{ validation.valid ? t('mesh.topologyOk') : t('mesh.topologyWarning') }}
+          <el-tag v-if="validation" :type="validation.valid ? 'success' : 'danger'">
+            {{ validation.valid ? t('mesh.topologyOk') : t('mesh.topologyFailed') }}
           </el-tag>
         </div>
       </div>
@@ -409,17 +414,23 @@ onMounted(async () => {
           v-for="connection in connections"
           :key="connection.link_group_id"
           class="mesh-card"
-          :class="{ 'mesh-card--disabled': !connection.enabled }"
+          :class="{ 'mesh-card--disabled': !connection.enabled, 'mesh-card--broken': connection.integrity_status === 'broken' }"
         >
           <section class="mesh-direction">
             <div class="mesh-direction__head">
               <div class="mesh-direction__identity">
                 <div class="mesh-direction__title-row">
-                <div class="mesh-direction__title">{{ directionTitle(connection.forward, t('mesh.localToPeer')) }}</div>
+                  <div class="mesh-direction__title">{{ directionTitle(connection.forward, t('mesh.localToPeer')) }}</div>
+                  <el-tag v-if="connection.integrity_status === 'broken'" type="danger" size="small">
+                    {{ t('mesh.connectionBroken') }}
+                  </el-tag>
                   <el-tag :type="connection.has_preshared_key ? 'success' : 'info'" size="small">
                     {{ connection.has_preshared_key ? t('mesh.pskConfigured') : t('mesh.pskMissing') }}
                   </el-tag>
                 </div>
+                <p v-if="connection.integrity_status === 'broken' && connection.integrity_message" class="mesh-direction__integrity">
+                  {{ meshText(connection.integrity_message) }}
+                </p>
               </div>
               <div class="mesh-direction__actions">
                 <div class="peer-switch">
@@ -440,7 +451,7 @@ onMounted(async () => {
               </div>
               <div>
                 <dt>Endpoint</dt>
-                <dd>{{ endpointModeLabel[connection.forward.endpoint_mode] }} · {{ connection.forward.endpoint_summary }}</dd>
+                <dd>{{ endpointModeLabel[connection.forward.endpoint_mode] }} · {{ meshText(connection.forward.endpoint_summary) }}</dd>
               </div>
               <div>
                 <dt>Keepalive</dt>
@@ -491,7 +502,7 @@ onMounted(async () => {
           <p class="field-hint">{{ t('mesh.endpointFamilyHint') }}</p>
         </el-form-item>
         <div v-if="draftWarnings.length" class="draft-warnings">
-          <span v-for="item in draftWarnings" :key="item">{{ item }}</span>
+          <span v-for="item in draftWarnings" :key="item">{{ meshText(item) }}</span>
         </div>
 
         <section class="connection-panel">
@@ -598,6 +609,7 @@ onMounted(async () => {
 .template-toolbar__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .connection-list { display: grid; gap: 8px; }
 .mesh-card { min-width: 0; }
+.mesh-card--broken .mesh-direction { border-color: var(--app-danger-border); background: color-mix(in srgb, var(--app-danger-soft) 45%, var(--app-surface)); }
 .mesh-card--disabled .mesh-direction {
   background: var(--app-surface-sunken);
   box-shadow: none;
@@ -617,6 +629,7 @@ onMounted(async () => {
 .mesh-direction__identity { min-width: 0; }
 .mesh-direction__title-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .mesh-direction__title { color: var(--app-text-strong); font-size: 17px; font-weight: 850; line-height: 1.25; }
+.mesh-direction__integrity { margin: 6px 0 0; color: var(--app-danger-text); font-size: 13px; line-height: 1.45; }
 .mesh-direction__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
 .mesh-direction dl { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(220px, 1.5fr) minmax(80px, 0.6fr) minmax(70px, 0.5fr); gap: 10px; margin: 10px 0 0; }
 .mesh-direction dt { color: var(--app-faint); font-size: 12px; font-weight: 650; }
