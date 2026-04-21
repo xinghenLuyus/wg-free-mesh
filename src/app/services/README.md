@@ -4,11 +4,21 @@
 
 ## 当前内容
 
-- `control_plane_service.py`：控制平面主服务，编排配置、端点、Mesh、同步、运行态、备份和系统状态。
-- `config_service.py`：配置服务兼容入口，调用当前 SQLite store。
-- `node_service.py`：端点服务兼容入口，使用当前节点模型。
-- `mesh_service.py`：Mesh 服务兼容入口，使用当前 PeerLink 与 NodeType 模型。
-- `realtime_service.py`：SSE 实时事件发布和订阅。
+- `auth_service.py`
+  - `AuthService`：管理员初始化、登录、修改密码、后台 token、下载 token 与 bootstrap 重置。
+  - `CurrentUser` / `DownloadGrant`：认证后的授权载体。
+- `control_plane_service.py`
+  - `ControlPlaneService`：控制平面主服务，统一编排配置、节点、Mesh、同步态、运行态、快照、MQTT 设置与 SSE 发布。
+- `config_service.py`
+  - `ConfigService`：配置相关兼容入口。
+- `node_service.py`
+  - `NodeService`：节点相关兼容入口。
+- `mesh_service.py`
+  - `MeshService`：Mesh 相关兼容入口。
+- `endpoint_service.py`
+  - `EndpointService`：端点控制与运行态兼容入口。
+- `realtime_service.py`
+  - `RealtimeService`：SSE 发布、订阅与连接管理。
 
 ## 约定
 

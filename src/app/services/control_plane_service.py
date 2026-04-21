@@ -52,7 +52,7 @@ class ControlPlaneService:
             links = [item for item in self.list_peer_links(config.id) if item.link_group_id == group_id]
             if links:
                 return config.id, {item.local_node_id for item in links}
-        raise AppError("PEER_LINK_NOT_FOUND", "链路组不存在", 404)
+        raise AppError("PEER_LINK_NOT_FOUND", "Peer link group not found", 404)
 
     async def publish_configs(self) -> None:
         await realtime_service.publish("config.list.updated", {"configs": self.configs_payload()})
@@ -235,15 +235,15 @@ class ControlPlaneService:
         links = store.list_peer_links(config_id)
         nodes = {node.id: node for node in store.list_nodes(config_id)}
         if not links:
-            messages.append("当前配置还没有任何 peer link。")
+            messages.append("Current config has no peer links.")
         for link in links:
             if link.local_node_id == link.peer_node_id:
-                messages.append(f"节点 {link.local_node_id} 存在自连接。")
+                messages.append(f"Node {link.local_node_id} has a self link.")
             if link.peer_node_id not in nodes:
-                messages.append(f"链路 {link.id} 指向不存在的节点。")
+                messages.append(f"Link {link.id} points to a missing node.")
             if not link.allowed_ips:
-                messages.append(f"链路 {link.id} 缺少 allowed_ips。")
-        return {"valid": not messages, "messages": messages or ["拓扑校验通过。"]}
+                messages.append(f"Link {link.id} is missing allowed_ips.")
+        return {"valid": not messages, "messages": messages or ["Topology check passed."]}
 
     def build_wg_preview(self, config_id: str, node_id: str):
         return store.build_wg_preview(config_id, node_id)
@@ -315,6 +315,12 @@ class ControlPlaneService:
             "mqtt_client",
             {"host": "", "port": 8883, "tls": True, "username": "", "password": ""},
         )
+
+    def read_setting(self, key: str) -> str | None:
+        return store.read_setting(key)
+
+    def write_setting(self, key: str, value: str) -> None:
+        store.write_setting(key, value)
 
     def update_mqtt_settings(self, payload: dict[str, object]):
         store.write_setting_json("mqtt_client", payload)

@@ -1,31 +1,38 @@
 <script setup lang="ts">
 import { Key } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
-import { reactive, shallowRef } from 'vue'
+import { onMounted, reactive, shallowRef } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
+import { DEFAULT_LOCALE, SUPPORTED_LOCALES } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
+import { usePreferencesStore } from '@/stores/preferences'
 import { minLengthTextRule, requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
 
 const router = useRouter()
+const { t } = useI18n()
 const authStore = useAuthStore()
+const preferencesStore = usePreferencesStore()
 
+const step = shallowRef<'language' | 'password'>('language')
+const selectedLocale = shallowRef(preferencesStore.locale)
 const form = reactive({
   password: '',
   confirmPassword: '',
 })
 const formRef = shallowRef<FormInstance>()
 const formRules: FormRules<typeof form> = {
-  password: [minLengthTextRule('密码', 6)],
+  password: [minLengthTextRule('fields.password', 6)],
   confirmPassword: [
-    requiredTextRule('确认密码'),
+    requiredTextRule('fields.confirmPassword'),
     {
       trigger: ['blur', 'change'],
       validator: (_rule, value, callback) => {
         if (String(value || '') !== form.password) {
-          callback(new Error('两次输入的密码不一致'))
+          callback(new Error(t('validation.passwordMismatch')))
           return
         }
         callback()
@@ -34,47 +41,105 @@ const formRules: FormRules<typeof form> = {
   ],
 }
 
+function localeLabel(locale: string) {
+  return locale === 'en-US' ? t('locale.enUS') : t('locale.zhCN')
+}
+
+function nextStep() {
+  step.value = 'password'
+}
+
+function updateLocale(locale: (typeof SUPPORTED_LOCALES)[number]['code']) {
+  selectedLocale.value = locale
+  preferencesStore.applyLocale(locale)
+}
+
 async function submit() {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   try {
-    await authStore.setup(form.password)
-    notify.success('管理员密码已设置')
+    await authStore.setup(form.password, preferencesStore.locale)
+    notify.success(t('auth.setupSuccess'))
     await router.push('/')
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '初始化失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('auth.setupFailed'))
   }
 }
+
+onMounted(() => {
+  preferencesStore.applyLocale(DEFAULT_LOCALE)
+  preferencesStore.applyUiTheme('system')
+  selectedLocale.value = DEFAULT_LOCALE
+})
 </script>
 
 <template>
   <div class="setup-page">
     <div class="setup-panel">
-      <h1 class="setup-title">设置管理员密码</h1>
-      <p class="setup-description">首次使用前，请为 admin 设置初始密码。</p>
-      <el-form ref="formRef" :model="form" :rules="formRules" label-position="top" @submit.prevent="submit">
-        <el-form-item label="新密码" prop="password" required>
-          <el-input
-            v-model="form.password"
-            type="password"
-            show-password
-            autocomplete="new-password"
-            :prefix-icon="Key"
-          />
-        </el-form-item>
-        <el-form-item label="确认密码" prop="confirmPassword" required>
-          <el-input
-            v-model="form.confirmPassword"
-            type="password"
-            show-password
-            autocomplete="new-password"
-            :prefix-icon="Key"
-          />
-        </el-form-item>
-        <el-button type="primary" style="width: 100%" :loading="authStore.loading" @click="submit">
-          完成初始化
+      <template v-if="step === 'language'">
+        <h1 class="setup-title">{{ t('auth.setupLanguageTitle') }}</h1>
+        <p class="setup-description">{{ t('auth.setupLanguageDescription') }}</p>
+        <el-form class="setup-form" label-position="top">
+          <el-form-item :label="t('locale.label')" required>
+            <el-select v-model="selectedLocale" style="width: 100%" @change="updateLocale">
+              <el-option
+                v-for="locale in SUPPORTED_LOCALES"
+                :key="locale.code"
+                :label="localeLabel(locale.code)"
+                :value="locale.code"
+              />
+            </el-select>
+          </el-form-item>
+        </el-form>
+        <el-button type="primary" style="width: 100%; margin-top: 18px" @click="nextStep">
+          {{ t('auth.setupNext') }}
         </el-button>
-      </el-form>
+      </template>
+
+      <template v-else>
+        <h1 class="setup-title">{{ t('auth.setupPasswordTitle') }}</h1>
+        <p class="setup-description">{{ t('auth.setupPasswordDescription') }}</p>
+        <el-form ref="formRef" :model="form" :rules="formRules" label-position="top" autocomplete="off" @submit.prevent="submit">
+          <input
+            class="credential-autocomplete-anchor"
+            type="text"
+            name="username"
+            autocomplete="username"
+            value="admin"
+            readonly
+            tabindex="-1"
+            aria-hidden="true"
+          />
+          <el-form-item :label="t('fields.newPassword')" prop="password" required>
+            <el-input
+              v-model="form.password"
+              type="password"
+              show-password
+              name="new-password"
+              autocomplete="new-password"
+              :prefix-icon="Key"
+              @keyup.enter="submit"
+            />
+          </el-form-item>
+          <el-form-item :label="t('fields.confirmPassword')" prop="confirmPassword" required>
+            <el-input
+              v-model="form.confirmPassword"
+              type="password"
+              show-password
+              name="new-password-confirm"
+              autocomplete="new-password"
+              :prefix-icon="Key"
+              @keyup.enter="submit"
+            />
+          </el-form-item>
+          <div class="setup-actions">
+            <el-button @click="step = 'language'">{{ t('auth.setupBack') }}</el-button>
+            <el-button type="primary" :loading="authStore.loading" @click="submit">
+              {{ t('auth.setupSubmit') }}
+            </el-button>
+          </div>
+        </el-form>
+      </template>
     </div>
   </div>
 </template>
@@ -110,5 +175,26 @@ async function submit() {
 .setup-description {
   margin: 8px 0 24px;
   color: var(--app-muted);
+}
+
+.setup-form {
+  display: grid;
+  gap: 2px;
+}
+
+.credential-autocomplete-anchor {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.setup-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
 }
 </style>

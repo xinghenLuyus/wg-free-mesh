@@ -28,7 +28,7 @@ def state(authorization: Annotated[str | None, Header()] = None) -> ApiResponse[
 
 @router.post("/setup")
 def setup(payload: SetupRequest) -> ApiResponse[TokenSessionRead]:
-    return ok(TokenSessionRead.model_validate(auth_service.setup(payload.password)))
+    return ok(TokenSessionRead.model_validate(auth_service.setup(payload.password, payload.locale)))
 
 
 @router.post("/login")
@@ -43,10 +43,9 @@ def session(authorization: Annotated[str | None, Header()] = None) -> ApiRespons
 
 @router.post("/logout")
 def logout() -> ApiResponse[dict[str, object]]:
-    return ok({"message": "已退出登录"})
+    return ok({"message": "Logged out"})
 
 
 @router.post("/password")
-def change_password(payload: PasswordChangeRequest, _: CurrentUserDep) -> ApiResponse[dict[str, object]]:
-    auth_service.change_password(payload.current_password, payload.new_password)
-    return ok({"message": "密码已更新"})
+def change_password(payload: PasswordChangeRequest, _: CurrentUserDep) -> ApiResponse[TokenSessionRead]:
+    return ok(TokenSessionRead.model_validate(auth_service.change_password(payload.current_password, payload.new_password)))

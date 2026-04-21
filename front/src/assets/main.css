@@ -27,6 +27,31 @@
   --app-focus: 0 0 0 3px rgba(15, 139, 141, 0.18);
 }
 
+:root[data-theme='dark'] {
+  color: #e8f0ec;
+  background: #111816;
+  --el-color-primary: #28b0af;
+  --el-color-success: #57bf72;
+  --el-color-warning: #e2ab45;
+  --el-color-danger: #ef7373;
+  --app-bg: #111816;
+  --app-surface: #18211e;
+  --app-surface-soft: #1b2723;
+  --app-surface-warm: #1d2825;
+  --app-border: #26332e;
+  --app-border-strong: #395048;
+  --app-text: #e8f0ec;
+  --app-muted: #9db0a8;
+  --app-faint: #7f958d;
+  --app-primary: #28b0af;
+  --app-primary-soft: rgba(40, 176, 175, 0.16);
+  --app-danger-soft: rgba(239, 115, 115, 0.16);
+  --app-shadow-sm: 0 10px 24px rgba(0, 0, 0, 0.26);
+  --app-shadow-md: 0 18px 44px rgba(0, 0, 0, 0.34);
+  --app-shadow-lg: 0 28px 72px rgba(0, 0, 0, 0.42);
+  --app-focus: 0 0 0 3px rgba(40, 176, 175, 0.2);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -187,6 +212,37 @@ body {
   padding: 14px 22px 20px;
   border-top: 1px solid #edf2ef;
   background: #fbfcfb;
+}
+
+:root[data-theme='dark'] body {
+  background:
+    linear-gradient(135deg, rgba(40, 176, 175, 0.11), transparent 34%),
+    linear-gradient(315deg, rgba(87, 191, 114, 0.08), transparent 30%),
+    var(--app-bg);
+}
+
+:root[data-theme='dark'] .el-input__wrapper,
+:root[data-theme='dark'] .el-textarea__inner,
+:root[data-theme='dark'] .el-select__wrapper,
+:root[data-theme='dark'] .el-input-number .el-input__wrapper,
+:root[data-theme='dark'] .el-dialog,
+:root[data-theme='dark'] .el-dialog__header,
+:root[data-theme='dark'] .el-dialog__footer,
+:root[data-theme='dark'] .el-card,
+:root[data-theme='dark'] .el-select-dropdown,
+:root[data-theme='dark'] .el-popper,
+:root[data-theme='dark'] .el-message-box {
+  background: var(--app-surface);
+  color: var(--app-text);
+  border-color: var(--app-border);
+}
+
+:root[data-theme='dark'] .el-form-item__label,
+:root[data-theme='dark'] .el-dialog__title,
+:root[data-theme='dark'] .el-select-dropdown__item,
+:root[data-theme='dark'] .el-message-box__title,
+:root[data-theme='dark'] .el-message-box__message {
+  color: var(--app-text);
 }
 
 #app-toast-container {

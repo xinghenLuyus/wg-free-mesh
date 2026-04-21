@@ -5,6 +5,7 @@ bak/
 .env
 .env.*
 !.env.example
+!src/.env.example
 
 # Python
 __pycache__/

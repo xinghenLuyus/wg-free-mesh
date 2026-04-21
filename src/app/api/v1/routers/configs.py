@@ -25,7 +25,7 @@ class ConfigCreateRequest(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        return strip_required_text(value, "名称")
+        return strip_required_text(value, "Name")
 
     @field_validator("description", "virtual_subnet", mode="before")
     @classmethod
@@ -75,7 +75,7 @@ async def delete_config(config_id: str) -> ApiResponse[dict[str, str]]:
     control_plane_service.delete_config(config_id)
     await control_plane_service.publish_configs()
     await control_plane_service.publish_system_status()
-    return ok({"message": "配置已删除"})
+    return ok({"message": "Config deleted"})
 
 
 @router.get("/{config_id}/overview")

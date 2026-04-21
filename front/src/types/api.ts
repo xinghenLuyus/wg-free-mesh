@@ -27,6 +27,14 @@ export interface TokenSessionRead extends AuthStateRead {
   token_type: 'bearer'
 }
 
+export type AppLocale = 'zh-CN' | 'en-US'
+export type AppThemeMode = 'system' | 'light' | 'dark'
+
+export interface UiSettingsRead {
+  locale: AppLocale
+  theme_mode: AppThemeMode
+}
+
 export interface DownloadTokenRead {
   access_token: string
   token_type: 'download'
@@ -311,6 +319,8 @@ export interface HealthRead {
   service: string
   version: string
   timestamp: string
+  timezone: string
+  dev_test_api_enabled: boolean
 }
 
 export interface SystemStatusRead {
@@ -338,6 +348,11 @@ export interface RealtimeEvent<T = Record<string, unknown>> {
 
 export interface SystemClockSyncPayload {
   timestamp: string
+  timezone?: string
+}
+
+export interface SystemTimezoneRead {
+  timezone: string
 }
 
 export interface SystemStatusSnapshotPayload extends SystemStatusRead {}

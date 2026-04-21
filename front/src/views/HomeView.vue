@@ -2,6 +2,7 @@
 import { Files, Plus } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { onMounted, reactive, shallowRef } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
@@ -12,6 +13,7 @@ import { requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
 
 const router = useRouter()
+const { t } = useI18n()
 
 const configs = shallowRef<ConfigRead[]>([])
 const realtime = useRealtime((event: RealtimeEvent) => {
@@ -32,8 +34,8 @@ const form = reactive({
   auto_sync: true,
 })
 const formRules: FormRules<typeof form> = {
-  name: [requiredTextRule('名称')],
-  virtual_subnet: [requiredTextRule('虚拟子网')],
+  name: [requiredTextRule('fields.name')],
+  virtual_subnet: [requiredTextRule('home.virtualSubnetField')],
 }
 
 async function load() {
@@ -49,7 +51,7 @@ async function submit() {
     await load()
     await router.push(`/configs/${config.id}`)
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '配置创建失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('home.createFailed'))
   }
 }
 
@@ -62,7 +64,7 @@ onMounted(async () => {
     await load()
     realtime.connect()
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '配置加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('home.loadFailed'))
   }
 })
 </script>
@@ -70,11 +72,11 @@ onMounted(async () => {
 <template>
   <section class="home-hero">
     <div class="home-hero__content">
-      <span class="home-hero__eyebrow">WireGuard Control Plane</span>
-      <h1 class="page-title">WireGuard 配置管理</h1>
-      <p class="page-description">以配置为入口管理 Mesh 网络、节点和同步态配置。</p>
+      <span class="home-hero__eyebrow">{{ t('home.eyebrow') }}</span>
+      <h1 class="page-title">{{ t('home.title') }}</h1>
+      <p class="page-description">{{ t('home.description') }}</p>
     </div>
-    <el-button type="primary" :icon="Plus" @click="dialogVisible = true">创建配置</el-button>
+    <el-button type="primary" :icon="Plus" @click="dialogVisible = true">{{ t('home.createConfig') }}</el-button>
   </section>
 
   <section class="config-grid">
@@ -88,21 +90,21 @@ onMounted(async () => {
         <span class="config-card__icon">
           <el-icon><Files /></el-icon>
         </span>
-        <el-tag :type="config.enabled ? 'success' : 'info'">{{ config.enabled ? '启用' : '停用' }}</el-tag>
+        <el-tag :type="config.enabled ? 'success' : 'info'">{{ config.enabled ? t('home.enabled') : t('home.disabled') }}</el-tag>
       </div>
 
       <div class="config-card__body">
         <h3>{{ config.name }}</h3>
-        <p>{{ config.description || '未填写备注' }}</p>
+        <p>{{ config.description || t('home.noDescription') }}</p>
       </div>
 
       <dl class="config-card__meta">
         <div>
-          <dt>虚拟网段</dt>
+          <dt>{{ t('home.virtualSubnet') }}</dt>
           <dd>{{ config.virtual_subnet }}</dd>
         </div>
         <div>
-          <dt>节点数</dt>
+          <dt>{{ t('home.nodeCount') }}</dt>
           <dd>{{ config.node_count }}</dd>
         </div>
       </dl>
@@ -112,56 +114,56 @@ onMounted(async () => {
       <span class="config-empty__icon">
         <el-icon><Files /></el-icon>
       </span>
-      <strong>还没有配置</strong>
-      <span>先创建第一份配置，再继续维护节点和同步态。</span>
-      <el-button type="primary" :icon="Plus" @click="dialogVisible = true">创建配置</el-button>
+      <strong>{{ t('home.emptyTitle') }}</strong>
+      <span>{{ t('home.emptyDescription') }}</span>
+      <el-button type="primary" :icon="Plus" @click="dialogVisible = true">{{ t('home.createConfig') }}</el-button>
     </div>
   </section>
 
-  <el-dialog v-model="dialogVisible" title="创建配置" width="560px">
+  <el-dialog v-model="dialogVisible" :title="t('home.dialogTitle')" width="560px">
     <div class="dialog-intro">
       <span class="dialog-intro__icon">
         <el-icon><Files /></el-icon>
       </span>
       <div>
-        <h3>新建配置</h3>
-        <p>配置会作为节点、Mesh 关系和配置同步的统一工作区。</p>
+        <h3>{{ t('home.dialogHeading') }}</h3>
+        <p>{{ t('home.dialogDescription') }}</p>
       </div>
     </div>
 
     <el-form ref="formRef" :model="form" :rules="formRules" class="dialog-form" label-position="top">
-      <el-form-item label="名称" prop="name" required>
-        <el-input v-model="form.name" placeholder="例如：家庭 Mesh" />
+      <el-form-item :label="t('fields.name')" prop="name" required>
+        <el-input v-model="form.name" :placeholder="t('home.exampleName')" />
       </el-form-item>
-      <el-form-item label="描述">
-        <el-input v-model="form.description" type="textarea" :rows="3" placeholder="可选，写清楚这份配置的用途" />
+      <el-form-item :label="t('home.descriptionField')">
+        <el-input v-model="form.description" type="textarea" :rows="3" :placeholder="t('home.descriptionPlaceholder')" />
       </el-form-item>
       <div class="form-grid">
-        <el-form-item label="虚拟子网" prop="virtual_subnet" required>
+        <el-form-item :label="t('home.virtualSubnetField')" prop="virtual_subnet" required>
           <el-input v-model="form.virtual_subnet" />
         </el-form-item>
-        <el-form-item label="默认监听端口">
+        <el-form-item :label="t('home.defaultListenPort')">
           <el-input-number v-model="form.default_listen_port" :min="1" :max="65535" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="默认 MTU">
+        <el-form-item :label="t('home.defaultMtu')">
           <el-input-number v-model="form.default_mtu" :min="576" :max="65535" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="默认 DNS">
+        <el-form-item :label="t('home.defaultDns')">
           <el-input v-model="form.default_dns" />
         </el-form-item>
       </div>
       <div class="switch-row">
         <div>
-          <strong>自动同步</strong>
-          <span>系统态生成后自动同步到同步态。</span>
+          <strong>{{ t('home.autoSync') }}</strong>
+          <span>{{ t('home.autoSyncDescription') }}</span>
         </div>
         <el-switch v-model="form.auto_sync" />
       </div>
     </el-form>
 
     <template #footer>
-      <el-button @click="dialogVisible = false">取消</el-button>
-      <el-button type="primary" :icon="Plus" @click="submit">创建</el-button>
+      <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
+      <el-button type="primary" :icon="Plus" @click="submit">{{ t('home.create') }}</el-button>
     </template>
   </el-dialog>
 </template>

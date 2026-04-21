@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { HelpFilled } from '@element-plus/icons-vue'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 </script>
 
 <template>
   <section class="content-card">
-    <h1 class="page-title">帮助</h1>
+    <h1 class="page-title">{{ t('help.title') }}</h1>
     <div class="placeholder">
       <div class="placeholder-icon"><el-icon><HelpFilled /></el-icon></div>
-      <div class="placeholder-text">帮助内容后续补充。</div>
-      <div class="placeholder-desc">这里保留和旧版一致的页面入口与占位位置。</div>
+      <div class="placeholder-text">{{ t('help.placeholder') }}</div>
+      <div class="placeholder-desc">{{ t('help.description') }}</div>
     </div>
   </section>
 </template>

@@ -39,12 +39,22 @@ Authorization: Bearer <access_token>
   - `display_name`
   - `expires_at`
 
+### `GET /api/v1/system/timezone`
+
+- 用途：返回控制台默认显示时区
+- 响应：
+  - `timezone`
+- 说明：
+  - 当前默认值为 `Asia/Shanghai`
+  - 前端显示时间时不得再从语言推断时区
+
 ### `POST /api/v1/auth/setup`
 
 - 用途：首次设置 `admin` 管理员密码
 - 约束：仅当 `setup_required=true` 时可用
 - 请求：
   - `password`
+  - `locale`：界面语言，当前支持 `zh-CN` 和 `en-US`
 - 响应：
   - `setup_required`
   - `authenticated`
@@ -57,6 +67,7 @@ Authorization: Bearer <access_token>
 ### `POST /api/v1/auth/login`
 
 - 用途：登录后台
+- 说明：返回的后台会话 token 默认 24 小时后过期，过期后前端会被认证拦截回登录页
 - 请求：
   - `username`
   - `password`
@@ -84,7 +95,18 @@ Authorization: Bearer <access_token>
 - 请求：
   - `current_password`
   - `new_password`
-- 说明：修改密码后后端轮换 token secret，旧 token 立即失效。
+- 响应：
+  - `setup_required`
+  - `authenticated`
+  - `username`
+  - `display_name`
+  - `access_token`
+  - `token_type`
+  - `expires_at`
+- 说明：
+  - 修改密码后后端轮换 token secret，旧 token 立即失效。
+  - 后端会在轮换 secret 后立即签发新的后台会话 token，前端无感替换本地 token。
+  - `new_password` 不能与当前密码一致。
 
 ### 令牌类型
 
@@ -100,9 +122,47 @@ Authorization: Bearer <access_token>
 - `INVALID_TOKEN`：登录凭证无效。
 - `TOKEN_EXPIRED`：登录凭证过期。
 - `AUTH_FAILED`：用户名或密码错误。
+- `PASSWORD_UNCHANGED`：新密码与当前密码一致。
 - `DOWNLOAD_TOKEN_REQUIRED`：缺少下载凭证。
 - `INVALID_DOWNLOAD_TOKEN`：下载凭证无效。
 - `DOWNLOAD_TOKEN_SCOPE_MISMATCH`：下载凭证与当前节点不匹配。
+
+## 界面偏好
+
+### `GET /api/v1/settings/ui`
+
+- 用途：读取控制台界面偏好
+- 响应：
+  - `locale`
+  - `theme_mode`：`system | light | dark`
+
+### `PUT /api/v1/settings/ui`
+
+- 用途：更新控制台界面偏好
+- 请求：
+  - `locale`
+  - `theme_mode`
+
+## 开发测试接口
+
+`/api/v0` 仅用于开发和联调，不参与正式业务契约，不允许前端业务页面依赖。
+
+### `POST /api/v0/dev/reset-bootstrap`
+
+- 用途：一键清空初始化态，重新触发 setup 流程
+- 认证：不要求后台登录 token，允许命令行直接调用
+- 开关：默认关闭，仅在 `WFM_ENABLE_DEV_TEST_API=true` 时注册
+- 清理范围：
+  - 管理员密码哈希
+  - 登录 token secret
+  - 密码更新时间
+  - `ui_locale`
+  - `ui_theme_mode`
+- 不清理：
+  - 配置
+  - 节点
+  - Mesh 关系
+  - 业务快照
 
 ## 配置管理
 
@@ -425,6 +485,20 @@ Authorization: Bearer <access_token>
 
 ## 设置
 
+### `GET /api/v1/settings/ui`
+
+- 用途：获取当前控制台界面语言
+- 响应：
+  - `locale`
+
+### `PUT /api/v1/settings/ui`
+
+- 用途：更新当前控制台界面语言
+- 请求：
+  - `locale`：`zh-CN` 或 `en-US`
+- 响应：
+  - `locale`
+
 ### `GET /api/v1/settings/mqtt`
 
 - 用途：获取客户端 MQTT 公网引导参数
@@ -436,6 +510,11 @@ Authorization: Bearer <access_token>
 ### `POST /api/v1/settings/mqtt/test`
 
 - 用途：测试 MQTT 连接
+
+### `POST /api/v1/settings/password`
+
+- 用途：修改后台密码
+- 说明：兼容设置域入口，行为和 `POST /api/v1/auth/password` 一致，成功后返回新的后台会话 token。
 
 ## 备份恢复
 

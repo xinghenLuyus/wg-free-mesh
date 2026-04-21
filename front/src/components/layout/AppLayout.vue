@@ -1,16 +1,21 @@
 <script setup lang="ts">
 import { Files, House, InfoFilled, Setting, SwitchButton } from '@element-plus/icons-vue'
 import { computed, onMounted, shallowRef } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
 import { useAuthStore } from '@/stores/auth'
+import { usePreferencesStore } from '@/stores/preferences'
 import type { ConfigListUpdatedPayload, ConfigRead, HealthRead, RealtimeEvent, SystemStatusRead } from '@/types/api'
+import { setSystemTimeZone } from '@/utils/dateTime'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const authStore = useAuthStore()
+const preferencesStore = usePreferencesStore()
 
 const configs = shallowRef<ConfigRead[]>([])
 const systemStatus = shallowRef<SystemStatusRead | null>(null)
@@ -24,22 +29,26 @@ const realtime = useRealtime((event: RealtimeEvent) => {
   }
 })
 
-const topItems = [
-  { path: '/', label: '首页', icon: House },
-  { path: '/settings', label: '设置', icon: Setting },
-  { path: '/help', label: '帮助', icon: InfoFilled },
-]
+const topItems = computed(() => [
+  { path: '/', label: t('layout.home'), icon: House },
+  { path: '/settings', label: t('layout.settings'), icon: Setting },
+  { path: '/help', label: t('layout.help'), icon: InfoFilled },
+])
 
 const currentPath = computed(() => route.path)
 const systemStatusText = computed(() => {
-  if (!systemStatus.value) return '系统状态检测中...'
-  if (systemStatus.value.summary.pending_sync_nodes > 0) return '存在待同步节点'
-  if (systemStatus.value.summary.online_nodes > 0) return '系统运行中'
-  return '等待端点上线'
+  if (health.value?.dev_test_api_enabled) return t('layout.runningDev')
+  if (!systemStatus.value) return t('layout.checking')
+  if (systemStatus.value.summary.pending_sync_nodes > 0) return t('layout.pendingSync')
+  if (systemStatus.value.summary.online_nodes > 0) return t('layout.running')
+  return t('layout.waiting')
 })
 const systemStatusMeta = computed(() => {
-  if (!systemStatus.value) return '点击查看状态详情'
-  return `在线 ${systemStatus.value.summary.online_nodes} / 待同步 ${systemStatus.value.summary.pending_sync_nodes}`
+  if (!systemStatus.value) return t('layout.statusMetaEmpty')
+  return t('layout.statusMeta', {
+    online: systemStatus.value.summary.online_nodes,
+    pending: systemStatus.value.summary.pending_sync_nodes,
+  })
 })
 const systemStatusType = computed<'success' | 'warning' | 'info'>(() => {
   if (!systemStatus.value) return 'info'
@@ -47,7 +56,7 @@ const systemStatusType = computed<'success' | 'warning' | 'info'>(() => {
   if (systemStatus.value.summary.online_nodes > 0) return 'success'
   return 'info'
 })
-const brandMeta = computed(() => (health.value?.version ? `控制台 · v${health.value.version}` : '控制台'))
+const brandMeta = computed(() => (health.value?.version ? `${t('common.console')} · v${health.value.version}` : t('common.console')))
 
 async function loadConfigs() {
   configs.value = await api.configs()
@@ -59,6 +68,12 @@ async function loadSystemStatus() {
 
 async function loadHealth() {
   health.value = await api.health()
+  setSystemTimeZone(health.value.timezone)
+}
+
+async function loadSystemTimezone() {
+  const timezone = await api.systemTimezone()
+  setSystemTimeZone(timezone.timezone)
 }
 
 function isConfigActive(configId: string) {
@@ -71,9 +86,11 @@ async function handleLogout() {
 }
 
 onMounted(() => {
+  void preferencesStore.load()
   void loadConfigs()
   void loadSystemStatus()
   void loadHealth()
+  void loadSystemTimezone()
   realtime.connect()
 })
 </script>
@@ -99,7 +116,7 @@ onMounted(() => {
         </RouterLink>
 
         <div class="sidebar-divider"></div>
-        <div class="sidebar-section">配置列表</div>
+        <div class="sidebar-section">{{ t('layout.configList') }}</div>
 
         <div class="sidebar-configs">
           <RouterLink
@@ -117,7 +134,7 @@ onMounted(() => {
         <div class="sidebar-divider"></div>
         <button class="sidebar-logout" @click="handleLogout">
           <el-icon><SwitchButton /></el-icon>
-          <span>退出登录</span>
+          <span>{{ t('layout.logout') }}</span>
         </button>
       </nav>
 

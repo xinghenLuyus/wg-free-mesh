@@ -1,16 +1,24 @@
 <script setup lang="ts">
-import { Check, Connection, Delete, Files, Lock, Plus } from '@element-plus/icons-vue'
-import type { FormInstance, FormRules } from 'element-plus'
-import { onMounted, reactive, shallowRef } from 'vue'
+import { Check, Connection, Delete, Files, Lock, Monitor, Plus, Setting } from '@element-plus/icons-vue'
+import type { FormInstance, FormItemRule, FormRules } from 'element-plus'
+import { nextTick, onMounted, reactive, shallowRef } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
+import { SUPPORTED_LOCALES } from '@/i18n'
+import { useAuthStore } from '@/stores/auth'
+import { usePreferencesStore } from '@/stores/preferences'
+import type { AppLocale, AppThemeMode } from '@/types/api'
 import type { MqttSettingsUpdatedPayload, RealtimeEvent, SnapshotListUpdatedPayload, SnapshotRead } from '@/types/api'
 import { formatDateTime } from '@/utils/dateTime'
-import { minLengthTextRule, requiredTextRule } from '@/utils/formRules'
+import { requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
 
+const { t } = useI18n()
+const authStore = useAuthStore()
+const preferencesStore = usePreferencesStore()
 const mqttForm = reactive({
   host: '',
   port: 8883,
@@ -23,14 +31,47 @@ const passwordForm = reactive({
   current_password: '',
   new_password: '',
 })
+const selectedLocale = shallowRef<AppLocale>(preferencesStore.locale)
+const selectedThemeMode = shallowRef<AppThemeMode>(preferencesStore.themeMode)
 const mqttFormRef = shallowRef<FormInstance>()
 const passwordFormRef = shallowRef<FormInstance>()
+const passwordResetting = shallowRef(false)
 const mqttRules: FormRules<typeof mqttForm> = {
-  host: [requiredTextRule('Host')],
+  host: [requiredTextRule('fields.host')],
 }
+
+function quietPasswordRule(validator: FormItemRule['validator']): FormItemRule {
+  return {
+    trigger: ['blur', 'change'],
+    validator: (rule, value, callback, source, options) => {
+      if (passwordResetting.value) {
+        callback()
+        return
+      }
+      validator?.(rule, value, callback, source, options)
+    },
+  }
+}
+
 const passwordRules: FormRules<typeof passwordForm> = {
-  current_password: [requiredTextRule('当前密码')],
-  new_password: [minLengthTextRule('新密码', 6)],
+  current_password: [
+    quietPasswordRule((_rule, value, callback) => {
+      if (typeof value !== 'string' || !value.trim()) {
+        callback(new Error(t('validation.required', { field: t('fields.currentPassword') })))
+        return
+      }
+      callback()
+    }),
+  ],
+  new_password: [
+    quietPasswordRule((_rule, value, callback) => {
+      if (typeof value !== 'string' || value.trim().length < 6) {
+        callback(new Error(t('validation.minLength', { field: t('fields.newPassword'), min: 6 })))
+        return
+      }
+      callback()
+    }),
+  ],
 }
 
 const snapshots = shallowRef<SnapshotRead[]>([])
@@ -45,8 +86,43 @@ const realtime = useRealtime((event: RealtimeEvent) => {
 })
 
 async function load() {
+  const uiSettings = await preferencesStore.load()
+  selectedLocale.value = uiSettings.locale
+  selectedThemeMode.value = uiSettings.theme_mode
   Object.assign(mqttForm, await api.mqttSettings())
   snapshots.value = await api.snapshots()
+}
+
+const themeOptions: Array<{ value: AppThemeMode; labelKey: string }> = [
+  { value: 'system', labelKey: 'theme.system' },
+  { value: 'light', labelKey: 'theme.light' },
+  { value: 'dark', labelKey: 'theme.dark' },
+]
+
+function localeLabel(locale: AppLocale | string) {
+  return locale === 'en-US' ? t('locale.enUS') : t('locale.zhCN')
+}
+
+async function saveLocale(locale: AppLocale) {
+  try {
+    const settings = await preferencesStore.save({ locale })
+    selectedLocale.value = settings.locale
+    notify.success(t('locale.saved'))
+  } catch (error) {
+    selectedLocale.value = preferencesStore.locale
+    notify.error(error instanceof ApiClientError ? error.message : t('locale.saveFailed'))
+  }
+}
+
+async function saveThemeMode(themeMode: AppThemeMode) {
+  try {
+    const settings = await preferencesStore.save({ theme_mode: themeMode })
+    selectedThemeMode.value = settings.theme_mode
+    notify.success(t('theme.saved'))
+  } catch (error) {
+    selectedThemeMode.value = preferencesStore.themeMode
+    notify.error(error instanceof ApiClientError ? error.message : t('theme.saveFailed'))
+  }
 }
 
 async function saveMqtt() {
@@ -54,9 +130,9 @@ async function saveMqtt() {
   if (!valid) return
   try {
     Object.assign(mqttForm, await api.updateMqttSettings({ ...mqttForm }))
-    notify.success('MQTT 配置已保存')
+    notify.success(t('settings.mqttSaved'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : 'MQTT 配置保存失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('settings.mqttSaveFailed'))
   }
 }
 
@@ -65,11 +141,11 @@ async function testMqtt() {
   if (!valid) return
   try {
     const result = await api.testMqttSettings({ ...mqttForm })
-    mqttTestResult.value = `${result.success ? '连接成功' : '连接失败'} / ${result.message}`
-    notify.success('MQTT 测试已完成')
+    mqttTestResult.value = `${result.success ? t('settings.connectionSuccess') : t('settings.connectionFailed')} / ${result.message}`
+    notify.success(t('settings.mqttTestDone'))
   } catch (error) {
-    mqttTestResult.value = '测试失败'
-    notify.error(error instanceof ApiClientError ? error.message : 'MQTT 测试失败')
+    mqttTestResult.value = t('settings.testFailed')
+    notify.error(error instanceof ApiClientError ? error.message : t('settings.mqttTestFailed'))
   }
 }
 
@@ -77,12 +153,19 @@ async function savePassword() {
   const valid = await passwordFormRef.value?.validate().catch(() => false)
   if (!valid) return
   try {
-    await api.changePassword(passwordForm.current_password, passwordForm.new_password)
+    await authStore.changePassword(passwordForm.current_password, passwordForm.new_password)
+    passwordResetting.value = true
     passwordForm.current_password = ''
     passwordForm.new_password = ''
-    notify.success('密码已更新')
+    await nextTick()
+    passwordFormRef.value?.clearValidate()
+    window.setTimeout(() => {
+      passwordResetting.value = false
+      passwordFormRef.value?.clearValidate()
+    }, 0)
+    notify.success(t('settings.passwordSaved'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '密码更新失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('settings.passwordFailed'))
   }
 }
 
@@ -90,18 +173,18 @@ async function createSnapshot() {
   try {
     await api.createSnapshot('')
     await load()
-    notify.success('快照已创建')
+    notify.success(t('settings.snapshotCreated'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '快照创建失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotCreateFailed'))
   }
 }
 
 async function restoreSnapshot(snapshotId: string) {
   try {
     await api.restoreSnapshot(snapshotId)
-    notify.success('快照已恢复')
+    notify.success(t('settings.snapshotRestored'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '快照恢复失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotRestoreFailed'))
   }
 }
 
@@ -109,9 +192,9 @@ async function removeSnapshot(snapshotId: string) {
   try {
     await api.deleteSnapshot(snapshotId)
     await load()
-    notify.success('快照已删除')
+    notify.success(t('settings.snapshotDeleted'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '快照删除失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotDeleteFailed'))
   }
 }
 
@@ -120,7 +203,7 @@ onMounted(async () => {
     await load()
     realtime.connect()
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '设置加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('settings.loadFailed'))
   }
 })
 </script>
@@ -128,30 +211,103 @@ onMounted(async () => {
 <template>
   <section class="settings-hero">
     <div>
-      <span class="settings-hero__eyebrow">System Settings</span>
-      <h1 class="page-title">系统设置</h1>
-      <p class="page-description">管理登录密码、客户端 MQTT 连接参数和系统快照。</p>
+      <span class="settings-hero__eyebrow">{{ t('settings.eyebrow') }}</span>
+      <h1 class="page-title">{{ t('settings.title') }}</h1>
+      <p class="page-description">{{ t('settings.description') }}</p>
     </div>
   </section>
 
   <section class="settings-grid">
+    <article class="settings-card settings-card--language">
+      <div class="settings-card__head">
+        <span class="settings-card__icon"><el-icon><Setting /></el-icon></span>
+        <div>
+          <h2>{{ t('settings.languageTitle') }}</h2>
+          <p>{{ t('settings.languageDescription') }}</p>
+        </div>
+      </div>
+      <el-form class="settings-form settings-form--compact" label-position="top">
+        <el-form-item :label="t('locale.label')" required>
+          <el-select v-model="selectedLocale" :loading="preferencesStore.loading" @change="saveLocale">
+            <el-option
+              v-for="locale in SUPPORTED_LOCALES"
+              :key="locale.code"
+              :label="localeLabel(locale.code)"
+              :value="locale.code"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+    </article>
+
+    <article class="settings-card settings-card--language">
+      <div class="settings-card__head">
+        <span class="settings-card__icon"><el-icon><Monitor /></el-icon></span>
+        <div>
+          <h2>{{ t('settings.themeTitle') }}</h2>
+          <p>{{ t('settings.themeDescription') }}</p>
+        </div>
+      </div>
+      <el-form class="settings-form settings-form--compact" label-position="top">
+        <el-form-item :label="t('theme.label')" required>
+          <el-select v-model="selectedThemeMode" :loading="preferencesStore.loading" @change="saveThemeMode">
+            <el-option
+              v-for="option in themeOptions"
+              :key="option.value"
+              :label="t(option.labelKey)"
+              :value="option.value"
+            />
+          </el-select>
+        </el-form-item>
+      </el-form>
+    </article>
+
     <article class="settings-card settings-card--password">
       <div class="settings-card__head">
         <span class="settings-card__icon"><el-icon><Lock /></el-icon></span>
         <div>
-          <h2>登录密码</h2>
-          <p>更新控制台入口密码。</p>
+          <h2>{{ t('settings.passwordTitle') }}</h2>
+          <p>{{ t('settings.passwordDescription') }}</p>
         </div>
       </div>
 
-      <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" class="settings-form" label-position="top">
-        <el-form-item label="当前密码" prop="current_password" required>
-          <el-input v-model="passwordForm.current_password" type="password" show-password autocomplete="current-password" />
+      <el-form
+        ref="passwordFormRef"
+        :model="passwordForm"
+        :rules="passwordRules"
+        class="settings-form"
+        label-position="top"
+        autocomplete="off"
+      >
+        <input
+          class="credential-autocomplete-anchor"
+          type="text"
+          name="username"
+          autocomplete="username"
+          :value="authStore.state?.username || 'admin'"
+          readonly
+          tabindex="-1"
+          aria-hidden="true"
+        />
+        <el-form-item :label="t('fields.currentPassword')" prop="current_password" required>
+          <el-input
+            v-model="passwordForm.current_password"
+            type="password"
+            show-password
+            name="current-password"
+            autocomplete="current-password"
+          />
         </el-form-item>
-        <el-form-item label="新密码" prop="new_password" required>
-          <el-input v-model="passwordForm.new_password" type="password" show-password autocomplete="new-password" />
+        <el-form-item :label="t('fields.newPassword')" prop="new_password" required>
+          <el-input
+            v-model="passwordForm.new_password"
+            type="password"
+            show-password
+            name="new-password"
+            autocomplete="new-password"
+          />
         </el-form-item>
-        <el-button type="primary" :icon="Check" @click="savePassword">修改密码</el-button>
+        <el-button type="primary" :icon="Check" @click="savePassword">{{ t('settings.passwordSubmit') }}</el-button>
       </el-form>
     </article>
 
@@ -159,8 +315,8 @@ onMounted(async () => {
       <div class="settings-card__head">
         <span class="settings-card__icon"><el-icon><Connection /></el-icon></span>
         <div>
-          <h2>客户端 MQTT 配置</h2>
-          <p>配置客户端对外可见的 MQTT 公网连接参数。</p>
+          <h2>{{ t('settings.mqttTitle') }}</h2>
+          <p>{{ t('settings.mqttDescription') }}</p>
         </div>
       </div>
 
@@ -182,15 +338,15 @@ onMounted(async () => {
 
         <div class="switch-row">
           <div>
-            <strong>TLS 加密</strong>
-            <span>客户端连接 MQTT 时是否启用 TLS。</span>
+            <strong>{{ t('settings.tlsTitle') }}</strong>
+            <span>{{ t('settings.tlsDescription') }}</span>
           </div>
           <el-switch v-model="mqttForm.tls" />
         </div>
 
         <div class="action-row">
-          <el-button type="primary" :icon="Check" @click="saveMqtt">保存 MQTT</el-button>
-          <el-button :icon="Connection" @click="testMqtt">测试连接</el-button>
+          <el-button type="primary" :icon="Check" @click="saveMqtt">{{ t('settings.saveMqtt') }}</el-button>
+          <el-button :icon="Connection" @click="testMqtt">{{ t('settings.testConnection') }}</el-button>
         </div>
 
         <div v-if="mqttTestResult" class="result-callout">
@@ -204,11 +360,11 @@ onMounted(async () => {
         <div class="settings-card__title-line">
           <span class="settings-card__icon"><el-icon><Files /></el-icon></span>
           <div>
-            <h2>备份与恢复</h2>
-            <p>创建快照，并在需要时恢复历史状态。</p>
+            <h2>{{ t('settings.backupTitle') }}</h2>
+            <p>{{ t('settings.backupDescription') }}</p>
           </div>
         </div>
-        <el-button type="primary" :icon="Plus" @click="createSnapshot">创建快照</el-button>
+        <el-button type="primary" :icon="Plus" @click="createSnapshot">{{ t('settings.createSnapshot') }}</el-button>
       </div>
 
       <div class="snapshot-list">
@@ -217,22 +373,22 @@ onMounted(async () => {
             <span class="snapshot-card__icon"><el-icon><Files /></el-icon></span>
             <div>
               <h3>{{ formatDateTime(snapshot.created_at) }}</h3>
-              <p>{{ snapshot.note || '无备注' }}</p>
+              <p>{{ snapshot.note || t('common.noRemark') }}</p>
             </div>
           </div>
           <div class="snapshot-card__meta">
             <span>{{ snapshot.size }} bytes</span>
             <div class="snapshot-card__actions">
-              <el-button size="small" @click="restoreSnapshot(snapshot.id)">恢复</el-button>
-              <el-button size="small" type="danger" plain :icon="Delete" @click="removeSnapshot(snapshot.id)">删除</el-button>
+              <el-button size="small" @click="restoreSnapshot(snapshot.id)">{{ t('settings.restore') }}</el-button>
+              <el-button size="small" type="danger" plain :icon="Delete" @click="removeSnapshot(snapshot.id)">{{ t('common.delete') }}</el-button>
             </div>
           </div>
         </div>
 
         <div v-if="!snapshots.length" class="snapshot-empty">
           <span class="settings-card__icon"><el-icon><Files /></el-icon></span>
-          <strong>暂无快照</strong>
-          <span>创建快照后，这里会显示可恢复的历史状态。</span>
+          <strong>{{ t('settings.noSnapshots') }}</strong>
+          <span>{{ t('settings.snapshotEmptyDescription') }}</span>
         </div>
       </div>
     </article>
@@ -294,6 +450,10 @@ onMounted(async () => {
   grid-column: 1 / -1;
 }
 
+.settings-card--language {
+  align-content: start;
+}
+
 .settings-card__head,
 .settings-card__title-line {
   display: flex;
@@ -337,6 +497,20 @@ onMounted(async () => {
 .settings-form {
   display: grid;
   gap: 2px;
+}
+
+.settings-form--compact {
+  align-content: start;
+}
+
+.credential-autocomplete-anchor {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .form-grid {

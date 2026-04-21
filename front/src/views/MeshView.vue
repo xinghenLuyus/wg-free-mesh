@@ -2,6 +2,7 @@
 import { EditPen, Key, Plus } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
@@ -20,6 +21,7 @@ import { requiredSelectionRule, requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
 
 const route = useRoute()
+const { t } = useI18n()
 
 type EndpointMode = 'auto' | 'none' | 'manual'
 type EndpointFamily = 'ipv4' | 'ipv6'
@@ -61,8 +63,8 @@ const validation = computed(() => workspace.value?.validation ?? null)
 const peerOptions = computed(() => nodes.value.filter((item) => item.id !== currentNodeId.value))
 const selectedPeer = computed(() => nodes.value.find((item) => item.id === form.peer_node_id) ?? editingConnection.value?.peer_node ?? null)
 const draftWarnings = computed(() => draft.value?.warnings ?? [])
-const dialogTitle = computed(() => (dialogMode.value === 'create' ? '新建连接' : '修改连接参数'))
-const submitText = computed(() => (dialogMode.value === 'create' ? '创建' : '保存'))
+const dialogTitle = computed(() => (dialogMode.value === 'create' ? t('mesh.newConnection') : t('mesh.editConnection')))
+const submitText = computed(() => (dialogMode.value === 'create' ? t('mesh.create') : t('common.save')))
 const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type !== 'mesh.workspace.updated') return
   const payload = event.payload as unknown as MeshWorkspaceUpdatedPayload
@@ -71,15 +73,15 @@ const realtime = useRealtime((event: RealtimeEvent) => {
   nodes.value = payload.nodes
 })
 const formRules: FormRules<typeof form> = {
-  peer_node_id: [requiredSelectionRule('对端节点')],
-  forward_allowed_ips: [requiredTextRule('主向 AllowedIPs')],
-  reverse_allowed_ips: [requiredTextRule('反向 AllowedIPs')],
+  peer_node_id: [requiredSelectionRule('mesh.peerNode')],
+  forward_allowed_ips: [requiredTextRule('mesh.forwardAllowedIps')],
+  reverse_allowed_ips: [requiredTextRule('mesh.reverseAllowedIps')],
   forward_manual_host: [
     {
       trigger: ['blur', 'change'],
       validator: (_rule, value, callback) => {
         if (form.forward_endpoint_mode === 'manual' && !String(value || '').trim()) {
-          callback(new Error('主向手动 Host 不能为空'))
+          callback(new Error(t('validation.required', { field: t('mesh.forwardManualHost') })))
           return
         }
         callback()
@@ -91,7 +93,7 @@ const formRules: FormRules<typeof form> = {
       trigger: ['blur', 'change'],
       validator: (_rule, value, callback) => {
         if (form.reverse_endpoint_mode === 'manual' && !String(value || '').trim()) {
-          callback(new Error('反向手动 Host 不能为空'))
+          callback(new Error(t('validation.required', { field: t('mesh.reverseManualHost') })))
           return
         }
         callback()
@@ -103,7 +105,7 @@ const formRules: FormRules<typeof form> = {
       trigger: ['blur', 'change'],
       validator: (_rule, value, callback) => {
         if (form.forward_endpoint_mode === 'manual' && !value) {
-          callback(new Error('主向手动 Port 不能为空'))
+          callback(new Error(t('validation.required', { field: t('mesh.forwardManualPort') })))
           return
         }
         callback()
@@ -115,7 +117,7 @@ const formRules: FormRules<typeof form> = {
       trigger: ['blur', 'change'],
       validator: (_rule, value, callback) => {
         if (form.reverse_endpoint_mode === 'manual' && !value) {
-          callback(new Error('反向手动 Port 不能为空'))
+          callback(new Error(t('validation.required', { field: t('mesh.reverseManualPort') })))
           return
         }
         callback()
@@ -124,27 +126,27 @@ const formRules: FormRules<typeof form> = {
   ],
 }
 
-const endpointModeLabel: Record<EndpointMode, string> = {
-  auto: '自动',
-  none: '不写 Endpoint',
-  manual: '手动',
-}
+const endpointModeLabel = computed<Record<EndpointMode, string>>(() => ({
+  auto: t('mesh.auto'),
+  none: t('mesh.noneEndpoint'),
+  manual: t('mesh.manual'),
+}))
 
 function nodeTypeLabel(type: NodeRead['node_type']) {
-  return type === 'static' ? '静态节点' : '动态节点'
+  return type === 'static' ? t('nodeWorkspace.staticNode') : t('nodeWorkspace.dynamicNode')
 }
 
 function directionTitle(direction: MeshConnectionDirectionRead | null, fallback: string) {
   if (!direction) return fallback
   const local = direction.local_node_id === currentNodeId.value ? currentNode.value : selectedPeer.value
   const peer = direction.peer_node_id === currentNodeId.value ? currentNode.value : selectedPeer.value
-  return `${local?.name || '本端'} -> ${peer?.name || '对端'}`
+  return `${local?.name || t('mesh.localNode')} -> ${peer?.name || t('mesh.peerNode')}`
 }
 
 function endpointSummary(summary: string | undefined, mode: EndpointMode, host: string, port: number | null) {
-  if (mode === 'none') return '不写 Endpoint'
-  if (mode === 'manual') return host && port ? '手动模式将使用填写的 Host 和 Port' : '手动模式需填写 Host 和 Port'
-  return summary || '正在读取后端连接草稿'
+  if (mode === 'none') return t('mesh.noneEndpoint')
+  if (mode === 'manual') return host && port ? t('mesh.manualUseHostPort') : t('mesh.manualNeedHostPort')
+  return summary || t('mesh.readingDraft')
 }
 
 const forwardEndpointSummaryText = computed(() => {
@@ -217,7 +219,7 @@ async function loadDraft() {
     applyDraft(nextDraft)
   } catch (error) {
     if (requestToken === draftRequestToken.value && dialogVisible.value && dialogMode.value === 'create') {
-      notify.error(error instanceof ApiClientError ? error.message : '连接草稿生成失败')
+      notify.error(error instanceof ApiClientError ? error.message : t('mesh.draftFailed'))
     }
   } finally {
     if (requestToken === draftRequestToken.value) {
@@ -273,9 +275,9 @@ async function generatePsk() {
   try {
     const result = await api.generatePresharedKey()
     form.preshared_key = result.preshared_key
-    notify.success('PSK 已生成')
+    notify.success(t('mesh.pskGenerated'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : 'PSK 生成失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('mesh.pskFailed'))
   }
 }
 
@@ -325,7 +327,7 @@ function directionPayload(direction: MeshConnectionDirectionRead) {
 
 async function toggleConnection(connection: MeshConnectionRead, enabled: boolean) {
   if (!connection.reverse) {
-    notify.error('缺少反向连接参数，无法直接切换')
+    notify.error(t('mesh.missingReverse'))
     return
   }
   try {
@@ -337,10 +339,10 @@ async function toggleConnection(connection: MeshConnectionRead, enabled: boolean
       reverse: directionPayload(connection.reverse),
     })
     await load()
-    notify.success(enabled ? 'Peer 已启用' : 'Peer 已停用')
+    notify.success(enabled ? t('mesh.peerEnabled') : t('mesh.peerDisabled'))
   } catch (error) {
     await load()
-    notify.error(error instanceof ApiClientError ? error.message : 'Peer 状态保存失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('mesh.peerStateSaveFailed'))
   }
 }
 
@@ -350,15 +352,15 @@ async function submit() {
   try {
     if (dialogMode.value === 'create') {
       await api.createPeerLink(String(route.params.configId), buildPayload())
-      notify.success('连接已创建')
+      notify.success(t('mesh.created'))
     } else if (editingConnection.value) {
       await api.updatePeerLinkGroup(editingConnection.value.link_group_id, buildPayload())
-      notify.success('连接参数已保存')
+      notify.success(t('mesh.saved'))
     }
     dialogVisible.value = false
     await load()
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '连接保存失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('mesh.saveFailed'))
   }
 }
 
@@ -381,7 +383,7 @@ onMounted(async () => {
     await load()
     realtime.connect()
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : 'Mesh 页面加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('mesh.loadFailed'))
   }
 })
 </script>
@@ -391,13 +393,13 @@ onMounted(async () => {
     <div class="content-band">
       <div class="template-toolbar">
         <div>
-          <h2>Mesh 网络</h2>
-          <p>管理当前节点的 Peer 连接关系。</p>
+          <h2>{{ t('mesh.title') }}</h2>
+          <p>{{ t('mesh.description') }}</p>
         </div>
         <div class="template-toolbar__actions">
-          <el-button type="primary" :icon="Plus" @click="openCreate">新建连接</el-button>
+          <el-button type="primary" :icon="Plus" @click="openCreate">{{ t('mesh.newConnection') }}</el-button>
           <el-tag v-if="validation" :type="validation.valid ? 'success' : 'warning'">
-            {{ validation.valid ? '拓扑校验通过' : '拓扑校验有警告' }}
+            {{ validation.valid ? t('mesh.topologyOk') : t('mesh.topologyWarning') }}
           </el-tag>
         </div>
       </div>
@@ -413,22 +415,22 @@ onMounted(async () => {
             <div class="mesh-direction__head">
               <div class="mesh-direction__identity">
                 <div class="mesh-direction__title-row">
-                <div class="mesh-direction__title">{{ directionTitle(connection.forward, '本端到对端') }}</div>
+                <div class="mesh-direction__title">{{ directionTitle(connection.forward, t('mesh.localToPeer')) }}</div>
                   <el-tag :type="connection.has_preshared_key ? 'success' : 'info'" size="small">
-                    {{ connection.has_preshared_key ? 'PSK 已配置' : '未配置 PSK' }}
+                    {{ connection.has_preshared_key ? t('mesh.pskConfigured') : t('mesh.pskMissing') }}
                   </el-tag>
                 </div>
               </div>
               <div class="mesh-direction__actions">
                 <div class="peer-switch">
-                  <span>{{ connection.enabled ? '启用' : '停用' }}</span>
+                  <span>{{ connection.enabled ? t('common.enabled') : t('common.disabled') }}</span>
                   <el-switch
                     size="small"
                     :model-value="connection.enabled"
                     @change="(value: boolean | string | number) => toggleConnection(connection, Boolean(value))"
                   />
                 </div>
-                <el-button :icon="EditPen" plain size="small" @click="openEdit(connection)">修改参数</el-button>
+                <el-button :icon="EditPen" plain size="small" @click="openEdit(connection)">{{ t('mesh.editParams') }}</el-button>
               </div>
             </div>
             <dl>
@@ -445,40 +447,40 @@ onMounted(async () => {
                 <dd>{{ connection.forward.keepalive_display }}</dd>
               </div>
               <div>
-                <dt>地址族</dt>
-                <dd>{{ connection.forward.endpoint_ref_family?.toUpperCase() || '无' }}</dd>
+                <dt>{{ t('mesh.addressFamily') }}</dt>
+                <dd>{{ connection.forward.endpoint_ref_family?.toUpperCase() || t('common.none') }}</dd>
               </div>
             </dl>
           </section>
         </article>
       </div>
-      <div v-else class="empty-state">当前节点还没有连接。</div>
+      <div v-else class="empty-state">{{ t('mesh.noConnections') }}</div>
     </div>
 
     <el-dialog v-model="dialogVisible" :title="dialogTitle" width="640px">
       <div class="dialog-intro">
         <span class="dialog-intro__icon"><el-icon><Plus /></el-icon></span>
         <div>
-          <h3>{{ dialogMode === 'create' ? '建立 Peer 连接' : '调整 Peer 参数' }}</h3>
-          <p>连接关系只作用于当前节点和选定对端。</p>
+          <h3>{{ dialogMode === 'create' ? t('mesh.createPeer') : t('mesh.editPeer') }}</h3>
+          <p>{{ t('mesh.dialogDescription') }}</p>
         </div>
       </div>
       <el-form ref="formRef" v-loading="draftLoading" :model="form" :rules="formRules" class="dialog-form" label-position="top">
-        <el-form-item label="本地节点">
+        <el-form-item :label="t('mesh.localNode')">
           <el-input :model-value="currentNode?.name || currentNodeId" disabled />
         </el-form-item>
-        <el-form-item label="对端节点" prop="peer_node_id" required>
+        <el-form-item :label="t('mesh.peerNode')" prop="peer_node_id" required>
           <el-select v-if="dialogMode === 'create'" v-model="form.peer_node_id" style="width: 100%">
             <el-option
               v-for="node in peerOptions"
               :key="node.id"
               :value="node.id"
-              :label="`${node.name} · ${nodeTypeLabel(node.node_type)} · IPv4 ${node.ipv4_address || '未设置'} · IPv6 ${node.ipv6_address || '未设置'}`"
+              :label="`${node.name} · ${nodeTypeLabel(node.node_type)} · IPv4 ${node.ipv4_address || t('nodeWorkspace.unset')} · IPv6 ${node.ipv6_address || t('nodeWorkspace.unset')}`"
             />
           </el-select>
           <el-input v-else :model-value="selectedPeer?.name || form.peer_node_id" disabled />
         </el-form-item>
-        <el-form-item label="连接地址族">
+        <el-form-item :label="t('mesh.endpointFamily')">
           <el-segmented
             v-model="form.endpoint_ref_family"
             :options="[
@@ -486,7 +488,7 @@ onMounted(async () => {
               { label: 'IPv6', value: 'ipv6' },
             ]"
           />
-          <p class="field-hint">自动模式会读取对向节点对应的公网入口；没有对应入口时不写 Endpoint。</p>
+          <p class="field-hint">{{ t('mesh.endpointFamilyHint') }}</p>
         </el-form-item>
         <div v-if="draftWarnings.length" class="draft-warnings">
           <span v-for="item in draftWarnings" :key="item">{{ item }}</span>
@@ -494,21 +496,21 @@ onMounted(async () => {
 
         <section class="connection-panel">
           <div class="connection-panel__head">
-            <strong>主向配置</strong>
-            <span>{{ currentNode?.name || '当前节点' }} -> {{ selectedPeer?.name || '对端节点' }}</span>
+            <strong>{{ t('mesh.forwardConfig') }}</strong>
+            <span>{{ currentNode?.name || t('mesh.currentNode') }} -> {{ selectedPeer?.name || t('mesh.peerNode') }}</span>
           </div>
-          <el-form-item label="主向 AllowedIPs" prop="forward_allowed_ips" required>
-            <el-input v-model="form.forward_allowed_ips" placeholder="默认使用对端虚拟 IP" />
+          <el-form-item :label="t('mesh.forwardAllowedIps')" prop="forward_allowed_ips" required>
+            <el-input v-model="form.forward_allowed_ips" :placeholder="t('mesh.defaultPeerVirtualIp')" />
           </el-form-item>
           <div class="form-grid">
-            <el-form-item label="主向 Keepalive">
+            <el-form-item :label="t('mesh.forwardKeepalive')">
               <el-input-number v-model="form.forward_persistent_keepalive" :min="0" :max="65535" style="width: 100%" />
             </el-form-item>
-            <el-form-item label="主向 Endpoint">
+            <el-form-item :label="t('mesh.forwardEndpoint')">
               <el-select v-model="form.forward_endpoint_mode" style="width: 100%">
-                <el-option label="自动" value="auto" />
-                <el-option label="不写 Endpoint" value="none" />
-                <el-option label="手动（不推荐）" value="manual" />
+                <el-option :label="t('mesh.auto')" value="auto" />
+                <el-option :label="t('mesh.noneEndpoint')" value="none" />
+                <el-option :label="t('mesh.manualDeprecated')" value="manual" />
               </el-select>
             </el-form-item>
           </div>
@@ -516,10 +518,10 @@ onMounted(async () => {
             {{ forwardEndpointSummaryText }}
           </p>
           <div v-if="form.forward_endpoint_mode === 'manual'" class="form-grid">
-            <el-form-item label="主向手动 Host" prop="forward_manual_host" required>
-              <el-input v-model="form.forward_manual_host" placeholder="IP 或域名" />
+            <el-form-item :label="t('mesh.forwardManualHost')" prop="forward_manual_host" required>
+              <el-input v-model="form.forward_manual_host" :placeholder="t('mesh.ipOrDomain')" />
             </el-form-item>
-            <el-form-item label="主向手动 Port" prop="forward_manual_port" required>
+            <el-form-item :label="t('mesh.forwardManualPort')" prop="forward_manual_port" required>
               <el-input-number v-model="form.forward_manual_port" :min="1" :max="65535" style="width: 100%" />
             </el-form-item>
           </div>
@@ -527,21 +529,21 @@ onMounted(async () => {
 
         <section class="connection-panel">
           <div class="connection-panel__head">
-            <strong>反向配置</strong>
-            <span>{{ selectedPeer?.name || '对端节点' }} -> {{ currentNode?.name || '当前节点' }}</span>
+            <strong>{{ t('mesh.reverseConfig') }}</strong>
+            <span>{{ selectedPeer?.name || t('mesh.peerNode') }} -> {{ currentNode?.name || t('mesh.currentNode') }}</span>
           </div>
-          <el-form-item label="反向 AllowedIPs" prop="reverse_allowed_ips" required>
-            <el-input v-model="form.reverse_allowed_ips" placeholder="默认使用当前节点虚拟 IP" />
+          <el-form-item :label="t('mesh.reverseAllowedIps')" prop="reverse_allowed_ips" required>
+            <el-input v-model="form.reverse_allowed_ips" :placeholder="t('mesh.defaultCurrentVirtualIp')" />
           </el-form-item>
           <div class="form-grid">
-            <el-form-item label="反向 Keepalive">
+            <el-form-item :label="t('mesh.reverseKeepalive')">
               <el-input-number v-model="form.reverse_persistent_keepalive" :min="0" :max="65535" style="width: 100%" />
             </el-form-item>
-            <el-form-item label="反向 Endpoint">
+            <el-form-item :label="t('mesh.reverseEndpoint')">
               <el-select v-model="form.reverse_endpoint_mode" style="width: 100%">
-                <el-option label="自动" value="auto" />
-                <el-option label="不写 Endpoint" value="none" />
-                <el-option label="手动（不推荐）" value="manual" />
+                <el-option :label="t('mesh.auto')" value="auto" />
+                <el-option :label="t('mesh.noneEndpoint')" value="none" />
+                <el-option :label="t('mesh.manualDeprecated')" value="manual" />
               </el-select>
             </el-form-item>
           </div>
@@ -549,10 +551,10 @@ onMounted(async () => {
             {{ reverseEndpointSummaryText }}
           </p>
           <div v-if="form.reverse_endpoint_mode === 'manual'" class="form-grid">
-            <el-form-item label="反向手动 Host" prop="reverse_manual_host" required>
-              <el-input v-model="form.reverse_manual_host" placeholder="IP 或域名" />
+            <el-form-item :label="t('mesh.reverseManualHost')" prop="reverse_manual_host" required>
+              <el-input v-model="form.reverse_manual_host" :placeholder="t('mesh.ipOrDomain')" />
             </el-form-item>
-            <el-form-item label="反向手动 Port" prop="reverse_manual_port" required>
+            <el-form-item :label="t('mesh.reverseManualPort')" prop="reverse_manual_port" required>
               <el-input-number v-model="form.reverse_manual_port" :min="1" :max="65535" style="width: 100%" />
             </el-form-item>
           </div>
@@ -560,28 +562,28 @@ onMounted(async () => {
 
         <section class="connection-panel">
           <div class="connection-panel__head">
-            <strong>安全与备注</strong>
-            <span>PSK 可为空，也可以自动生成。</span>
+            <strong>{{ t('mesh.security') }}</strong>
+            <span>{{ t('mesh.pskDescription') }}</span>
           </div>
-          <el-form-item label="共享密钥 PSK">
-            <el-input v-model="form.preshared_key" placeholder="可为空">
+          <el-form-item :label="t('mesh.psk')">
+            <el-input v-model="form.preshared_key" :placeholder="t('mesh.nullable')">
               <template #append>
-                <el-button :icon="Key" @click="generatePsk">自动生成</el-button>
+                <el-button :icon="Key" @click="generatePsk">{{ t('mesh.autoGenerate') }}</el-button>
               </template>
             </el-input>
           </el-form-item>
-          <el-form-item label="备注"><el-input v-model="form.notes" type="textarea" /></el-form-item>
+          <el-form-item :label="t('mesh.notes')"><el-input v-model="form.notes" type="textarea" /></el-form-item>
           <div class="switch-row">
             <div>
-              <strong>启用连接</strong>
-              <span>停用后保留参数，但不会参与生成配置。</span>
+              <strong>{{ t('mesh.enableConnection') }}</strong>
+              <span>{{ t('mesh.enableConnectionDescription') }}</span>
             </div>
             <el-switch v-model="form.enabled" />
           </div>
         </section>
       </el-form>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
+        <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
         <el-button type="primary" @click="submit">{{ submitText }}</el-button>
       </template>
     </el-dialog>

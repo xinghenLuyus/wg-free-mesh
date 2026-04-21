@@ -4,6 +4,7 @@ import type { FormInstance, FormRules } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
+import { useI18n } from 'vue-i18n'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
@@ -15,6 +16,7 @@ import { notify } from '@/utils/notify'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 
 const config = shallowRef<ConfigRead | null>(null)
 const node = shallowRef<NodeRead | null>(null)
@@ -50,18 +52,18 @@ const settingsForm = reactive({
   tags: [] as string[],
 })
 const settingsRules: FormRules<typeof settingsForm> = {
-  name: [requiredTextRule('名称')],
-  virtual_ip: [requiredTextRule('虚拟 IP')],
+  name: [requiredTextRule('fields.name')],
+  virtual_ip: [requiredTextRule('fields.virtualIp')],
 }
 
 const tabs = computed(() => {
   const configId = String(route.params.configId)
   const nodeId = String(route.params.nodeId)
   return [
-    { label: 'Mesh 网络', path: `/configs/${configId}/nodes/${nodeId}/mesh`, align: 'left' as const },
-    { label: '配置预览', path: `/configs/${configId}/nodes/${nodeId}/apply`, align: 'left' as const },
-    { label: '端点控制', path: `/configs/${configId}/nodes/${nodeId}/control`, align: 'left' as const },
-    { label: '下载配置', path: `/configs/${configId}/nodes/${nodeId}/download`, align: 'right' as const },
+    { label: t('nodeWorkspace.mesh'), path: `/configs/${configId}/nodes/${nodeId}/mesh`, align: 'left' as const },
+    { label: t('nodeWorkspace.apply'), path: `/configs/${configId}/nodes/${nodeId}/apply`, align: 'left' as const },
+    { label: t('nodeWorkspace.control'), path: `/configs/${configId}/nodes/${nodeId}/control`, align: 'left' as const },
+    { label: t('nodeWorkspace.download'), path: `/configs/${configId}/nodes/${nodeId}/download`, align: 'right' as const },
   ]
 })
 const primaryTabs = computed(() => tabs.value.filter((item) => item.align === 'left'))
@@ -70,7 +72,7 @@ const actionTabs = computed(() => tabs.value.filter((item) => item.align === 'ri
 const allTags = computed(() => configTags.value.map((item) => item.name))
 
 function nodeTypeLabel(type: NodeRead['node_type']) {
-  return type === 'static' ? '静态节点' : '动态节点'
+  return type === 'static' ? t('nodeWorkspace.staticNode') : t('nodeWorkspace.dynamicNode')
 }
 
 async function load() {
@@ -93,7 +95,7 @@ async function load() {
     configTags.value = nextTags
   } catch (error) {
     if (ticket !== loadTicket) return
-    loadError.value = error instanceof ApiClientError ? error.message : '节点详情加载失败'
+    loadError.value = error instanceof ApiClientError ? error.message : t('nodeWorkspace.loadFailed')
     throw error
   } finally {
     if (ticket === loadTicket) loading.value = false
@@ -132,9 +134,9 @@ async function autofillKeys() {
     const keys = await api.generateKeys()
     settingsForm.private_key = keys.private_key
     settingsForm.public_key = keys.public_key
-    notify.success('密钥已生成')
+    notify.success(t('nodeWorkspace.keyGenerated'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '密钥生成失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.keyGenerateFailed'))
   }
 }
 
@@ -159,9 +161,9 @@ async function saveNodeSettings() {
     await api.replaceNodeTags(node.value.id, normalizeTags(settingsForm.tags))
     settingsVisible.value = false
     await load()
-    notify.success('端点设置已保存')
+    notify.success(t('nodeWorkspace.settingsSaved'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '端点设置保存失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.settingsSaveFailed'))
   }
 }
 
@@ -169,23 +171,23 @@ async function deleteNodeFromSettings() {
   if (!node.value) return
   try {
     await ElMessageBox.confirm(
-      `删除端点后，${node.value.name} 的节点信息、Mesh 连接和同步态配置都会一起移除。`,
-      '删除端点',
+      t('nodeWorkspace.deleteConfirmText', { name: node.value.name }),
+      t('nodeWorkspace.deleteConfirmTitle'),
       {
         type: 'warning',
-        confirmButtonText: '删除端点',
-        cancelButtonText: '取消',
+        confirmButtonText: t('nodeWorkspace.deleteEndpoint'),
+        cancelButtonText: t('common.cancel'),
         confirmButtonClass: 'el-button--danger',
       },
     )
     const configId = node.value.config_id
     await api.deleteNode(node.value.id)
     settingsVisible.value = false
-    notify.success('端点已删除')
+    notify.success(t('nodeWorkspace.deleted'))
     await router.push(`/configs/${configId}`)
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
-    notify.error(error instanceof ApiClientError ? error.message : '端点删除失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.deleteFailed'))
   }
 }
 
@@ -195,7 +197,7 @@ watch(
     try {
       await load()
     } catch {
-      notify.error(loadError.value || '节点详情加载失败')
+      notify.error(loadError.value || t('nodeWorkspace.loadFailed'))
     }
   },
 )
@@ -205,7 +207,7 @@ onMounted(async () => {
     await load()
     realtime.connect()
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '节点详情加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.loadFailed'))
   }
 })
 </script>
@@ -214,10 +216,10 @@ onMounted(async () => {
   <div class="node-workspace">
     <div class="node-header-card">
       <div class="node-header-card__top">
-        <el-button :icon="ArrowLeft" @click="goBack">返回配置</el-button>
+        <el-button :icon="ArrowLeft" @click="goBack">{{ t('nodeWorkspace.backToConfig') }}</el-button>
         <div class="node-header-card__actions">
-          <span class="node-header-card__config">{{ config?.name || '配置' }}</span>
-          <el-button v-if="node" type="primary" plain :icon="Setting" @click="openSettings">端点设置</el-button>
+          <span class="node-header-card__config">{{ config?.name || t('nodeWorkspace.localConfig') }}</span>
+          <el-button v-if="node" type="primary" plain :icon="Setting" @click="openSettings">{{ t('nodeWorkspace.endpointSettings') }}</el-button>
         </div>
       </div>
 
@@ -227,7 +229,7 @@ onMounted(async () => {
           <div class="node-header-card__tags">
             <el-tag type="info">{{ nodeTypeLabel(node.node_type) }}</el-tag>
             <el-tag v-if="node.node_type === 'dynamic'" :type="endpointStatus?.runtime.online ? 'success' : 'info'">
-              {{ endpointStatus?.runtime.online ? '在线' : '离线' }}
+              {{ endpointStatus?.runtime.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}
             </el-tag>
             <el-tag v-for="tag in node.tags" :key="tag" type="info">{{ tag }}</el-tag>
           </div>
@@ -236,23 +238,23 @@ onMounted(async () => {
 
       <div v-if="node" class="node-props-grid">
         <div class="node-prop-item">
-          <span class="node-prop-label">虚拟 IP</span>
-          <span class="node-prop-value">{{ node.virtual_ip || '未设置' }}</span>
+          <span class="node-prop-label">{{ t('nodeWorkspace.virtualIp') }}</span>
+          <span class="node-prop-value">{{ node.virtual_ip || t('nodeWorkspace.unset') }}</span>
         </div>
         <div class="node-prop-item">
-          <span class="node-prop-label">公网 IPv4</span>
-          <span class="node-prop-value">{{ node.ipv4_address || '未设置' }}</span>
+          <span class="node-prop-label">{{ t('nodeWorkspace.publicIpv4') }}</span>
+          <span class="node-prop-value">{{ node.ipv4_address || t('nodeWorkspace.unset') }}</span>
         </div>
         <div class="node-prop-item">
-          <span class="node-prop-label">公网 IPv6</span>
-          <span class="node-prop-value">{{ node.ipv6_address || '未设置' }}</span>
+          <span class="node-prop-label">{{ t('nodeWorkspace.publicIpv6') }}</span>
+          <span class="node-prop-value">{{ node.ipv6_address || t('nodeWorkspace.unset') }}</span>
         </div>
         <div class="node-prop-item">
-          <span class="node-prop-label">Peer 数</span>
+          <span class="node-prop-label">{{ t('nodeWorkspace.peerCount') }}</span>
           <span class="node-prop-value">{{ endpointStatus?.runtime.peers_total ?? 0 }}</span>
         </div>
         <div class="node-prop-item">
-          <span class="node-prop-label">WG 状态</span>
+          <span class="node-prop-label">{{ t('nodeWorkspace.wgState') }}</span>
           <span class="node-prop-value">{{ endpointStatus?.runtime.wg_runtime_state || 'unknown' }}</span>
         </div>
       </div>
@@ -292,39 +294,39 @@ onMounted(async () => {
     <div v-if="loading && !node" class="view-feedback view-feedback--silent" aria-hidden="true"></div>
     <div v-else-if="loadError && !node" class="view-feedback view-feedback--error">{{ loadError }}</div>
 
-    <el-dialog v-model="settingsVisible" title="端点设置" width="640px">
+    <el-dialog v-model="settingsVisible" :title="t('nodeWorkspace.endpointSettings')" width="640px">
       <div class="dialog-intro">
         <span class="dialog-intro__icon"><el-icon><Setting /></el-icon></span>
         <div>
-          <h3>端点基础信息</h3>
-          <p>编辑端点地址、虚拟 IP、密钥和所属标签。保存后会更新系统态配置。</p>
+          <h3>{{ t('nodeWorkspace.settingsHeading') }}</h3>
+          <p>{{ t('nodeWorkspace.settingsDescription') }}</p>
         </div>
       </div>
 
       <el-form ref="settingsFormRef" :model="settingsForm" :rules="settingsRules" class="dialog-form" label-position="top">
-        <el-form-item label="名称" prop="name" required>
+        <el-form-item :label="t('nodeWorkspace.name')" prop="name" required>
           <el-input v-model="settingsForm.name" />
         </el-form-item>
-        <el-form-item label="类型">
+        <el-form-item :label="t('nodeWorkspace.type')">
           <el-segmented
             v-model="settingsForm.node_type"
             :options="[
-              { label: '动态节点', value: 'dynamic' },
-              { label: '静态节点', value: 'static' },
+              { label: t('nodeWorkspace.dynamicNode'), value: 'dynamic' },
+              { label: t('nodeWorkspace.staticNode'), value: 'static' },
             ]"
           />
         </el-form-item>
         <div class="form-grid">
-          <el-form-item label="公网 IPv4">
-            <el-input v-model="settingsForm.ipv4_address" placeholder="可填写 IP 或域名" />
+          <el-form-item :label="t('nodeWorkspace.publicIpv4')">
+            <el-input v-model="settingsForm.ipv4_address" :placeholder="t('nodeWorkspace.ipOrDomain')" />
           </el-form-item>
-          <el-form-item label="公网 IPv6">
-            <el-input v-model="settingsForm.ipv6_address" placeholder="可填写 IP 或域名" />
+          <el-form-item :label="t('nodeWorkspace.publicIpv6')">
+            <el-input v-model="settingsForm.ipv6_address" :placeholder="t('nodeWorkspace.ipOrDomain')" />
           </el-form-item>
-          <el-form-item label="监听端口">
+          <el-form-item :label="t('nodeWorkspace.listenPort')">
             <el-input-number v-model="settingsForm.listen_port" :min="1" :max="65535" style="width: 100%" />
           </el-form-item>
-          <el-form-item label="虚拟 IP" prop="virtual_ip" required>
+          <el-form-item :label="t('nodeWorkspace.virtualIp')" prop="virtual_ip" required>
             <el-input v-model="settingsForm.virtual_ip" />
           </el-form-item>
           <el-form-item label="MTU">
@@ -334,14 +336,14 @@ onMounted(async () => {
         <el-form-item label="DNS">
           <el-input v-model="settingsForm.dns" />
         </el-form-item>
-        <el-form-item label="所属标签">
+        <el-form-item :label="t('nodeWorkspace.tags')">
           <el-select
             v-model="settingsForm.tags"
             multiple
             filterable
             allow-create
             default-first-option
-            placeholder="选择或输入标签"
+            :placeholder="t('nodeWorkspace.selectOrInputTag')"
             style="width: 100%"
           >
             <el-option v-for="tag in allTags" :key="tag" :label="tag" :value="tag" />
@@ -349,24 +351,24 @@ onMounted(async () => {
         </el-form-item>
         <div class="switch-row">
           <div>
-            <strong>自动同步</strong>
-            <span>系统态生成后自动同步到同步态。</span>
+            <strong>{{ t('nodeWorkspace.autoSync') }}</strong>
+            <span>{{ t('nodeWorkspace.autoSyncDescription') }}</span>
           </div>
           <el-switch v-model="settingsForm.auto_sync" />
         </div>
-        <el-form-item label="私钥">
+        <el-form-item :label="t('nodeWorkspace.privateKey')">
           <el-input v-model="settingsForm.private_key" type="textarea" :rows="3" />
         </el-form-item>
-        <el-form-item label="公钥">
+        <el-form-item :label="t('nodeWorkspace.publicKey')">
           <el-input v-model="settingsForm.public_key" type="textarea" :rows="3" />
         </el-form-item>
-        <el-button plain :icon="Key" @click="autofillKeys">生成密钥</el-button>
+        <el-button plain :icon="Key" @click="autofillKeys">{{ t('nodeWorkspace.generateKeys') }}</el-button>
       </el-form>
 
       <template #footer>
-        <el-button type="danger" plain :icon="Delete" @click="deleteNodeFromSettings">删除端点</el-button>
-        <el-button @click="settingsVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveNodeSettings">保存</el-button>
+        <el-button type="danger" plain :icon="Delete" @click="deleteNodeFromSettings">{{ t('nodeWorkspace.deleteEndpoint') }}</el-button>
+        <el-button @click="settingsVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="saveNodeSettings">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
   </div>

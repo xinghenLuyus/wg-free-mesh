@@ -150,13 +150,13 @@ def _control_action_value(value: object) -> ControlAction:
 def normalize_allowed_ips(value: str) -> str:
     tokens = [item.strip() for item in value.split(",") if item.strip()]
     if not tokens:
-        raise AppError("INVALID_ALLOWED_IPS", "allowed_ips 不能为空", 400)
+        raise AppError("INVALID_ALLOWED_IPS", "allowed_ips is required", 400)
     normalized: list[str] = []
     for token in tokens:
         try:
             ipaddress.ip_network(token, strict=False)
         except ValueError as exc:
-            raise AppError("INVALID_ALLOWED_IPS", f"无效的 CIDR: {token}", 400) from exc
+            raise AppError("INVALID_ALLOWED_IPS", f"Invalid CIDR: {token}", 400) from exc
         if token not in normalized:
             normalized.append(token)
     return ",".join(normalized)
@@ -195,7 +195,7 @@ class SQLiteStore:
                 (config_id,),
             ).fetchone()
         if row is None:
-            raise AppError("CONFIG_NOT_FOUND", "配置不存在", 404, {"config_id": config_id})
+            raise AppError("CONFIG_NOT_FOUND", "Config not found", 404, {"config_id": config_id})
         return _config_from_row(row)
 
     def create_config(self, payload: dict[str, object]) -> Config:
@@ -215,7 +215,7 @@ class SQLiteStore:
         with connect() as connection:
             existing = connection.execute("SELECT id FROM configs WHERE name = ?", (config.name,)).fetchone()
             if existing is not None:
-                raise AppError("CONFIG_NAME_EXISTS", f"配置 {config.name} 已存在", 409)
+                raise AppError("CONFIG_NAME_EXISTS", f"Config {config.name} already exists", 409)
             connection.execute(
                 """
                 INSERT INTO configs
@@ -260,7 +260,7 @@ class SQLiteStore:
                 (updated.name, config_id),
             ).fetchone()
             if existing is not None:
-                raise AppError("CONFIG_NAME_EXISTS", f"配置 {updated.name} 已存在", 409)
+                raise AppError("CONFIG_NAME_EXISTS", f"Config {updated.name} already exists", 409)
             connection.execute(
                 """
                 UPDATE configs
@@ -305,7 +305,7 @@ class SQLiteStore:
         with connect() as connection:
             row = connection.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
         if row is None:
-            raise AppError("NODE_NOT_FOUND", "节点不存在", 404, {"node_id": node_id})
+            raise AppError("NODE_NOT_FOUND", "Node not found", 404, {"node_id": node_id})
         return _node_from_row(row)
 
     def suggest_virtual_ip(self, config_id: str) -> str:
@@ -314,7 +314,7 @@ class SQLiteStore:
         try:
             network = ipaddress.ip_network(config.virtual_subnet, strict=False)
         except ValueError as exc:
-            raise AppError("INVALID_SUBNET", "配置的 virtual_subnet 不合法", 400) from exc
+            raise AppError("INVALID_SUBNET", "Config virtual_subnet is invalid", 400) from exc
         used: set[object] = set()
         for node in nodes:
             if not node.virtual_ip:
@@ -329,24 +329,24 @@ class SQLiteStore:
             if host not in used:
                 prefix = 32 if getattr(host, "version", 4) == 4 else 128
                 return f"{host}/{prefix}"
-        raise AppError("IP_POOL_EXHAUSTED", "虚拟子网没有可用地址", 400)
+        raise AppError("IP_POOL_EXHAUSTED", "No available address in the virtual subnet", 400)
 
     def validate_virtual_ip(self, config_id: str, value: str, exclude_node_id: str | None = None) -> dict[str, object]:
         config = self.get_config(config_id)
         if not value.strip():
-            return {"valid": False, "warning": "虚拟 IP 不能为空"}
+            return {"valid": False, "warning": "Virtual IP is required"}
         try:
             network = ipaddress.ip_network(config.virtual_subnet, strict=False)
             iface = ipaddress.ip_interface(value)
         except ValueError:
-            return {"valid": False, "warning": "IP 格式非法"}
+            return {"valid": False, "warning": "IP format is invalid"}
         if iface.ip not in network:
-            return {"valid": False, "warning": f"{value} 不在子网 {config.virtual_subnet} 内"}
+            return {"valid": False, "warning": f"{value} is not in subnet {config.virtual_subnet}"}
         for node in self.list_nodes(config_id):
             if node.id == exclude_node_id:
                 continue
             if node.virtual_ip == value:
-                return {"valid": False, "warning": f"{value} 已被节点 {node.name} 使用"}
+                return {"valid": False, "warning": f"{value} is already used by node {node.name}"}
         return {"valid": True, "warning": ""}
 
     def create_node(self, config_id: str, payload: dict[str, object]) -> Node:
@@ -356,7 +356,7 @@ class SQLiteStore:
         public_key = str(payload.get("public_key") or "").strip() or derive_public_key(private_key) or generated_public
         node_name = str(payload["name"]).strip()
         if not node_name:
-            raise AppError("INVALID_NODE_NAME", "名称不能为空", 400)
+            raise AppError("INVALID_NODE_NAME", "Name is required", 400)
         node = Node(
             config_id=config_id,
             name=node_name,
@@ -456,7 +456,7 @@ class SQLiteStore:
             }
         )
         if not updated.name:
-            raise AppError("INVALID_NODE_NAME", "名称不能为空", 400)
+            raise AppError("INVALID_NODE_NAME", "Name is required", 400)
         if payload.get("private_key") and not payload.get("public_key"):
             updated = updated.model_copy(update={"public_key": derive_public_key(updated.private_key)})
         validation = self.validate_virtual_ip(current.config_id, updated.virtual_ip or "", exclude_node_id=node_id)
@@ -509,7 +509,7 @@ class SQLiteStore:
         self.get_config(config_id)
         normalized = _normalize_tags([tag])
         if not normalized:
-            raise AppError("INVALID_TAG", "标签不能为空", 400)
+            raise AppError("INVALID_TAG", "Tag is required", 400)
         name = normalized[0]
         with connect() as connection:
             connection.execute(
@@ -539,7 +539,7 @@ class SQLiteStore:
     def apply_tag_to_nodes(self, config_id: str, tag: str, node_ids: list[str]) -> list[Node]:
         normalized_tag = str(tag).strip()
         if not normalized_tag:
-            raise AppError("INVALID_TAG", "标签不能为空", 400)
+            raise AppError("INVALID_TAG", "Tag is required", 400)
 
         requested_ids = list(dict.fromkeys(str(node_id) for node_id in node_ids if str(node_id).strip()))
         if not requested_ids:
@@ -548,7 +548,7 @@ class SQLiteStore:
         nodes_by_id = {node.id: node for node in self.list_nodes(config_id)}
         missing_ids = [node_id for node_id in requested_ids if node_id not in nodes_by_id]
         if missing_ids:
-            raise AppError("NODE_CONFIG_MISMATCH", "端点不属于当前配置", 400, {"node_ids": missing_ids})
+            raise AppError("NODE_CONFIG_MISMATCH", "Endpoint does not belong to this config", 400, {"node_ids": missing_ids})
 
         now = now_utc().isoformat()
         with connect() as connection:
@@ -574,7 +574,7 @@ class SQLiteStore:
     def delete_tag_from_config(self, config_id: str, tag: str) -> int:
         normalized_tag = str(tag).strip()
         if not normalized_tag:
-            raise AppError("INVALID_TAG", "标签不能为空", 400)
+            raise AppError("INVALID_TAG", "Tag is required", 400)
 
         nodes = self.list_nodes(config_id)
         affected = [node for node in nodes if normalized_tag in node.tags]
@@ -617,20 +617,20 @@ class SQLiteStore:
         local_node = self.get_node(node_id)
         peer_node = self.get_node(peer_node_id)
         if local_node.config_id != config_id or peer_node.config_id != config_id:
-            raise AppError("NODE_CONFIG_MISMATCH", "链路节点不属于当前配置", 400)
+            raise AppError("NODE_CONFIG_MISMATCH", "Link node does not belong to this config", 400)
         if local_node.id == peer_node.id:
-            raise AppError("INVALID_PEER_LINK", "不能连接到自身节点", 400)
+            raise AppError("INVALID_PEER_LINK", "A node cannot link to itself", 400)
 
         family = "ipv6" if endpoint_ref_family == "ipv6" else "ipv4"
         warnings: list[str] = []
         if not peer_node.virtual_ip:
-            warnings.append(f"{peer_node.name} 缺少虚拟 IP，主向 AllowedIPs 需要手动填写。")
+            warnings.append(f"{peer_node.name} is missing virtual IP. Forward AllowedIPs must be filled manually.")
         if not local_node.virtual_ip:
-            warnings.append(f"{local_node.name} 缺少虚拟 IP，反向 AllowedIPs 需要手动填写。")
+            warnings.append(f"{local_node.name} is missing virtual IP. Reverse AllowedIPs must be filled manually.")
         if not self._endpoint_host_for_family(peer_node, family):
-            warnings.append(f"{peer_node.name} 没有公网 {family.upper()} 入口，主向自动 Endpoint 会留空。")
+            warnings.append(f"{peer_node.name} has no public {family.upper()} entry. Forward auto Endpoint will be empty.")
         if not self._endpoint_host_for_family(local_node, family):
-            warnings.append(f"{local_node.name} 没有公网 {family.upper()} 入口，反向自动 Endpoint 会留空。")
+            warnings.append(f"{local_node.name} has no public {family.upper()} entry. Reverse auto Endpoint will be empty.")
 
         return {
             "local_node": local_node.model_dump(mode="json"),
@@ -645,7 +645,7 @@ class SQLiteStore:
         config = self.get_config(config_id)
         node = self.get_node(node_id)
         if node.config_id != config_id:
-            raise AppError("NODE_CONFIG_MISMATCH", "节点不属于当前配置", 400)
+            raise AppError("NODE_CONFIG_MISMATCH", "Node does not belong to this config", 400)
 
         links = self.list_peer_links(config_id)
         reverse_by_group: dict[str, PeerLink] = {}
@@ -685,9 +685,9 @@ class SQLiteStore:
         local_node = self.get_node(str(forward["local_node_id"]))
         peer_node = self.get_node(str(forward["peer_node_id"]))
         if local_node.config_id != config_id or peer_node.config_id != config_id:
-            raise AppError("NODE_CONFIG_MISMATCH", "链路节点不属于当前配置", 400)
+            raise AppError("NODE_CONFIG_MISMATCH", "Link node does not belong to this config", 400)
         if str(reverse["local_node_id"]) != peer_node.id or str(reverse["peer_node_id"]) != local_node.id:
-            raise AppError("INVALID_PEER_LINK", "双向链路节点方向不匹配", 400)
+            raise AppError("INVALID_PEER_LINK", "Bidirectional link node direction mismatch", 400)
         self._validate_link_endpoint_settings(forward)
         self._validate_link_endpoint_settings(reverse)
         group_id = new_id("group")
@@ -748,7 +748,7 @@ class SQLiteStore:
         with connect() as connection:
             rows = connection.execute("SELECT * FROM peer_links WHERE link_group_id = ?", (group_id,)).fetchall()
             if not rows:
-                raise AppError("PEER_LINK_NOT_FOUND", "链路组不存在", 404)
+                raise AppError("PEER_LINK_NOT_FOUND", "Peer link group not found", 404)
             config_id = rows[0]["config_id"]
             config = self.get_config(config_id)
             for row in rows:
@@ -786,7 +786,7 @@ class SQLiteStore:
         with connect() as connection:
             row = connection.execute("SELECT config_id FROM peer_links WHERE link_group_id = ? LIMIT 1", (group_id,)).fetchone()
             if row is None:
-                raise AppError("PEER_LINK_NOT_FOUND", "链路组不存在", 404)
+                raise AppError("PEER_LINK_NOT_FOUND", "Peer link group not found", 404)
             config_id = row["config_id"]
             connection.execute("DELETE FROM peer_links WHERE link_group_id = ?", (group_id,))
         self.refresh_config_state(config_id)
@@ -798,7 +798,7 @@ class SQLiteStore:
                 (config_id, node_id),
             ).fetchone()
         if row is None:
-            raise AppError("NODE_STATE_NOT_FOUND", "节点配置状态不存在", 404)
+            raise AppError("NODE_STATE_NOT_FOUND", "Node config state not found", 404)
         return _state_from_row(row)
 
     def get_runtime(self, config_id: str, node_id: str) -> EndpointRuntimeStatus:
@@ -808,7 +808,7 @@ class SQLiteStore:
                 (config_id, node_id),
             ).fetchone()
         if row is None:
-            raise AppError("RUNTIME_NOT_FOUND", "节点运行状态不存在", 404)
+            raise AppError("RUNTIME_NOT_FOUND", "Node runtime state not found", 404)
         return _runtime_from_row(row)
 
     def list_runtime_snapshot(self, config_id: str) -> list[dict[str, object]]:
@@ -856,7 +856,7 @@ class SQLiteStore:
             node_id=node_id,
             action=_control_action_value(action),
             requested_by=requested_by,
-            summary="命令已记录，等待服务端模拟执行",
+            summary="Command recorded, waiting for server-side simulated execution",
         )
         now = log.created_at.isoformat()
         with connect() as connection:
@@ -888,7 +888,7 @@ class SQLiteStore:
         with connect() as connection:
             row = connection.execute("SELECT * FROM endpoint_control_logs WHERE request_id = ?", (request_id,)).fetchone()
             if row is None:
-                raise AppError("CONTROL_LOG_NOT_FOUND", "控制日志不存在", 404)
+                raise AppError("CONTROL_LOG_NOT_FOUND", "Control log not found", 404)
             ack_at = now_utc().isoformat()
             connection.execute(
                 """
@@ -918,42 +918,42 @@ class SQLiteStore:
             "wg_runtime_state": runtime.wg_runtime_state.value,
             "config_sync_state": runtime.config_sync_state.value,
         }
-        summary = "已记录控制命令"
+        summary = "Control command recorded"
         if action == ControlAction.probe:
             updates["connectivity_state"] = ConnectivityState.online.value if runtime.online else ConnectivityState.offline.value
             updates["last_probe_sent_at"] = now.isoformat()
             updates["last_probe_ack_at"] = now.isoformat()
             updates["last_connectivity_reason"] = "server-simulated-probe"
-            summary = "已完成探测，结果来自服务端模拟状态"
+            summary = "Probe completed with server-side simulated state"
         elif action == ControlAction.start:
             updates["wg_running"] = 1
             updates["wg_runtime_state"] = WgRuntimeState.running.value
             updates["online"] = 1
             updates["connectivity_state"] = ConnectivityState.online.value
             updates["last_seen"] = now.isoformat()
-            summary = "WireGuard 已标记为运行"
+            summary = "WireGuard marked as running"
         elif action == ControlAction.stop:
             updates["wg_running"] = 0
             updates["wg_runtime_state"] = WgRuntimeState.stopped.value
             updates["online"] = 0
             updates["connectivity_state"] = ConnectivityState.offline.value
             updates["last_connectivity_reason"] = "manual-stop"
-            summary = "WireGuard 已标记为停止"
+            summary = "WireGuard marked as stopped"
         elif action == ControlAction.restart:
             updates["wg_running"] = 1
             updates["wg_runtime_state"] = WgRuntimeState.running.value
             updates["online"] = 1
             updates["connectivity_state"] = ConnectivityState.online.value
             updates["last_seen"] = now.isoformat()
-            summary = "WireGuard 已标记为重启成功"
+            summary = "WireGuard marked as restarted"
         elif action == ControlAction.sync:
             self.sync_node(config_id, node_id, requested_by="endpoint-control")
             updates["config_sync_state"] = ConfigSyncState.in_sync.value
-            summary = "节点配置已同步到 staged"
+            summary = "Node config synced to staged state"
         elif action == ControlAction.wg_show:
-            summary = "已记录 wg_show 请求，客户端阶段暂缓"
+            summary = "wg_show request recorded, deferred to client phase"
         else:
-            raise AppError("INVALID_ACTION", "不支持的控制动作", 400)
+            raise AppError("INVALID_ACTION", "Unsupported control action", 400)
         with connect() as connection:
             connection.execute(
                 """
@@ -1174,14 +1174,14 @@ class SQLiteStore:
         preview = self.build_wg_preview(config_id, node_id)
         result = self.save_applied_conf(config_id, node_id, str(preview["content"]))
         state = self.get_node_config_state(config_id, node_id)
-        return {"message": "节点配置已同步", "staged_version": state.staged_version, "staged_sha256": state.staged_sha256, "sync_status": result}
+        return {"message": "Node config synced", "staged_version": state.staged_version, "staged_sha256": state.staged_sha256, "sync_status": result}
 
     def sync_all(self, config_id: str) -> dict[str, object]:
         synced: list[str] = []
         for node in self.list_nodes(config_id):
             self.sync_node(config_id, node.id, requested_by="sync-all")
             synced.append(node.id)
-        return {"message": "全部节点配置已同步", "synced_count": len(synced), "failed_count": 0, "synced": synced, "failed": []}
+        return {"message": "All node configs synced", "synced_count": len(synced), "failed_count": 0, "synced": synced, "failed": []}
 
     def read_setting_json(self, key: str, default: dict[str, object]) -> dict[str, object]:
         with connect() as connection:
@@ -1223,6 +1223,10 @@ class SQLiteStore:
                     (value, now, key),
                 )
 
+    def delete_setting(self, key: str) -> None:
+        with connect() as connection:
+            connection.execute("DELETE FROM system_settings WHERE key = ?", (key,))
+
     def read_password(self) -> str:
         with connect() as connection:
             row = connection.execute("SELECT value FROM system_settings WHERE key = 'auth_password_hash'").fetchone()
@@ -1230,7 +1234,7 @@ class SQLiteStore:
 
     def update_password(self, current_password: str, new_password: str) -> None:
         if self.read_password() != current_password:
-            raise AppError("AUTH_FAILED", "当前密码不正确", 401)
+            raise AppError("AUTH_FAILED", "Current password is incorrect", 401)
         with connect() as connection:
             connection.execute("UPDATE system_settings SET value = ?, updated_at = ? WHERE key = 'auth_password_hash'", (new_password, now_utc().isoformat()))
 
@@ -1262,7 +1266,7 @@ class SQLiteStore:
         with connect() as connection:
             row = connection.execute("SELECT * FROM backups WHERE id = ?", (snapshot_id,)).fetchone()
         if row is None:
-            raise AppError("SNAPSHOT_NOT_FOUND", "快照不存在", 404)
+            raise AppError("SNAPSHOT_NOT_FOUND", "Snapshot not found", 404)
         return _snapshot_from_row(row)
 
     def delete_snapshot(self, snapshot_id: str) -> None:
@@ -1284,7 +1288,7 @@ class SQLiteStore:
 
     def restore_snapshot_archive(self, path: Path) -> None:
         if not path.exists():
-            raise AppError("SNAPSHOT_NOT_FOUND", "快照包不存在", 404)
+            raise AppError("SNAPSHOT_NOT_FOUND", "Snapshot package not found", 404)
         with ZipFile(path, "r") as archive:
             archive.extractall(Path.cwd())
 
@@ -1367,32 +1371,32 @@ class SQLiteStore:
     def _endpoint_preview_text(self, config: Config, peer_node: Node, family: str) -> str:
         host = self._endpoint_host_for_family(peer_node, family)
         if not host:
-            return f"{peer_node.name} 没有公网 {family.upper()} 入口，自动留空"
+            return f"{peer_node.name} has no public {family.upper()} entry; auto mode leaves it empty"
         port = peer_node.listen_port or config.default_listen_port
         endpoint = f"[{host}]:{port}" if _is_ipv6_literal(host) else f"{host}:{port}"
-        return f"自动使用 {endpoint}"
+        return f"Auto uses {endpoint}"
 
     def _peer_link_endpoint_summary(self, config: Config, peer_node: Node, link: PeerLink) -> str:
         if link.endpoint_mode == EndpointMode.none:
-            return "不写 Endpoint"
+            return "No Endpoint"
         if link.endpoint_mode == EndpointMode.manual:
             host = link.endpoint_manual_host or ""
             port = link.endpoint_manual_port
             if not host or not port:
-                return "手动模式需填写 Host 和 Port"
+                return "Manual mode requires Host and Port"
             endpoint = f"[{host}]:{port}" if _is_ipv6_literal(host) else f"{host}:{port}"
-            return f"手动使用 {endpoint}"
+            return f"Manual uses {endpoint}"
         family = "ipv6" if link.endpoint_ref_family == EndpointFamily.ipv6 else "ipv4"
         return self._endpoint_preview_text(config, peer_node, family)
 
     def _draft_endpoint_summary(self, config: Config, peer_node: Node, endpoint_mode: str, family: str, manual_host: str | None, manual_port: int | None) -> str:
         if endpoint_mode == EndpointMode.none.value:
-            return "不写 Endpoint"
+            return "No Endpoint"
         if endpoint_mode == EndpointMode.manual.value:
             if not manual_host or not manual_port:
-                return "手动模式需填写 Host 和 Port"
+                return "Manual mode requires Host and Port"
             endpoint = f"[{manual_host}]:{manual_port}" if _is_ipv6_literal(manual_host) else f"{manual_host}:{manual_port}"
-            return f"手动使用 {endpoint}"
+            return f"Manual uses {endpoint}"
         return self._endpoint_preview_text(config, peer_node, family)
 
     def _payload_has_endpoint(
@@ -1425,7 +1429,7 @@ class SQLiteStore:
         if not has_endpoint:
             return "/"
         if keepalive is None:
-            return "未设置"
+            return "Unset"
         return str(keepalive)
 
     def _peer_link_direction_card(
@@ -1447,7 +1451,7 @@ class SQLiteStore:
                 "endpoint_manual_host": None,
                 "endpoint_port_mode": EndpointPortMode.ref_peer_listen_port.value,
                 "endpoint_manual_port": None,
-                "endpoint_summary": "缺少反向连接",
+                "endpoint_summary": "Missing reverse link",
                 "keepalive_display": "/",
             }
         has_endpoint = self._resolve_endpoint(config, peer_node, link) is not None
@@ -1502,7 +1506,7 @@ class SQLiteStore:
             return
         if endpoint_mode == EndpointMode.manual:
             if not _str_or_none(payload.get("endpoint_manual_host")) or not _int_or_none(payload.get("endpoint_manual_port")):
-                raise AppError("INVALID_ENDPOINT", "手动 Endpoint 必须填写 Host 和 Port。", 400)
+                raise AppError("INVALID_ENDPOINT", "Manual Endpoint requires Host and Port.", 400)
             return
 
     def _validate_mesh_payload(self, config_id: str) -> dict[str, object]:
@@ -1510,15 +1514,15 @@ class SQLiteStore:
         links = self.list_peer_links(config_id)
         nodes = {node.id: node for node in self.list_nodes(config_id)}
         if not links:
-            messages.append("当前配置还没有任何 peer link。")
+            messages.append("Current config has no peer links.")
         for link in links:
             if link.local_node_id == link.peer_node_id:
-                messages.append(f"节点 {link.local_node_id} 存在自连接。")
+                messages.append(f"Node {link.local_node_id} has a self link.")
             if link.peer_node_id not in nodes:
-                messages.append(f"链路 {link.id} 指向不存在的节点。")
+                messages.append(f"Link {link.id} points to a missing node.")
             if not link.allowed_ips:
-                messages.append(f"链路 {link.id} 缺少 allowed_ips。")
-        return {"valid": not messages, "messages": messages or ["拓扑校验通过。"]}
+                messages.append(f"Link {link.id} is missing allowed_ips.")
+        return {"valid": not messages, "messages": messages or ["Topology check passed."]}
 
     def _resolve_endpoint(self, config: Config, peer_node: Node, link: PeerLink) -> str | None:
         if link.endpoint_mode == "none":

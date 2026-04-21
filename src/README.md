@@ -42,8 +42,17 @@
 可配置项：
 
 ```powershell
+WFM_DEBUG=true
+WFM_CORS_ORIGINS=["http://localhost:5173","http://localhost:8080"]
+WFM_MQTT_URL=mqtt://localhost:1883
 WFM_AUTH_TOKEN_EXPIRE_MINUTES=1440
+WFM_TIMEZONE=Asia/Shanghai
+WFM_ENABLE_DEV_TEST_API=false
 ```
+
+环境变量示例文件放在 [`.env.example`](D:/wenjian/stepsave/project/wg-free-mesh/src/.env.example)，实际本地配置文件应放到 `src/.env`。后端配置不会再从项目根目录读取 `.env`。
+时间存储仍统一使用 UTC，控制台默认显示时区由 `WFM_TIMEZONE` 控制，默认值为北京时间 `Asia/Shanghai`。
+`WFM_ENABLE_DEV_TEST_API` 默认关闭；只有显式设为 `true` 时，`/api/v0` 开发测试接口才会注册。
 
 ## 手动运行
 
@@ -73,6 +82,7 @@ python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 - OpenAPI: `http://127.0.0.1:8000/docs`
 - 健康检查: `http://127.0.0.1:8000/api/v1/system/health`
 - SSE: `http://127.0.0.1:8000/api/v1/events/stream`
+- 开发测试重置接口: `http://127.0.0.1:8000/api/v0/dev/reset-bootstrap`
 
 SSE 需要附带 Bearer Token：
 
@@ -82,6 +92,22 @@ Authorization: Bearer <access_token>
 ```
 
 `/api/v1/events/stream` 会记录连接 ID、客户端地址、用户和连接存活时长，便于定位移动端长连接问题。
+
+开发测试重置接口不要求后台 token，可直接命令行调用：
+
+```powershell
+Invoke-RestMethod -Method Post http://127.0.0.1:8000/api/v0/dev/reset-bootstrap
+```
+
+该接口只清初始化态相关设置：
+
+- 管理员密码哈希
+- 登录 token secret
+- 密码更新时间
+- `ui_locale`
+- `ui_theme_mode`
+
+不会删除配置、节点、Mesh 关系和业务快照。
 
 ## 测试
 
@@ -95,3 +121,15 @@ python -m pytest -q
 - 生产态由 FastAPI 同时提供 API 和前端静态资源
 - FastAPI 优先读取根目录 `front/dist`
 - Docker 镜像会先构建前端，再把 `dist` 复制进后端镜像
+
+## 目录索引
+
+- [app/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/README.md)：应用主包入口。
+- [app/api/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/README.md)：API 分层说明。
+- [app/core/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/core/README.md)：配置、安全、错误和响应。
+- [app/domain/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/domain/README.md)：领域模型。
+- [app/infrastructure/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/infrastructure/README.md)：数据库与文件路径。
+- [app/repositories/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/repositories/README.md)：仓储实现与命名规则。
+- [app/schemas/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/schemas/README.md)：请求与响应模型。
+- [app/services/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/services/README.md)：认证、控制平面与实时服务。
+- [tests/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/tests/README.md)：后端测试说明。

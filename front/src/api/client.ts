@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosHeaders } from 'axios'
 
+import { hasTranslation, translate } from '@/i18n'
 import type { ApiErrorResponse, ApiResponse } from '@/types/api'
 import { clearAuthToken, readAuthToken } from '@/utils/authToken'
 import { notify } from '@/utils/notify'
@@ -34,13 +35,13 @@ function isAuthFlowUrl(url = '') {
 function redirectForAuthError(code: string) {
   clearAuthToken()
   if (code === 'AUTH_SETUP_REQUIRED') {
-    notify.warning('需要先设置初始管理员密码')
+    notify.warning(translate('errors.AUTH_SETUP_REQUIRED'))
     if (window.location.pathname !== '/setup') {
       window.location.assign('/setup')
     }
     return
   }
-  notify.warning('登录状态已失效，请重新登录')
+  notify.warning(translate('errors.TOKEN_EXPIRED'))
   if (window.location.pathname !== '/login') {
     const redirect = `${window.location.pathname}${window.location.search}`
     window.location.assign(`/login?redirect=${encodeURIComponent(redirect)}`)
@@ -77,20 +78,26 @@ function normalizeError(error: unknown): ApiClientError {
   if (error instanceof AxiosError) {
     const data = error.response?.data as ApiErrorResponse | undefined
     if (data?.error) {
+      const translatedKey = `errors.${data.error.code}`
       const fallbackMessage =
         typeof data.error.detail?.message === 'string'
           ? data.error.detail.message
           : Array.isArray(data.error.detail?.errors) && data.error.detail.errors.length
             ? String((data.error.detail.errors[0] as { msg?: string }).msg || data.error.message)
             : data.error.message
-      return new ApiClientError(fallbackMessage, data.error.code, data.error.detail, error.response?.status ?? 0)
+      return new ApiClientError(
+        hasTranslation(translatedKey) ? translate(translatedKey) : fallbackMessage,
+        data.error.code,
+        data.error.detail,
+        error.response?.status ?? 0,
+      )
     }
-    return new ApiClientError(error.message, 'REQUEST_FAILED', {}, error.response?.status ?? 0)
+    return new ApiClientError(translate('errors.REQUEST_FAILED'), 'REQUEST_FAILED', {}, error.response?.status ?? 0)
   }
   if (error instanceof Error) {
     return new ApiClientError(error.message)
   }
-  return new ApiClientError('请求失败')
+  return new ApiClientError(translate('errors.REQUEST_FAILED'))
 }
 
 export async function request<T>(

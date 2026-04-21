@@ -12,16 +12,16 @@ class MeshService:
         links = store.list_peer_links(config_id)
         messages: list[str] = []
         if len(nodes) < 2:
-            messages.append("至少需要两个端点才能形成 Mesh。")
+            messages.append("At least two endpoints are required to form a Mesh.")
 
         static_count = sum(1 for node in nodes if node.node_type == NodeType.static)
         if static_count == 0:
-            messages.append("建议至少保留一个静态端点。")
+            messages.append("At least one static endpoint is recommended.")
         if not links:
-            messages.append("当前配置还没有 peer link。")
+            messages.append("Current config has no peer links.")
 
         if not messages:
-            messages.append("基础拓扑检查通过。")
+            messages.append("Basic topology check passed.")
 
         return MeshValidationRead(valid=len(nodes) >= 2 and static_count >= 1 and bool(links), messages=messages)
 

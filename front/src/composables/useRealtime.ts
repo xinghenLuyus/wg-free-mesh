@@ -1,5 +1,6 @@
 import { onBeforeUnmount, shallowRef } from 'vue'
 
+import { translate } from '@/i18n'
 import type { RealtimeEvent } from '@/types/api'
 import { readAuthToken } from '@/utils/authToken'
 
@@ -71,7 +72,7 @@ function startWatchdog() {
     if (elapsed <= INACTIVITY_TIMEOUT_MS) return
     state.value = 'degraded'
     connected.value = false
-    error.value = '实时同步暂时中断'
+    error.value = translate('realtime.interrupted')
     closeStream()
   }, WATCHDOG_INTERVAL_MS)
 }
@@ -106,7 +107,7 @@ function parseSseFrame(frame: string): RealtimeEvent | null {
 async function consumeStream(response: Response) {
   const reader = response.body?.getReader()
   if (!reader) {
-    throw new Error('实时事件流不可读')
+    throw new Error(translate('realtime.unreadable'))
   }
   const decoder = new TextDecoder()
   let buffer = ''
@@ -136,7 +137,7 @@ async function openStream() {
   if (!token) {
     connected.value = false
     state.value = 'idle'
-    error.value = '缺少实时连接凭证'
+    error.value = translate('realtime.missingToken')
     return
   }
 
@@ -157,11 +158,11 @@ async function openStream() {
 
   if (!response.ok) {
     const detail = await response.text().catch(() => '')
-    throw new Error(detail || `实时事件流连接失败 (${response.status})`)
+    throw new Error(detail || translate('realtime.connectFailed', { status: response.status }))
   }
 
   if (!response.body) {
-    throw new Error('实时事件流响应体为空')
+    throw new Error(translate('realtime.emptyBody'))
   }
 
   connected.value = true
@@ -181,7 +182,7 @@ async function ensureStream() {
   connectPromise = openStream()
     .catch((cause: unknown) => {
       if (manualClose) return
-      error.value = cause instanceof Error ? cause.message : '实时同步已断开'
+      error.value = cause instanceof Error ? cause.message : translate('realtime.disconnected')
       state.value = 'degraded'
     })
     .finally(() => {
@@ -194,7 +195,7 @@ async function ensureStream() {
         return
       }
       reconnectCount += 1
-      if (!error.value) error.value = '实时同步已断开'
+      if (!error.value) error.value = translate('realtime.disconnected')
       scheduleReconnect()
     })
 

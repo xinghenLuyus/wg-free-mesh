@@ -30,12 +30,12 @@ class PeerLinkDirectionRequest(BaseModel):
     @field_validator("local_node_id")
     @classmethod
     def validate_local_node_id(cls, value: str) -> str:
-        return strip_required_text(value, "本地节点")
+        return strip_required_text(value, "Local node")
 
     @field_validator("peer_node_id")
     @classmethod
     def validate_peer_node_id(cls, value: str) -> str:
-        return strip_required_text(value, "对端节点")
+        return strip_required_text(value, "Peer node")
 
     @field_validator("allowed_ips")
     @classmethod
@@ -193,7 +193,7 @@ async def delete_peer_link_group(group_id: str) -> ApiResponse[dict[str, str]]:
         await control_plane_service.publish_node_apply(config_id, node_id)
     await control_plane_service.publish_config_overview(config_id)
     await control_plane_service.publish_system_status()
-    return ok({"message": "链路组已删除"})
+    return ok({"message": "Peer link group deleted"})
 
 
 @router.post("/peer-links/psk/generate")

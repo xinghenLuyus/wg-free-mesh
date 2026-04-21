@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, shallowRef } from 'vue'
+import { useI18n } from 'vue-i18n'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
 import type { HealthRead, RealtimeEvent, SystemClockSyncPayload, SystemStatusRead } from '@/types/api'
-import { formatDateTime } from '@/utils/dateTime'
+import { formatDateTime, setSystemTimeZone } from '@/utils/dateTime'
 import { notify } from '@/utils/notify'
 
+const { t } = useI18n()
 const health = shallowRef<HealthRead | null>(null)
 const status = shallowRef<SystemStatusRead | null>(null)
 const serverClockBaseMs = shallowRef<number | null>(null)
@@ -24,14 +26,14 @@ const serverClockText = computed(() => {
 })
 
 const streamConnectionText = computed(() => {
-  if (realtime.state.value === 'connected' && realtime.connected.value) return '已连接'
-  if (realtime.state.value === 'connecting') return '连接中'
-  if (realtime.state.value === 'reconnecting') return '重连中'
-  if (realtime.state.value === 'degraded') return '连接异常'
-  return '已断开'
+  if (realtime.state.value === 'connected' && realtime.connected.value) return t('system.connected')
+  if (realtime.state.value === 'connecting') return t('system.connecting')
+  if (realtime.state.value === 'reconnecting') return t('system.reconnecting')
+  if (realtime.state.value === 'degraded') return t('system.degraded')
+  return t('system.disconnected')
 })
 const realtimeBannerType = computed(() => (realtime.connected.value ? 'success' : 'warning'))
-const realtimeBannerText = computed(() => (realtime.connected.value ? '实时同步正常' : '实时同步断开'))
+const realtimeBannerText = computed(() => (realtime.connected.value ? t('system.realtimeOk') : t('system.realtimeDown')))
 
 function syncServerClock(timestamp: string | null | undefined) {
   if (!timestamp) return
@@ -45,6 +47,9 @@ function syncServerClock(timestamp: string | null | undefined) {
 const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type === 'system.clock.sync' && health.value) {
     const payload = event.payload as unknown as SystemClockSyncPayload
+    if (payload.timezone) {
+      setSystemTimeZone(payload.timezone)
+    }
     health.value = { ...health.value, timestamp: payload.timestamp }
     syncServerClock(payload.timestamp)
   }
@@ -55,6 +60,7 @@ const realtime = useRealtime((event: RealtimeEvent) => {
 
 async function load() {
   health.value = await api.health()
+  setSystemTimeZone(health.value.timezone)
   status.value = await api.systemStatus()
   syncServerClock(health.value.timestamp)
 }
@@ -67,7 +73,7 @@ onMounted(async () => {
     await load()
     realtime.connect()
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '系统状态加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('system.loadFailed'))
   }
 })
 
@@ -83,8 +89,8 @@ onBeforeUnmount(() => {
   <section class="content-card">
     <div class="page-header">
       <div>
-        <h1 class="page-title">系统状态</h1>
-        <p class="page-description">这里查看健康检查和服务聚合状态。</p>
+        <h1 class="page-title">{{ t('system.title') }}</h1>
+        <p class="page-description">{{ t('system.description') }}</p>
       </div>
       <el-tag :type="realtimeBannerType">
         {{ realtimeBannerText }}
@@ -93,23 +99,24 @@ onBeforeUnmount(() => {
   </section>
 
   <section v-if="health" class="content-band section-gap">
-    <el-descriptions :column="1" border title="健康检查">
-      <el-descriptions-item label="状态">{{ health.status }}</el-descriptions-item>
-      <el-descriptions-item label="服务">{{ health.service }}</el-descriptions-item>
-      <el-descriptions-item label="版本">{{ health.version }}</el-descriptions-item>
-      <el-descriptions-item label="时间">{{ serverClockText }}</el-descriptions-item>
+    <el-descriptions :column="1" border :title="t('system.health')">
+      <el-descriptions-item :label="t('system.status')">{{ health.status }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.service')">{{ health.service }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.version')">{{ health.version }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.time')">{{ serverClockText }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.timezone')">{{ health.timezone }}</el-descriptions-item>
     </el-descriptions>
   </section>
 
   <section v-if="status" class="content-band section-gap">
-    <el-descriptions :column="1" border title="聚合状态">
-      <el-descriptions-item label="配置数">{{ status.summary.configs }}</el-descriptions-item>
-      <el-descriptions-item label="节点数">{{ status.summary.nodes }}</el-descriptions-item>
-      <el-descriptions-item label="在线节点">{{ status.summary.online_nodes }}</el-descriptions-item>
-      <el-descriptions-item label="待同步节点">{{ status.summary.pending_sync_nodes }}</el-descriptions-item>
-      <el-descriptions-item label="数据库">{{ status.services.database }}</el-descriptions-item>
-      <el-descriptions-item label="MQTT">{{ status.services.mqtt }}</el-descriptions-item>
-      <el-descriptions-item label="实时连接状态">
+    <el-descriptions :column="1" border :title="t('system.summary')">
+      <el-descriptions-item :label="t('system.configs')">{{ status.summary.configs }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.nodes')">{{ status.summary.nodes }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.onlineNodes')">{{ status.summary.online_nodes }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.pendingSyncNodes')">{{ status.summary.pending_sync_nodes }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.database')">{{ status.services.database }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.mqtt')">{{ status.services.mqtt }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.realtimeState')">
         {{ streamConnectionText }}
       </el-descriptions-item>
     </el-descriptions>

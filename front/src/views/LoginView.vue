@@ -2,6 +2,7 @@
 import { Key, User } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { reactive, shallowRef } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
@@ -11,6 +12,7 @@ import { notify } from '@/utils/notify'
 
 const router = useRouter()
 const route = useRoute()
+const { t } = useI18n()
 const authStore = useAuthStore()
 
 const form = reactive({
@@ -19,8 +21,8 @@ const form = reactive({
 })
 const formRef = shallowRef<FormInstance>()
 const formRules: FormRules<typeof form> = {
-  username: [requiredTextRule('用户名')],
-  password: [requiredTextRule('密码')],
+  username: [requiredTextRule('fields.username')],
+  password: [requiredTextRule('fields.password')],
 }
 
 async function submit() {
@@ -31,7 +33,7 @@ async function submit() {
     const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : '/'
     await router.push(redirect)
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '登录失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('auth.loginFailed'))
   }
 }
 </script>
@@ -39,13 +41,13 @@ async function submit() {
 <template>
   <div class="login-page">
     <div class="login-panel">
-      <h1 class="login-title">WG Free Mesh</h1>
-      <p class="login-description">请输入登录信息</p>
+      <h1 class="login-title">{{ t('auth.loginTitle') }}</h1>
+      <p class="login-description">{{ t('auth.loginDescription') }}</p>
       <el-form ref="formRef" :model="form" :rules="formRules" label-position="top" @submit.prevent="submit">
-        <el-form-item label="用户名" prop="username" required>
+        <el-form-item :label="t('fields.username')" prop="username" required>
           <el-input v-model="form.username" autocomplete="username" :prefix-icon="User" @keyup.enter="submit" />
         </el-form-item>
-        <el-form-item label="密码" prop="password" required>
+        <el-form-item :label="t('fields.password')" prop="password" required>
           <el-input
             v-model="form.password"
             type="password"
@@ -56,7 +58,7 @@ async function submit() {
           />
         </el-form-item>
         <el-button type="primary" style="width: 100%" :loading="authStore.loading" @click="submit">
-          登录
+          {{ t('auth.loginSubmit') }}
         </el-button>
       </el-form>
     </div>

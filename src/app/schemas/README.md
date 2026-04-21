@@ -4,8 +4,19 @@
 
 ## 当前内容
 
-- `nodes.py`：当前端点模型的请求与响应 schema，使用 `NodeType`。
-- `mesh.py`：当前 PeerLink 和 Mesh 校验响应 schema。
+- `auth.py`
+  - 登录、初始化、密码修改请求。
+  - 后台 token、下载 token、认证状态响应。
+- `common.py`
+  - 健康检查和通用操作结果模型。
+- `configs.py`
+  - 配置创建与读取模型。
+- `mesh.py`
+  - Mesh 链路、草稿、校验和预览模型。
+- `nodes.py`
+  - 节点创建、读取和标签相关模型。
+- `settings.py`
+  - 系统设置兼容模型，保留给后续更完整设置聚合使用。
 
 ## 约定
 

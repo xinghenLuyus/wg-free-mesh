@@ -1,5 +1,4 @@
 import ElementPlus from 'element-plus'
-import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import { createPinia } from 'pinia'
 import { createApp } from 'vue'
 
@@ -7,7 +6,11 @@ import 'element-plus/dist/index.css'
 import '@/assets/main.css'
 
 import App from '@/App.vue'
+import { i18n, setI18nLocale } from '@/i18n'
 import { router } from '@/router'
+import { applyThemeMode, readStoredLocale, readStoredThemeMode } from '@/stores/preferences'
 
-createApp(App).use(createPinia()).use(router).use(ElementPlus, { locale: zhCn }).mount('#app')
+setI18nLocale(readStoredLocale())
+applyThemeMode(readStoredThemeMode())
 
+createApp(App).use(createPinia()).use(router).use(i18n).use(ElementPlus).mount('#app')

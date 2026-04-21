@@ -2,6 +2,7 @@
 import { CopyDocument, Download, Link, PictureFilled } from '@element-plus/icons-vue'
 import QRCode from 'qrcode'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
@@ -12,6 +13,7 @@ import { formatDateTime } from '@/utils/dateTime'
 import { notify } from '@/utils/notify'
 
 const route = useRoute()
+const { t } = useI18n()
 
 const downloadPackage = shallowRef<DownloadPackageRead | null>(null)
 const qrCodeDataUrl = shallowRef('')
@@ -40,8 +42,8 @@ const realtime = useRealtime((event: RealtimeEvent) => {
 
 const qrHelpText = computed(() =>
   downloadPackage.value?.content.trim()
-    ? '展开后生成二维码，手机 WireGuard App 可直接扫码导入。'
-    : '当前同步态配置为空，暂时无法生成二维码。',
+    ? t('download.qrDescription')
+    : t('download.qrEmpty'),
 )
 const linkExpiresAtText = computed(() => formatDateTime(tokenCache.linkExpiresAt, ''))
 const shellExpiresAtText = computed(() => formatDateTime(tokenCache.shellExpiresAt, ''))
@@ -94,7 +96,7 @@ async function loadDownloadPackage() {
     if (!qrExpanded.value) qrCodeDataUrl.value = ''
   } catch (error) {
     if (ticket !== loadTicket) return
-    loadError.value = error instanceof ApiClientError ? error.message : '下载配置加载失败'
+    loadError.value = error instanceof ApiClientError ? error.message : t('download.loadFailed')
     throw error
   } finally {
     if (ticket === loadTicket) loading.value = false
@@ -103,7 +105,7 @@ async function loadDownloadPackage() {
 
 async function copyText(value: string, successMessage: string) {
   if (!value) {
-    notify.error('没有可复制的内容')
+    notify.error(t('download.noCopyContent'))
     return
   }
   try {
@@ -121,13 +123,11 @@ async function copyText(value: string, successMessage: string) {
       textarea.setSelectionRange(0, textarea.value.length)
       const copied = document.execCommand('copy')
       document.body.removeChild(textarea)
-      if (!copied) {
-        throw new Error('copy failed')
-      }
+      if (!copied) throw new Error('copy failed')
     }
     notify.success(successMessage)
   } catch {
-    notify.error('复制失败')
+    notify.error(t('download.copyFailed'))
   }
 }
 
@@ -136,9 +136,9 @@ async function createAndCopyDownloadUrl() {
   generatingLink.value = true
   try {
     const nextUrl = await issueDownloadUrl('link')
-    await copyText(nextUrl, '下载地址已复制')
+    await copyText(nextUrl, t('download.linkCopied'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '下载地址生成失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('download.linkFailed'))
   } finally {
     generatingLink.value = false
   }
@@ -151,7 +151,7 @@ async function downloadConfFile() {
     const nextUrl = await issueDownloadUrl('browser')
     window.location.assign(nextUrl)
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '下载地址生成失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('download.linkFailed'))
   } finally {
     downloadingConf.value = false
   }
@@ -167,9 +167,9 @@ async function createAndCopyShellCommand() {
       `sudo curl -fsSL "${nextUrl}" -o "/etc/wireguard/${downloadPackage.value.filename}"`,
       `sudo chmod 600 "/etc/wireguard/${downloadPackage.value.filename}"`,
     ].join(' && ')
-    await copyText(shellCommand.value, 'Shell 命令已复制')
+    await copyText(shellCommand.value, t('download.shellCopied'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : 'Shell 命令生成失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('download.shellFailed'))
   } finally {
     generatingShell.value = false
   }
@@ -181,7 +181,7 @@ async function toggleQrPanel() {
     try {
       await generateQrCode(downloadPackage.value.content)
     } catch {
-      notify.error('二维码生成失败')
+      notify.error(t('download.qrFailed'))
     }
   }
 }
@@ -192,7 +192,7 @@ watch(
     try {
       await loadDownloadPackage()
     } catch {
-      notify.error(loadError.value || '下载配置加载失败')
+      notify.error(loadError.value || t('download.loadFailed'))
     }
   },
 )
@@ -202,7 +202,7 @@ onMounted(async () => {
     await loadDownloadPackage()
     realtime.connect()
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '下载配置加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('download.loadFailed'))
   }
 })
 </script>
@@ -214,11 +214,11 @@ onMounted(async () => {
     <div v-else-if="downloadPackage" class="content-band">
       <div class="template-toolbar">
         <div>
-          <h2>下载配置</h2>
-          <p>生成当前节点专用的短时下载能力，用于复制下载地址、扫码导入或生成安装命令。</p>
+          <h2>{{ t('download.title') }}</h2>
+          <p>{{ t('download.description') }}</p>
         </div>
         <div class="template-toolbar__actions">
-          <el-button type="primary" :icon="Download" :loading="downloadingConf" @click="downloadConfFile">.conf 下载</el-button>
+          <el-button type="primary" :icon="Download" :loading="downloadingConf" @click="downloadConfFile">{{ t('download.confDownload') }}</el-button>
         </div>
       </div>
 
@@ -228,14 +228,14 @@ onMounted(async () => {
             <div class="download-card__title">
               <el-icon><Link /></el-icon>
               <div>
-                <strong>通过 HTTP(S) 下载</strong>
+                <strong>{{ t('download.httpTitle') }}</strong>
               </div>
             </div>
             <el-button class="download-action" plain :icon="Link" :loading="generatingLink" @click="createAndCopyDownloadUrl">
-              生成并复制地址
+              {{ t('download.httpAction') }}
             </el-button>
           </div>
-          <p class="download-card__description">生成 5 分钟有效的专用下载地址，只允许当前配置的当前节点下载同步态配置。</p>
+          <p class="download-card__description">{{ t('download.httpDescription') }}</p>
           <el-input
             v-if="downloadUrl"
             :model-value="downloadUrl"
@@ -245,7 +245,7 @@ onMounted(async () => {
             :rows="3"
             resize="none"
           />
-          <p v-if="tokenCache.linkExpiresAt" class="download-card__meta">地址有效期至 {{ linkExpiresAtText }}</p>
+          <p v-if="tokenCache.linkExpiresAt" class="download-card__meta">{{ t('download.linkExpiresAt', { time: linkExpiresAtText }) }}</p>
         </article>
 
         <article class="download-card">
@@ -253,17 +253,17 @@ onMounted(async () => {
             <div class="download-card__title">
               <el-icon><PictureFilled /></el-icon>
               <div>
-                <strong>二维码导入</strong>
+                <strong>{{ t('download.qrTitle') }}</strong>
               </div>
             </div>
             <el-button class="download-action" plain :icon="PictureFilled" @click="toggleQrPanel">
-              {{ qrExpanded ? '收起二维码' : '展开二维码' }}
+              {{ qrExpanded ? t('download.qrClose') : t('download.qrOpen') }}
             </el-button>
           </div>
           <p class="download-card__description">{{ qrHelpText }}</p>
           <div v-if="qrExpanded" class="qr-panel">
-            <img v-if="qrCodeDataUrl" :src="qrCodeDataUrl" alt="WireGuard 配置二维码" class="qr-panel__image" />
-            <div v-else class="qr-panel__empty">当前同步态配置为空，暂时无法生成二维码。</div>
+            <img v-if="qrCodeDataUrl" :src="qrCodeDataUrl" alt="WireGuard config QR code" class="qr-panel__image" />
+            <div v-else class="qr-panel__empty">{{ t('download.qrEmpty') }}</div>
           </div>
         </article>
 
@@ -272,14 +272,14 @@ onMounted(async () => {
             <div class="download-card__title">
               <el-icon><CopyDocument /></el-icon>
               <div>
-                <strong>Shell 命令</strong>
+                <strong>{{ t('download.shellTitle') }}</strong>
               </div>
             </div>
             <el-button class="download-action" plain :icon="CopyDocument" :loading="generatingShell" @click="createAndCopyShellCommand">
-              生成并复制命令
+              {{ t('download.shellAction') }}
             </el-button>
           </div>
-          <p class="download-card__description">生成 5 分钟有效的下载命令，适合 Linux 主机直接拉取并写入 `/etc/wireguard`。</p>
+          <p class="download-card__description">{{ t('download.shellDescription') }}</p>
           <el-input
             v-if="shellCommand"
             type="textarea"
@@ -289,7 +289,7 @@ onMounted(async () => {
             :model-value="shellCommand"
             class="download-output"
           />
-          <p v-if="tokenCache.shellExpiresAt" class="download-card__meta">命令有效期至 {{ shellExpiresAtText }}</p>
+          <p v-if="tokenCache.shellExpiresAt" class="download-card__meta">{{ t('download.shellExpiresAt', { time: shellExpiresAtText }) }}</p>
         </article>
       </div>
     </div>

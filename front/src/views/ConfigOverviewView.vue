@@ -3,6 +3,7 @@ import { CollectionTag, Key, Plus, Setting } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
@@ -18,6 +19,7 @@ type SortKey = 'name' | 'virtual_ip' | 'created_at' | 'online' | 'node_type'
 
 const route = useRoute()
 const router = useRouter()
+const { t } = useI18n()
 const overview = shallowRef<ConfigOverviewRead | null>(null)
 const fullNodes = shallowRef<NodeRead[]>([])
 const tags = shallowRef<TagRead[]>([])
@@ -71,12 +73,12 @@ const createForm = reactive({
   tags_text: '',
 })
 const settingsRules: FormRules<typeof settingsForm> = {
-  name: [requiredTextRule('名称')],
-  virtual_subnet: [requiredTextRule('虚拟网段')],
+  name: [requiredTextRule('fields.name')],
+  virtual_subnet: [requiredTextRule('configOverview.virtualSubnet')],
 }
 const createRules: FormRules<typeof createForm> = {
-  name: [requiredTextRule('名称')],
-  virtual_ip: [requiredTextRule('虚拟 IP')],
+  name: [requiredTextRule('fields.name')],
+  virtual_ip: [requiredTextRule('fields.virtualIp')],
 }
 
 const nodeCards = computed(() => overview.value?.node_cards ?? [])
@@ -106,7 +108,7 @@ const visibleNodes = computed(() => {
 })
 
 function nodeTypeLabel(type: NodeRead['node_type']) {
-  return type === 'static' ? '静态节点' : '动态节点'
+  return type === 'static' ? t('nodeWorkspace.staticNode') : t('nodeWorkspace.dynamicNode')
 }
 
 const assignableTagOptions = computed(() => {
@@ -130,7 +132,7 @@ async function load() {
     tags.value = nextTags
   } catch (error) {
     if (ticket !== loadTicket) return
-    loadError.value = error instanceof ApiClientError ? error.message : '配置概览加载失败'
+    loadError.value = error instanceof ApiClientError ? error.message : t('configOverview.loadFailed')
     throw error
   } finally {
     if (ticket === loadTicket) loading.value = false
@@ -180,7 +182,7 @@ async function openCreate() {
     const suggestion = await api.suggestIp(String(route.params.configId))
     createForm.virtual_ip = suggestion.ip
   } catch {
-    // 推荐失败不阻断手动填写。
+    // Suggestion failure does not block manual input.
   }
 }
 
@@ -204,7 +206,7 @@ function clearTagFilter() {
 async function createTag() {
   const tag = newTagName.value.trim()
   if (!tag) {
-    notify.warning('请输入标签名称')
+    notify.warning(t('configOverview.tagNameRequired'))
     return
   }
   try {
@@ -212,20 +214,20 @@ async function createTag() {
     selectedTagForAssignment.value = createdTag.name
     newTagName.value = ''
     await load()
-    notify.success('标签已创建，请选择端点应用')
+    notify.success(t('configOverview.tagCreated'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '标签创建失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('configOverview.tagCreateFailed'))
   }
 }
 
 async function applySelectedTagToNodes() {
   const tag = selectedTagForAssignment.value.trim()
   if (!tag) {
-    notify.warning('请选择或创建标签')
+    notify.warning(t('configOverview.tagRequired'))
     return
   }
   if (!selectedNodeIds.value.length) {
-    notify.warning('请选择需要添加标签的端点')
+    notify.warning(t('configOverview.nodesRequired'))
     return
   }
 
@@ -234,9 +236,9 @@ async function applySelectedTagToNodes() {
     await load()
     selectedNodeIds.value = []
     selectedTagForAssignment.value = tag
-    notify.success('标签已应用到选中的端点')
+    notify.success(t('configOverview.tagApplied'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '标签应用失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('configOverview.tagApplyFailed'))
   }
 }
 
@@ -244,24 +246,24 @@ async function removeTagFromNode(node: NodeRead, tag: string) {
   try {
     await api.removeTagFromNode(node.id, tag)
     await load()
-    notify.success('已移除端点标签')
+    notify.success(t('configOverview.tagRemoved'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '标签移除失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('configOverview.tagRemoveFailed'))
   }
 }
 
 async function deleteTag(tag: string) {
   try {
-    await ElMessageBox.confirm(`确定从所有端点删除标签 ${tag} 吗？`, '删除标签', {
+    await ElMessageBox.confirm(t('configOverview.deleteTagConfirm', { tag }), t('configOverview.deleteTag'), {
       type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
+      confirmButtonText: t('common.delete'),
+      cancelButtonText: t('common.cancel'),
     })
     await api.deleteTag(String(route.params.configId), tag)
     if (tagFilter.value === tag) clearTagFilter()
     if (selectedTagForAssignment.value === tag) selectedTagForAssignment.value = ''
     await load()
-    notify.success('标签已删除')
+    notify.success(t('configOverview.tagDeleted'))
   } catch (error) {
     if (error instanceof ApiClientError) {
       notify.error(error.message)
@@ -276,22 +278,22 @@ async function saveSettings() {
     await api.updateConfig(String(route.params.configId), { ...settingsForm })
     settingsVisible.value = false
     await load()
-    notify.success('配置已保存')
+    notify.success(t('configOverview.configSaved'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '配置保存失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('configOverview.configSaveFailed'))
   }
 }
 
 async function deleteConfig() {
   if (!overview.value) return
   try {
-    await ElMessageBox.confirm(`确定删除配置 ${overview.value.config.name} 吗？`, '删除配置', {
+    await ElMessageBox.confirm(t('configOverview.deleteConfigConfirm', { name: overview.value.config.name }), t('configOverview.deleteConfig'), {
       type: 'warning',
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
+      confirmButtonText: t('common.delete'),
+      cancelButtonText: t('common.cancel'),
     })
     await api.deleteConfig(String(route.params.configId))
-    notify.success('配置已删除')
+    notify.success(t('configOverview.configDeleted'))
     settingsVisible.value = false
     await router.push('/')
   } catch (error) {
@@ -310,7 +312,7 @@ async function toggleEnabled(value: boolean) {
     })
     await load()
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '启用状态保存失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('configOverview.enabledSaveFailed'))
   }
 }
 
@@ -350,9 +352,9 @@ async function createNode() {
     })
     createVisible.value = false
     await load()
-    notify.success('端点已创建')
+    notify.success(t('configOverview.endpointCreated'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '端点创建失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('configOverview.endpointCreateFailed'))
   }
 }
 
@@ -366,7 +368,7 @@ watch(
     try {
       await load()
     } catch {
-      notify.error(loadError.value || '配置概览加载失败')
+      notify.error(loadError.value || t('configOverview.loadFailed'))
     }
   },
 )
@@ -376,7 +378,7 @@ onMounted(async () => {
     await load()
     realtime.connect()
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '配置概览加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('configOverview.loadFailed'))
   }
 })
 </script>
@@ -395,56 +397,56 @@ onMounted(async () => {
           <el-switch
             :model-value="overview.config.enabled"
             inline-prompt
-            active-text="启用"
-            inactive-text="停用"
+            :active-text="t('common.enabled')"
+            :inactive-text="t('common.disabled')"
             @change="(value: boolean | string | number) => toggleEnabled(Boolean(value))"
           />
-          <el-button size="small" type="primary" plain :icon="Setting" @click="openSettings">设置</el-button>
+          <el-button size="small" type="primary" plain :icon="Setting" @click="openSettings">{{ t('configOverview.settings') }}</el-button>
         </div>
       </div>
 
       <div class="cfg-desc-row">
-        <span class="cfg-desc">{{ overview.config.description || '未填写备注' }}</span>
+        <span class="cfg-desc">{{ overview.config.description || t('configOverview.noDescription') }}</span>
       </div>
 
       <div class="cfg-props-grid">
         <div class="cfg-prop-item">
-          <span class="cfg-prop-label">虚拟网段</span>
+          <span class="cfg-prop-label">{{ t('configOverview.virtualSubnet') }}</span>
           <span class="cfg-prop-value">{{ overview.config.virtual_subnet }}</span>
         </div>
         <div class="cfg-prop-item">
-          <span class="cfg-prop-label">默认监听端口</span>
+          <span class="cfg-prop-label">{{ t('configOverview.defaultListenPort') }}</span>
           <span class="cfg-prop-value">{{ overview.config.default_listen_port }}</span>
         </div>
         <div class="cfg-prop-item">
-          <span class="cfg-prop-label">默认 MTU</span>
-          <span class="cfg-prop-value">{{ overview.config.default_mtu || '未设置' }}</span>
+          <span class="cfg-prop-label">{{ t('configOverview.defaultMtu') }}</span>
+          <span class="cfg-prop-value">{{ overview.config.default_mtu || t('nodeWorkspace.unset') }}</span>
         </div>
         <div class="cfg-prop-item">
-          <span class="cfg-prop-label">默认 DNS</span>
-          <span class="cfg-prop-value">{{ overview.config.default_dns || '未设置' }}</span>
+          <span class="cfg-prop-label">{{ t('configOverview.defaultDns') }}</span>
+          <span class="cfg-prop-value">{{ overview.config.default_dns || t('nodeWorkspace.unset') }}</span>
         </div>
       </div>
 
       <div class="node-toolbar">
         <div class="node-toolbar__actions">
-          <el-button class="soft-action" :icon="CollectionTag" @click="openTagManager">标签管理</el-button>
-          <el-button type="primary" :icon="Plus" @click="openCreate">新建端点</el-button>
+          <el-button class="soft-action" :icon="CollectionTag" @click="openTagManager">{{ t('configOverview.tagManager') }}</el-button>
+          <el-button type="primary" :icon="Plus" @click="openCreate">{{ t('configOverview.createEndpoint') }}</el-button>
         </div>
         <div class="node-toolbar__filters">
           <el-select v-model="sortKey" style="width: 140px">
-            <el-option label="按名称" value="name" />
-            <el-option label="按虚拟 IP" value="virtual_ip" />
-            <el-option label="按创建时间" value="created_at" />
-            <el-option label="按在线状态" value="online" />
-            <el-option label="按节点类型" value="node_type" />
+            <el-option :label="t('configOverview.sortName')" value="name" />
+            <el-option :label="t('configOverview.sortVirtualIp')" value="virtual_ip" />
+            <el-option :label="t('configOverview.sortCreatedAt')" value="created_at" />
+            <el-option :label="t('configOverview.sortOnline')" value="online" />
+            <el-option :label="t('configOverview.sortNodeType')" value="node_type" />
           </el-select>
-          <el-select v-model="tagFilter" clearable placeholder="按标签筛选" style="width: 160px">
+          <el-select v-model="tagFilter" clearable :placeholder="t('configOverview.filterByTag')" style="width: 160px">
             <el-option v-for="tag in allTags" :key="tag" :label="tag" :value="tag" />
           </el-select>
           <el-segmented v-model="viewMode" :options="[
-            { label: '网格', value: 'grid' },
-            { label: '列表', value: 'list' },
+            { label: t('configOverview.grid'), value: 'grid' },
+            { label: t('configOverview.list'), value: 'list' },
           ]" />
         </div>
       </div>
@@ -460,29 +462,29 @@ onMounted(async () => {
         >
           <div class="node-card__head">
             <h3>{{ node.name }}</h3>
-            <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'">{{ node.online ? '在线' : '离线' }}</el-tag>
+            <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'">{{ node.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}</el-tag>
           </div>
           <dl class="node-card__meta">
             <div>
-              <dt>类型</dt>
+              <dt>{{ t('configOverview.type') }}</dt>
               <dd>{{ nodeTypeLabel(node.node_type) }}</dd>
             </div>
             <div>
-              <dt>虚拟 IP</dt>
-              <dd>{{ node.virtual_ip || '未设置' }}</dd>
+              <dt>{{ t('nodeWorkspace.virtualIp') }}</dt>
+              <dd>{{ node.virtual_ip || t('nodeWorkspace.unset') }}</dd>
             </div>
             <div>
-              <dt>公网 IPv4</dt>
-              <dd>{{ node.ipv4_address || '未设置' }}</dd>
+              <dt>{{ t('nodeWorkspace.publicIpv4') }}</dt>
+              <dd>{{ node.ipv4_address || t('nodeWorkspace.unset') }}</dd>
             </div>
             <div>
-              <dt>公网 IPv6</dt>
-              <dd>{{ node.ipv6_address || '未设置' }}</dd>
+              <dt>{{ t('nodeWorkspace.publicIpv6') }}</dt>
+              <dd>{{ node.ipv6_address || t('nodeWorkspace.unset') }}</dd>
             </div>
           </dl>
           <div class="node-card__tags">
             <el-tag v-for="tag in node.tags" :key="tag" type="info" size="small">{{ tag }}</el-tag>
-            <span v-if="!node.tags.length" class="node-card__empty">无标签</span>
+            <span v-if="!node.tags.length" class="node-card__empty">{{ t('configOverview.noTags') }}</span>
           </div>
         </button>
       </div>
@@ -497,127 +499,127 @@ onMounted(async () => {
           <div class="node-strip-card__main">
             <div class="node-strip-card__title">
               <h3>{{ node.name }}</h3>
-              <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'" size="small">{{ node.online ? '在线' : '离线' }}</el-tag>
+              <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'" size="small">{{ node.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}</el-tag>
             </div>
             <div class="node-strip-card__tags">
               <el-tag v-for="tag in node.tags" :key="tag" type="info" size="small">{{ tag }}</el-tag>
-              <span v-if="!node.tags.length" class="node-card__empty">无标签</span>
+              <span v-if="!node.tags.length" class="node-card__empty">{{ t('configOverview.noTags') }}</span>
             </div>
           </div>
           <div class="node-strip-card__facts">
             <span>{{ nodeTypeLabel(node.node_type) }}</span>
-            <span>{{ node.virtual_ip || '未设置虚拟 IP' }}</span>
-            <span>IPv4 {{ node.ipv4_address || '未设置' }}</span>
-            <span>IPv6 {{ node.ipv6_address || '未设置' }}</span>
+            <span>{{ node.virtual_ip || t('configOverview.unsetVirtualIp') }}</span>
+            <span>IPv4 {{ node.ipv4_address || t('nodeWorkspace.unset') }}</span>
+            <span>IPv6 {{ node.ipv6_address || t('nodeWorkspace.unset') }}</span>
             <span>Peer {{ node.peers_total }}</span>
           </div>
         </button>
       </div>
     </section>
 
-    <el-dialog v-model="settingsVisible" title="配置设置" width="560px">
+    <el-dialog v-model="settingsVisible" :title="t('configOverview.configSettings')" width="560px">
       <div class="dialog-intro">
         <span class="dialog-intro__icon"><el-icon><Setting /></el-icon></span>
         <div>
-          <h3>配置基础信息</h3>
-          <p>这些字段用于生成系统态配置，并可自动同步到同步态。</p>
+          <h3>{{ t('configOverview.configBasics') }}</h3>
+          <p>{{ t('configOverview.configBasicsDescription') }}</p>
         </div>
       </div>
       <el-form ref="settingsFormRef" :model="settingsForm" :rules="settingsRules" class="dialog-form" label-position="top">
-        <el-form-item label="名称" prop="name" required><el-input v-model="settingsForm.name" /></el-form-item>
-        <el-form-item label="描述"><el-input v-model="settingsForm.description" type="textarea" :rows="3" /></el-form-item>
+        <el-form-item :label="t('fields.name')" prop="name" required><el-input v-model="settingsForm.name" /></el-form-item>
+        <el-form-item :label="t('home.descriptionField')"><el-input v-model="settingsForm.description" type="textarea" :rows="3" /></el-form-item>
         <div class="form-grid">
-          <el-form-item label="虚拟网段" prop="virtual_subnet" required><el-input v-model="settingsForm.virtual_subnet" /></el-form-item>
-          <el-form-item label="默认监听端口">
+          <el-form-item :label="t('configOverview.virtualSubnet')" prop="virtual_subnet" required><el-input v-model="settingsForm.virtual_subnet" /></el-form-item>
+          <el-form-item :label="t('configOverview.defaultListenPort')">
             <el-input-number v-model="settingsForm.default_listen_port" :min="1" :max="65535" style="width: 100%" />
           </el-form-item>
-          <el-form-item label="默认 MTU">
+          <el-form-item :label="t('configOverview.defaultMtu')">
             <el-input-number v-model="settingsForm.default_mtu" :min="576" :max="65535" style="width: 100%" />
           </el-form-item>
-          <el-form-item label="默认 DNS"><el-input v-model="settingsForm.default_dns" /></el-form-item>
+          <el-form-item :label="t('configOverview.defaultDns')"><el-input v-model="settingsForm.default_dns" /></el-form-item>
         </div>
         <div class="switch-row">
           <div>
-            <strong>自动同步</strong>
-            <span>系统态生成后自动同步到同步态。</span>
+            <strong>{{ t('nodeWorkspace.autoSync') }}</strong>
+            <span>{{ t('nodeWorkspace.autoSyncDescription') }}</span>
           </div>
           <el-switch v-model="settingsForm.auto_sync" />
         </div>
       </el-form>
       <div class="settings-danger-zone">
         <div>
-          <div class="settings-danger-zone__title">删除配置</div>
-          <div class="settings-danger-zone__desc">删除后会移除该配置及其节点、连接和同步状态。</div>
+          <div class="settings-danger-zone__title">{{ t('configOverview.deleteConfig') }}</div>
+          <div class="settings-danger-zone__desc">{{ t('configOverview.deleteConfigDescription') }}</div>
         </div>
-        <el-button type="danger" plain @click="deleteConfig">删除配置</el-button>
+        <el-button type="danger" plain @click="deleteConfig">{{ t('configOverview.deleteConfig') }}</el-button>
       </div>
       <template #footer>
-        <el-button @click="settingsVisible = false">取消</el-button>
-        <el-button type="primary" @click="saveSettings">保存</el-button>
+        <el-button @click="settingsVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="saveSettings">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="createVisible" title="新建端点" width="560px">
+    <el-dialog v-model="createVisible" :title="t('configOverview.createEndpoint')" width="560px">
       <div class="dialog-intro">
         <span class="dialog-intro__icon"><el-icon><Plus /></el-icon></span>
         <div>
-          <h3>端点接入</h3>
-          <p>端点创建后会出现在当前配置的节点网格中。</p>
+          <h3>{{ t('configOverview.endpointIntroTitle') }}</h3>
+          <p>{{ t('configOverview.endpointIntroDescription') }}</p>
         </div>
       </div>
       <el-form ref="createFormRef" :model="createForm" :rules="createRules" class="dialog-form" label-position="top">
-        <el-form-item label="名称" prop="name" required><el-input v-model="createForm.name" placeholder="例如：office-gateway" /></el-form-item>
-        <el-form-item label="类型">
+        <el-form-item :label="t('fields.name')" prop="name" required><el-input v-model="createForm.name" :placeholder="t('configOverview.endpointNamePlaceholder')" /></el-form-item>
+        <el-form-item :label="t('configOverview.type')">
           <el-segmented
             v-model="createForm.node_type"
             :options="[
-              { label: '动态节点', value: 'dynamic' },
-              { label: '静态节点', value: 'static' },
+              { label: t('nodeWorkspace.dynamicNode'), value: 'dynamic' },
+              { label: t('nodeWorkspace.staticNode'), value: 'static' },
             ]"
           />
         </el-form-item>
         <div class="form-grid">
-          <el-form-item label="公网 IPv4"><el-input v-model="createForm.ipv4_address" placeholder="可填写 IP 或域名" /></el-form-item>
-          <el-form-item label="公网 IPv6"><el-input v-model="createForm.ipv6_address" placeholder="可填写 IP 或域名" /></el-form-item>
-          <el-form-item label="虚拟 IP" prop="virtual_ip" required>
+          <el-form-item :label="t('nodeWorkspace.publicIpv4')"><el-input v-model="createForm.ipv4_address" :placeholder="t('nodeWorkspace.ipOrDomain')" /></el-form-item>
+          <el-form-item :label="t('nodeWorkspace.publicIpv6')"><el-input v-model="createForm.ipv6_address" :placeholder="t('nodeWorkspace.ipOrDomain')" /></el-form-item>
+          <el-form-item :label="t('nodeWorkspace.virtualIp')" prop="virtual_ip" required>
             <el-input v-model="createForm.virtual_ip">
-              <template #append><el-button @click="autofillVirtualIp">推荐</el-button></template>
+              <template #append><el-button @click="autofillVirtualIp">{{ t('configOverview.recommend') }}</el-button></template>
             </el-input>
           </el-form-item>
         </div>
-        <el-form-item label="标签">
-          <el-input v-model="createForm.tags_text" placeholder="多个标签用英文逗号分隔" />
+        <el-form-item :label="t('configOverview.tags')">
+          <el-input v-model="createForm.tags_text" :placeholder="t('configOverview.tagsPlaceholder')" />
         </el-form-item>
-        <el-form-item label="私钥"><el-input v-model="createForm.private_key" type="textarea" /></el-form-item>
-        <el-form-item label="公钥"><el-input v-model="createForm.public_key" type="textarea" /></el-form-item>
-        <el-button plain :icon="Key" @click="autofillKeys">生成密钥</el-button>
+        <el-form-item :label="t('nodeWorkspace.privateKey')"><el-input v-model="createForm.private_key" type="textarea" /></el-form-item>
+        <el-form-item :label="t('nodeWorkspace.publicKey')"><el-input v-model="createForm.public_key" type="textarea" /></el-form-item>
+        <el-button plain :icon="Key" @click="autofillKeys">{{ t('nodeWorkspace.generateKeys') }}</el-button>
       </el-form>
       <template #footer>
-        <el-button @click="createVisible = false">取消</el-button>
-        <el-button type="primary" @click="createNode">创建</el-button>
+        <el-button @click="createVisible = false">{{ t('common.cancel') }}</el-button>
+        <el-button type="primary" @click="createNode">{{ t('home.create') }}</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="tagVisible" title="标签管理" width="760px">
+    <el-dialog v-model="tagVisible" :title="t('configOverview.tagManager')" width="760px">
       <div class="tag-manager">
         <div class="tag-manager__hero">
           <div>
-            <h3>标签</h3>
-            <p>标签来自端点配置。可以创建标签、按标签筛选，也可以选择端点批量应用标签。</p>
+            <h3>{{ t('configOverview.tagTitle') }}</h3>
+            <p>{{ t('configOverview.tagDescription') }}</p>
           </div>
-          <el-button v-if="tagFilter" @click="clearTagFilter">清除筛选</el-button>
+          <el-button v-if="tagFilter" @click="clearTagFilter">{{ t('configOverview.clearFilter') }}</el-button>
         </div>
 
         <div class="tag-create-panel">
-          <el-input v-model="newTagName" placeholder="新标签名称" clearable @keyup.enter="createTag" />
-          <el-button type="primary" :icon="Plus" @click="createTag">创建标签</el-button>
+          <el-input v-model="newTagName" :placeholder="t('configOverview.newTagName')" clearable @keyup.enter="createTag" />
+          <el-button type="primary" :icon="Plus" @click="createTag">{{ t('configOverview.createTag') }}</el-button>
         </div>
 
         <div class="tag-manager__split">
           <section class="tag-manager__section">
             <div class="tag-manager__section-head">
-              <h4>标签列表</h4>
-              <el-input v-model="tagSearch" placeholder="搜索标签" clearable />
+              <h4>{{ t('configOverview.tagList') }}</h4>
+              <el-input v-model="tagSearch" :placeholder="t('configOverview.searchTag')" clearable />
             </div>
             <div class="tag-manager__grid">
               <div
@@ -628,18 +630,18 @@ onMounted(async () => {
               >
                 <button class="tag-card__body" @click="applyTagFilter(tag.name)">
                   <span class="tag-card__name">{{ tag.name }}</span>
-                  <span class="tag-card__count">{{ tag.count }} 个端点</span>
+                  <span class="tag-card__count">{{ t('configOverview.tagEndpointCount', { count: tag.count }) }}</span>
                 </button>
-                <el-button size="small" type="danger" plain @click="deleteTag(tag.name)">删除</el-button>
+                <el-button size="small" type="danger" plain @click="deleteTag(tag.name)">{{ t('common.delete') }}</el-button>
               </div>
-              <div v-if="!visibleTagUsages.length" class="tag-manager__empty">暂无匹配标签</div>
+              <div v-if="!visibleTagUsages.length" class="tag-manager__empty">{{ t('configOverview.noMatchedTags') }}</div>
             </div>
           </section>
 
           <section class="tag-manager__section">
             <div class="tag-manager__section-head">
-              <h4>端点标签</h4>
-              <el-select v-model="selectedTagForAssignment" placeholder="选择标签" style="width: 100%">
+              <h4>{{ t('configOverview.endpointTags') }}</h4>
+              <el-select v-model="selectedTagForAssignment" :placeholder="t('configOverview.selectTag')" style="width: 100%">
                 <el-option v-for="tag in assignableTagOptions" :key="tag" :label="tag" :value="tag" />
               </el-select>
             </div>
@@ -650,18 +652,18 @@ onMounted(async () => {
               filterable
               collapse-tags
               collapse-tags-tooltip
-              placeholder="选择要添加标签的端点"
+              :placeholder="t('configOverview.selectNodes')"
               style="width: 100%"
             >
               <el-option v-for="node in fullNodes" :key="node.id" :label="node.name" :value="node.id" />
             </el-select>
-            <el-button type="primary" class="tag-assign-button" @click="applySelectedTagToNodes">应用到端点</el-button>
+            <el-button type="primary" class="tag-assign-button" @click="applySelectedTagToNodes">{{ t('configOverview.applyToNodes') }}</el-button>
 
             <div class="tag-node-list">
               <div v-for="node in fullNodes" :key="node.id" class="tag-node-card">
                 <div>
                   <strong>{{ node.name }}</strong>
-                  <span>{{ node.virtual_ip || '未设置虚拟 IP' }}</span>
+                  <span>{{ node.virtual_ip || t('configOverview.unsetVirtualIp') }}</span>
                 </div>
                 <div class="tag-node-card__tags">
                   <el-tag
@@ -673,7 +675,7 @@ onMounted(async () => {
                   >
                     {{ tag }}
                   </el-tag>
-                  <span v-if="!node.tags.length" class="node-card__empty">无标签</span>
+                  <span v-if="!node.tags.length" class="node-card__empty">{{ t('configOverview.noTags') }}</span>
                 </div>
               </div>
             </div>

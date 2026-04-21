@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { RefreshRight, SwitchButton, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { onMounted, shallowRef, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
@@ -11,12 +12,13 @@ import { formatDateTime } from '@/utils/dateTime'
 import { notify } from '@/utils/notify'
 
 const route = useRoute()
+const { t } = useI18n()
 
 const endpointStatus = shallowRef<EndpointStatusRead | null>(null)
 const logs = shallowRef<ControlLogRead[]>([])
 
 function nodeTypeLabel(type: 'dynamic' | 'static') {
-  return type === 'static' ? '静态节点' : '动态节点'
+  return type === 'static' ? t('nodeWorkspace.staticNode') : t('nodeWorkspace.dynamicNode')
 }
 
 async function reloadNode() {
@@ -31,7 +33,7 @@ async function sendAction(action: string) {
     const result = await api.controlEndpoint(String(route.params.configId), String(route.params.nodeId), action)
     notify.success(result.message)
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '控制命令失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.commandFailed'))
   }
 }
 
@@ -70,7 +72,7 @@ onMounted(async () => {
     await reloadNode()
     realtime.connect()
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '端点状态加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.loadFailed'))
   }
 })
 </script>
@@ -80,45 +82,45 @@ onMounted(async () => {
     <div class="content-band">
       <div class="template-toolbar">
         <div>
-          <h2>端点控制</h2>
-          <p>查看当前节点运行状态、远程控制和控制日志。</p>
+          <h2>{{ t('endpointControl.title') }}</h2>
+          <p>{{ t('endpointControl.description') }}</p>
         </div>
         <el-tag :type="realtime.connected ? 'success' : 'warning'">
-          {{ realtime.connected ? '实时连接正常' : '实时连接断开' }}
+          {{ realtime.connected ? t('endpointControl.realtimeOk') : t('endpointControl.realtimeDown') }}
         </el-tag>
       </div>
 
       <div v-if="endpointStatus" class="endpoint-panels">
         <div class="endpoint-card">
-          <div class="endpoint-card__title">运行状态</div>
+          <div class="endpoint-card__title">{{ t('endpointControl.runtimeStatus') }}</div>
           <el-descriptions :column="2" border>
-            <el-descriptions-item label="节点">{{ endpointStatus.node.name }}</el-descriptions-item>
-            <el-descriptions-item label="类型">{{ nodeTypeLabel(endpointStatus.node.node_type) }}</el-descriptions-item>
-            <el-descriptions-item label="连通状态">{{ endpointStatus.runtime.connectivity_state }}</el-descriptions-item>
-            <el-descriptions-item label="WG 状态">{{ endpointStatus.runtime.wg_runtime_state }}</el-descriptions-item>
-            <el-descriptions-item label="Peer">{{ endpointStatus.runtime.peers_online }} / {{ endpointStatus.runtime.peers_total }}</el-descriptions-item>
-            <el-descriptions-item label="最近在线">{{ formatDateTime(endpointStatus.runtime.last_seen) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.node')">{{ endpointStatus.node.name }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.type')">{{ nodeTypeLabel(endpointStatus.node.node_type) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.connectivity')">{{ endpointStatus.runtime.connectivity_state }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.wgState')">{{ endpointStatus.runtime.wg_runtime_state }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.peer')">{{ endpointStatus.runtime.peers_online }} / {{ endpointStatus.runtime.peers_total }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.lastSeen')">{{ formatDateTime(endpointStatus.runtime.last_seen) }}</el-descriptions-item>
           </el-descriptions>
         </div>
 
         <div class="endpoint-card">
-          <div class="endpoint-card__title">远程控制</div>
+          <div class="endpoint-card__title">{{ t('endpointControl.remoteControl') }}</div>
           <div class="endpoint-controls">
-            <el-button :icon="VideoPlay" @click="sendAction('start')">启动 WG</el-button>
-            <el-button :icon="VideoPause" @click="sendAction('stop')">停止 WG</el-button>
-            <el-button :icon="RefreshRight" @click="sendAction('restart')">重启 WG</el-button>
-            <el-button type="primary" :icon="SwitchButton" @click="sendAction('sync')">下发配置</el-button>
+            <el-button :icon="VideoPlay" @click="sendAction('start')">{{ t('endpointControl.startWg') }}</el-button>
+            <el-button :icon="VideoPause" @click="sendAction('stop')">{{ t('endpointControl.stopWg') }}</el-button>
+            <el-button :icon="RefreshRight" @click="sendAction('restart')">{{ t('endpointControl.restartWg') }}</el-button>
+            <el-button type="primary" :icon="SwitchButton" @click="sendAction('sync')">{{ t('endpointControl.syncConfig') }}</el-button>
           </div>
         </div>
 
         <div class="endpoint-card">
-          <div class="endpoint-card__title">控制日志</div>
+          <div class="endpoint-card__title">{{ t('endpointControl.logs') }}</div>
           <el-timeline>
             <el-timeline-item v-for="log in logs" :key="log.id" :timestamp="formatDateTime(log.created_at)">
               {{ log.action }} / {{ log.status }} / {{ log.summary }}
             </el-timeline-item>
           </el-timeline>
-          <div v-if="!logs.length" class="empty-state">暂无日志</div>
+          <div v-if="!logs.length" class="empty-state">{{ t('endpointControl.noLogs') }}</div>
         </div>
       </div>
     </div>

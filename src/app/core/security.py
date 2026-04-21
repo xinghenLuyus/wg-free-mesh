@@ -96,24 +96,24 @@ def decode_access_token(token: str, secret: str) -> dict[str, Any]:
     try:
         header_part, payload_part, signature_part = token.split(".", 2)
     except ValueError as exc:
-        raise AppError("INVALID_TOKEN", "登录凭证无效", 401) from exc
+        raise AppError("INVALID_TOKEN", "Invalid token", 401) from exc
 
     signing_input = f"{header_part}.{payload_part}"
     expected = hmac.new(secret.encode("utf-8"), signing_input.encode("ascii"), hashlib.sha256)
     if not secrets.compare_digest(_b64encode(expected.digest()), signature_part):
-        raise AppError("INVALID_TOKEN", "登录凭证无效", 401)
+        raise AppError("INVALID_TOKEN", "Invalid token", 401)
 
     try:
         header = json.loads(_b64decode(header_part))
         payload = json.loads(_b64decode(payload_part))
     except (ValueError, json.JSONDecodeError) as exc:
-        raise AppError("INVALID_TOKEN", "登录凭证无效", 401) from exc
+        raise AppError("INVALID_TOKEN", "Invalid token", 401) from exc
 
     if header.get("alg") != TOKEN_ALGORITHM:
-        raise AppError("INVALID_TOKEN", "登录凭证无效", 401)
+        raise AppError("INVALID_TOKEN", "Invalid token", 401)
     exp = payload.get("exp")
     if not isinstance(exp, int):
-        raise AppError("INVALID_TOKEN", "登录凭证无效", 401)
+        raise AppError("INVALID_TOKEN", "Invalid token", 401)
     if datetime.now(UTC).timestamp() >= exp:
-        raise AppError("TOKEN_EXPIRED", "登录凭证已过期", 401)
+        raise AppError("TOKEN_EXPIRED", "Token expired", 401)
     return payload

@@ -32,12 +32,12 @@ RESERVED_NAMES = {
 
 def validate_config_name(name: str) -> None:
     if not name.strip():
-        raise AppError("INVALID_CONFIG_NAME", "名称不能为空", 400)
+        raise AppError("INVALID_CONFIG_NAME", "Name is required", 400)
     if not CONFIG_NAME_RE.match(name):
-        raise AppError("INVALID_CONFIG_NAME", "配置名称不是有效的 WireGuard 隧道名", 400)
+        raise AppError("INVALID_CONFIG_NAME", "Config name is not a valid WireGuard tunnel name", 400)
     upper_name = name.upper()
     if upper_name in RESERVED_NAMES or upper_name.split(".", 1)[0] in RESERVED_NAMES:
-        raise AppError("INVALID_CONFIG_NAME", "配置名称不能使用系统保留名", 400)
+        raise AppError("INVALID_CONFIG_NAME", "Config name cannot use a system reserved name", 400)
 
 
 def config_artifact_name_segment(value: str, default: str) -> str:

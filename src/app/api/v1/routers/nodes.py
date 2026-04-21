@@ -30,7 +30,7 @@ class NodeRequest(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        return strip_required_text(value, "名称")
+        return strip_required_text(value, "Name")
 
     @field_validator(
         "ipv4_address",
@@ -59,7 +59,7 @@ class PrivateKeyRequest(BaseModel):
     @field_validator("private_key")
     @classmethod
     def validate_private_key(cls, value: str) -> str:
-        return strip_required_text(value, "私钥")
+        return strip_required_text(value, "Private key")
 
 
 class VirtualIpRequest(BaseModel):
@@ -68,7 +68,7 @@ class VirtualIpRequest(BaseModel):
     @field_validator("virtual_ip")
     @classmethod
     def validate_virtual_ip(cls, value: str) -> str:
-        return strip_required_text(value, "虚拟 IP")
+        return strip_required_text(value, "Virtual IP")
 
 
 class TagRead(BaseModel):
@@ -83,7 +83,7 @@ class ApplyTagRequest(BaseModel):
     @field_validator("tag")
     @classmethod
     def validate_tag(cls, value: str) -> str:
-        return strip_required_text(value, "标签")
+        return strip_required_text(value, "Tag")
 
 
 class CreateTagRequest(BaseModel):
@@ -92,7 +92,7 @@ class CreateTagRequest(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, value: str) -> str:
-        return strip_required_text(value, "标签名称")
+        return strip_required_text(value, "Tag name")
 
 
 class NodeTagsRequest(BaseModel):
@@ -161,7 +161,7 @@ async def delete_tag_from_config(
 ) -> ApiResponse[dict[str, int | str]]:
     removed_count = control_plane_service.delete_tag_from_config(config_id, tag_name)
     await control_plane_service.publish_config_overview(config_id)
-    return ok({"message": "标签已删除", "removed_count": removed_count})
+    return ok({"message": "Tag deleted", "removed_count": removed_count})
 
 
 @router.put("/nodes/{node_id}/tags")
@@ -190,7 +190,7 @@ async def delete_node(node_id: str) -> ApiResponse[dict[str, str]]:
     await control_plane_service.publish_configs()
     await control_plane_service.publish_config_overview(node.config_id)
     await control_plane_service.publish_system_status()
-    return ok({"message": "节点已删除"})
+    return ok({"message": "Node deleted"})
 
 
 @router.post("/configs/{config_id}/nodes/suggest-ip")

@@ -1,10 +1,12 @@
+import { translate } from '@/i18n'
+
 type NotifyType = 'success' | 'warning' | 'info' | 'error'
 
-const titles: Record<NotifyType, string> = {
-  success: '操作成功',
-  warning: '需要注意',
-  info: '系统提示',
-  error: '操作失败',
+const titleKeys: Record<NotifyType, string> = {
+  success: 'notify.success',
+  warning: 'notify.warning',
+  info: 'notify.info',
+  error: 'notify.error',
 }
 
 function ensureContainer() {
@@ -42,7 +44,7 @@ function open(type: NotifyType, message: string, duration = type === 'error' ? 7
   mark.setAttribute('aria-hidden', 'true')
 
   title.className = 'app-toast__title'
-  title.textContent = titles[type]
+  title.textContent = translate(titleKeys[type])
 
   content.className = 'app-toast__content'
   content.textContent = message
@@ -61,7 +63,7 @@ function open(type: NotifyType, message: string, duration = type === 'error' ? 7
 
   close.className = 'app-toast__close'
   close.type = 'button'
-  close.setAttribute('aria-label', '关闭通知')
+  close.setAttribute('aria-label', translate('notify.close'))
   closeText.className = 'app-toast__close-text'
   closeText.textContent = '×'
   close.append(progress, closeText)

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Check, Document, EditPen, Refresh } from '@element-plus/icons-vue'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
@@ -11,6 +12,7 @@ import { notify } from '@/utils/notify'
 import type { NodeApplyUpdatedPayload, RealtimeEvent, SyncStatusRead } from '@/types/api'
 
 const route = useRoute()
+const { t } = useI18n()
 
 const syncStatus = shallowRef<SyncStatusRead | null>(null)
 const previewContent = shallowRef('')
@@ -55,7 +57,7 @@ async function loadNodeState() {
     Object.assign(appliedState, applied)
   } catch (error) {
     if (ticket !== loadTicket) return
-    loadError.value = error instanceof ApiClientError ? error.message : '配置预览加载失败'
+    loadError.value = error instanceof ApiClientError ? error.message : t('apply.loadFailed')
     throw error
   } finally {
     if (ticket === loadTicket) loading.value = false
@@ -67,9 +69,9 @@ async function saveApplied() {
   try {
     await api.saveAppliedConf(configId, currentNodeId.value, appliedState.content)
     await loadNodeState()
-    notify.success('同步态已保存')
+    notify.success(t('apply.stagedSaved'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '保存失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('apply.saveFailed'))
   }
 }
 
@@ -77,7 +79,7 @@ async function syncNode() {
   const configId = String(route.params.configId)
   await api.syncNode(configId, currentNodeId.value)
   await loadNodeState()
-  notify.success('已从系统态同步到同步态')
+  notify.success(t('apply.synced'))
 }
 
 async function toggleAutoSync(nextValue: boolean | string | number) {
@@ -90,9 +92,9 @@ async function toggleAutoSync(nextValue: boolean | string | number) {
     if (syncStatus.value) {
       syncStatus.value = { ...syncStatus.value, auto_sync: enabled }
     }
-    notify.success(enabled ? '已开启自动同步' : '已关闭自动同步')
+    notify.success(enabled ? t('apply.autoSyncEnabledToast') : t('apply.autoSyncDisabledToast'))
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '自动同步状态保存失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('apply.autoSyncSaveFailed'))
   } finally {
     autoSyncSaving.value = false
   }
@@ -104,7 +106,7 @@ watch(
     try {
       await loadNodeState()
     } catch {
-      notify.error(loadError.value || '配置预览加载失败')
+      notify.error(loadError.value || t('apply.loadFailed'))
     }
   },
 )
@@ -114,7 +116,7 @@ onMounted(async () => {
     await loadNodeState()
     realtime.connect()
   } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : '配置预览加载失败')
+    notify.error(error instanceof ApiClientError ? error.message : t('apply.loadFailed'))
   }
 })
 </script>
@@ -126,14 +128,14 @@ onMounted(async () => {
     <div v-else-if="syncStatus" class="content-band">
       <div class="template-toolbar">
         <div>
-          <h2>配置预览</h2>
-          <p>默认同步配置表示从系统态同步到同步态。下发态属于客户端流程。</p>
+          <h2>{{ t('apply.title') }}</h2>
+          <p>{{ t('apply.description') }}</p>
         </div>
         <div class="template-toolbar__actions">
           <div class="auto-sync-toggle">
             <div>
-              <strong>自动同步</strong>
-              <span>{{ syncStatus.auto_sync ? '系统态变更后自动写入同步态' : '当前仅保留手动同步' }}</span>
+              <strong>{{ t('apply.autoSync') }}</strong>
+              <span>{{ syncStatus.auto_sync ? t('apply.autoSyncEnabled') : t('apply.autoSyncDisabled') }}</span>
             </div>
             <el-switch
               :model-value="syncStatus.auto_sync"
@@ -141,7 +143,7 @@ onMounted(async () => {
               @change="toggleAutoSync"
             />
           </div>
-          <el-button type="primary" :icon="Refresh" @click="syncNode">同步配置</el-button>
+          <el-button type="primary" :icon="Refresh" @click="syncNode">{{ t('apply.syncConfig') }}</el-button>
         </div>
       </div>
 
@@ -152,11 +154,11 @@ onMounted(async () => {
               <div class="apply-panel__title">
                 <el-icon><Document /></el-icon>
                 <div>
-                  <strong>系统态</strong>
-                  <span>系统生成，只读预览</span>
+                  <strong>{{ t('apply.systemState') }}</strong>
+                  <span>{{ t('apply.systemStateDescription') }}</span>
                 </div>
               </div>
-              <el-tag type="info" effect="plain">只读</el-tag>
+              <el-tag type="info" effect="plain">{{ t('apply.readOnly') }}</el-tag>
             </div>
           </template>
           <div class="config-code-shell">
@@ -172,11 +174,11 @@ onMounted(async () => {
               <div class="apply-panel__title">
                 <el-icon><EditPen /></el-icon>
                 <div>
-                  <strong>同步态</strong>
-                  <span>可在此手动调整并保存</span>
+                  <strong>{{ t('apply.stagedState') }}</strong>
+                  <span>{{ t('apply.stagedStateDescription') }}</span>
                 </div>
               </div>
-              <el-button size="small" type="primary" :icon="Check" @click="saveApplied">保存修改</el-button>
+              <el-button size="small" type="primary" :icon="Check" @click="saveApplied">{{ t('apply.saveChanges') }}</el-button>
             </div>
           </template>
           <div class="config-code-shell config-code-shell--editable">

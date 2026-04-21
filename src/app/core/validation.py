@@ -4,7 +4,7 @@ from __future__ import annotations
 def strip_required_text(value: str, label: str) -> str:
     text = value.strip()
     if not text:
-        raise ValueError(f"{label}不能为空")
+        raise ValueError(f"{label} is required")
     return text
 
 

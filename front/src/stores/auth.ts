@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { computed, shallowRef } from 'vue'
 
 import { api } from '@/api/modules'
-import type { AuthStateRead, TokenSessionRead } from '@/types/api'
+import type { AppLocale, AuthStateRead, TokenSessionRead } from '@/types/api'
 import { clearAuthToken, readAuthToken, writeAuthToken } from '@/utils/authToken'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -13,7 +13,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const setupRequired = computed(() => state.value?.setup_required === true)
   const authenticated = computed(() => state.value?.authenticated === true && Boolean(token.value))
-  const displayName = computed(() => state.value?.display_name || '未登录')
+  const displayName = computed(() => state.value?.display_name || '')
 
   function applyTokenSession(session: TokenSessionRead) {
     token.value = session.access_token
@@ -36,10 +36,10 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function setup(password: string) {
+  async function setup(password: string, locale: AppLocale) {
     loading.value = true
     try {
-      applyTokenSession(await api.setup(password))
+      applyTokenSession(await api.setup(password, locale))
     } finally {
       loading.value = false
     }
@@ -49,6 +49,15 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     try {
       applyTokenSession(await api.login(username, password))
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function changePassword(currentPassword: string, newPassword: string) {
+    loading.value = true
+    try {
+      applyTokenSession(await api.changePassword(currentPassword, newPassword))
     } finally {
       loading.value = false
     }
@@ -84,6 +93,7 @@ export const useAuthStore = defineStore('auth', () => {
     displayName,
     setup,
     login,
+    changePassword,
     loadState,
     logout,
     clearAuth,

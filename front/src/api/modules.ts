@@ -4,6 +4,7 @@ import type {
   ConfigRead,
   ControlLogRead,
   EndpointStatusRead,
+  AppLocale,
   HealthRead,
   MeshValidationRead,
   MeshWorkspaceRead,
@@ -13,7 +14,9 @@ import type {
   PeerLinkRead,
   AuthStateRead,
   DownloadTokenRead,
+  UiSettingsRead,
   TokenSessionRead,
+  SystemTimezoneRead,
   SnapshotRead,
   SyncStatusRead,
   SystemStatusRead,
@@ -25,19 +28,20 @@ import type {
 
 export const api = {
   authState: () => request<AuthStateRead>('/auth/state'),
-  setup: (password: string) =>
-    request<TokenSessionRead>('/auth/setup', { method: 'POST', data: { password } }),
+  setup: (password: string, locale: AppLocale = 'zh-CN') =>
+    request<TokenSessionRead>('/auth/setup', { method: 'POST', data: { password, locale } }),
   login: (username: string, password: string) =>
     request<TokenSessionRead>('/auth/login', { method: 'POST', data: { username, password } }),
   session: () => request<AuthStateRead>('/auth/session'),
   logout: () => request<{ message: string }>('/auth/logout', { method: 'POST' }),
   changePassword: (current_password: string, new_password: string) =>
-    request<{ message: string }>('/auth/password', {
+    request<TokenSessionRead>('/auth/password', {
       method: 'POST',
       data: { current_password, new_password },
     }),
 
   health: () => request<HealthRead>('/system/health'),
+  systemTimezone: () => request<SystemTimezoneRead>('/system/timezone'),
   systemStatus: () => request<SystemStatusRead>('/system/status'),
 
   configs: () => request<ConfigRead[]>('/configs'),
@@ -144,6 +148,9 @@ export const api = {
     ),
 
   mqttSettings: () => request<MqttSettingsRead>('/settings/mqtt'),
+  uiSettings: () => request<UiSettingsRead>('/settings/ui'),
+  updateUiSettings: (payload: UiSettingsRead) =>
+    request<UiSettingsRead>('/settings/ui', { method: 'PUT', data: payload }),
   updateMqttSettings: (payload: MqttSettingsRead) =>
     request<MqttSettingsRead>('/settings/mqtt', { method: 'PUT', data: payload }),
   testMqttSettings: (payload: MqttSettingsRead) =>

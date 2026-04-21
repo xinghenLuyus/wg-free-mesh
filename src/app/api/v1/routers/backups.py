@@ -35,7 +35,7 @@ def download_snapshot(snapshot_id: str) -> FileResponse:
 async def restore_snapshot(snapshot_id: str) -> ApiResponse[dict[str, str]]:
     control_plane_service.restore_snapshot(snapshot_id)
     await control_plane_service.publish_full_state()
-    return ok({"message": "快照已恢复"})
+    return ok({"message": "Snapshot restored"})
 
 
 @router.post("/upload")
@@ -49,14 +49,14 @@ async def upload_snapshot(file: UploadFile = File(...)) -> ApiResponse[dict[str,
         if temp_path.exists():
             temp_path.unlink()
     await control_plane_service.publish_full_state()
-    return ok({"message": "上传快照已恢复"})
+    return ok({"message": "Uploaded snapshot restored"})
 
 
 @router.delete("/{snapshot_id}")
 async def delete_snapshot(snapshot_id: str) -> ApiResponse[dict[str, str]]:
     control_plane_service.delete_snapshot(snapshot_id)
     await control_plane_service.publish_snapshots()
-    return ok({"message": "快照已删除"})
+    return ok({"message": "Snapshot deleted"})
 
 
 @router.put("/{snapshot_id}/note")

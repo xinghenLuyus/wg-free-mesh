@@ -41,8 +41,15 @@ def health() -> ApiResponse[dict[str, object]]:
             "service": settings.app_name,
             "version": settings.app_version,
             "timestamp": now_utc().isoformat(),
+            "timezone": settings.timezone,
+            "dev_test_api_enabled": settings.dev_test_api_enabled,
         }
     )
+
+
+@router.get("/timezone")
+def system_timezone() -> ApiResponse[dict[str, str]]:
+    return ok({"timezone": settings.timezone})
 
 
 @router.get("/status")
@@ -58,7 +65,9 @@ async def stream_events(request: Request, user: CurrentUserDep) -> StreamingResp
         next_clock = loop.time() + SSE_CLOCK_SYNC_INTERVAL_SECONDS
         try:
             yield _sse_frame(realtime_service.make_event("system.status.updated", control_plane_service.system_status()))
-            yield _sse_frame(realtime_service.make_event("system.clock.sync", {"timestamp": now_utc().isoformat()}))
+            yield _sse_frame(
+                realtime_service.make_event("system.clock.sync", {"timestamp": now_utc().isoformat(), "timezone": settings.timezone})
+            )
             while True:
                 if await request.is_disconnected():
                     break
@@ -66,7 +75,12 @@ async def stream_events(request: Request, user: CurrentUserDep) -> StreamingResp
                 try:
                     event = await asyncio.wait_for(subscription.get(), timeout=timeout)
                 except asyncio.TimeoutError:
-                    yield _sse_frame(realtime_service.make_event("system.clock.sync", {"timestamp": now_utc().isoformat()}))
+                    yield _sse_frame(
+                        realtime_service.make_event(
+                            "system.clock.sync",
+                            {"timestamp": now_utc().isoformat(), "timezone": settings.timezone},
+                        )
+                    )
                     next_clock = loop.time() + SSE_CLOCK_SYNC_INTERVAL_SECONDS
                     continue
                 yield _sse_frame(event)
