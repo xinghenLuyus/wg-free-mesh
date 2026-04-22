@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from app.api.internal.router import internal_router
 from app.api.v0.router import api_v0_router
 from app.api.v1.router import api_router
 from app.core.config import settings
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
     install_exception_handlers(app)
     if settings.dev_test_api_enabled:
         app.include_router(api_v0_router)
+    app.include_router(internal_router)
     app.include_router(api_router)
 
     dist_dir = Path.cwd().parent / "front" / "dist"

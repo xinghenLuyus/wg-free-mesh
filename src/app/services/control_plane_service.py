@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import ssl
+from time import perf_counter
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel
 
+from app.core.config import settings
 from app.core.errors import AppError
 from app.domain.models import ControlStatus
 from app.events.publish_plan import PublishPlan
@@ -337,7 +341,11 @@ class ControlPlaneService:
     def mqtt_settings(self):
         return store.read_setting_json(
             "mqtt_client",
-            {"host": "", "port": 8883, "tls": True, "username": "", "password": ""},
+            {
+                "host": settings.mqtt_public_host,
+                "port": settings.mqtt_bind_port,
+                "tls": settings.mqtt_tls_enabled,
+            },
         )
 
     def read_setting(self, key: str) -> str | None:
@@ -347,8 +355,57 @@ class ControlPlaneService:
         store.write_setting(key, value)
 
     def update_mqtt_settings(self, payload: dict[str, object]):
-        store.write_setting_json("mqtt_client", payload)
+        store.write_setting_json(
+            "mqtt_client",
+            {
+                "host": payload.get("host", settings.mqtt_public_host),
+                "port": payload.get("port", settings.mqtt_bind_port),
+                "tls": payload.get("tls", settings.mqtt_tls_enabled),
+            },
+        )
         return self.mqtt_settings()
+
+    async def test_mqtt_settings(self, payload: dict[str, object]) -> dict[str, object]:
+        host = str(payload.get("host", "")).strip()
+        raw_port = payload.get("port", 0)
+        port = int(str(raw_port or 0))
+        tls = bool(payload.get("tls", False))
+
+        if not host:
+            return {"success": False, "message": "Host is required", "latency_ms": 0}
+        if port <= 0:
+            return {"success": False, "message": "Port must be greater than 0", "latency_ms": 0}
+
+        started_at = perf_counter()
+        writer = None
+        try:
+            ssl_context: ssl.SSLContext | None = None
+            if tls:
+                ssl_context = ssl.create_default_context()
+                ssl_context.check_hostname = False
+                ssl_context.verify_mode = ssl.CERT_NONE
+
+            _reader, writer = await asyncio.wait_for(
+                asyncio.open_connection(host=host, port=port, ssl=ssl_context, server_hostname=host if tls else None),
+                timeout=3,
+            )
+            latency_ms = int((perf_counter() - started_at) * 1000)
+            message = "TLS handshake succeeded." if tls else "TCP connection succeeded."
+            return {"success": True, "message": message, "latency_ms": latency_ms}
+        except TimeoutError:
+            latency_ms = int((perf_counter() - started_at) * 1000)
+            return {"success": False, "message": "Connection timed out.", "latency_ms": latency_ms}
+        except Exception as exc:
+            latency_ms = int((perf_counter() - started_at) * 1000)
+            detail = str(exc).strip() or exc.__class__.__name__
+            return {"success": False, "message": detail, "latency_ms": latency_ms}
+        finally:
+            if writer is not None:
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
 
     def update_password(self, current_password: str, new_password: str) -> None:
         store.update_password(current_password, new_password)

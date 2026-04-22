@@ -351,8 +351,6 @@ export interface MqttSettingsRead {
   host: string
   port: number
   tls: boolean
-  username: string
-  password: string
 }
 
 export interface SnapshotRead {

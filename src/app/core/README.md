@@ -5,7 +5,7 @@
 ## 当前内容
 
 - `config.py`
-  - `Settings`：统一读取 `src/.env` 与环境变量，包含 API 前缀、token 有效期、开发测试开关与默认时区。
+  - `Settings`：统一读取 `src/.env` 与环境变量，包含 API 前缀、token 有效期、开发测试开关和默认时区等后端自身配置。
   - `get_settings()`：带缓存的配置实例获取函数。
 - `responses.py`
   - `ApiResponse` / `ApiErrorResponse`：统一响应 envelope。

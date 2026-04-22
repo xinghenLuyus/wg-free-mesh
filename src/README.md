@@ -13,6 +13,7 @@
 - 端点运行态、控制日志、批量 probe
 - SSE 实时事件
 - MQTT 公网引导参数设置
+- EMQX 节点级账号与 HTTP 授权回查
 - 备份恢复
 - 系统状态聚合
 
@@ -44,15 +45,17 @@
 ```powershell
 WFM_DEBUG=true
 WFM_CORS_ORIGINS=["http://localhost:5173","http://localhost:8080"]
-WFM_MQTT_URL=mqtt://localhost:1883
 WFM_AUTH_TOKEN_EXPIRE_MINUTES=1440
 WFM_TIMEZONE=Asia/Shanghai
 WFM_ENABLE_DEV_TEST_API=false
 ```
 
 环境变量示例文件放在 [`.env.example`](D:/wenjian/stepsave/project/wg-free-mesh/src/.env.example)，实际本地配置文件应放到 `src/.env`。后端配置不会再从项目根目录读取 `.env`。
+`src/.env` 只负责后端自身配置。所有 EMQX / MQTT 相关配置统一放在 [docker/.env](D:/wenjian/stepsave/project/wg-free-mesh/docker/.env) 中；不要把这些内容继续写进 `src/.env`。在 Docker 场景下，`docker/.env` 会作为 `app` 容器的完整环境变量来源。
 时间存储仍统一使用 UTC，控制台默认显示时区由 `WFM_TIMEZONE` 控制，默认值为北京时间 `Asia/Shanghai`。
 `WFM_ENABLE_DEV_TEST_API` 默认关闭；只有显式设为 `true` 时，`/api/v0` 开发测试接口才会注册。
+
+客户端对外可见的 MQTT `host` 与 `tls` 由前端设置页维护；EMQX 容器侧的连接、管理地址、AuthZ 回查和 TLS listener 开关统一由 `docker/.env` 控制。
 
 ## 手动运行
 
@@ -127,6 +130,7 @@ python -m pytest -q
 
 - [app/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/README.md)：应用主包入口。
 - [app/api/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/README.md)：API 分层说明。
+- [app/api/internal/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/internal/README.md)：内部基础设施接口。
 - [app/core/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/core/README.md)：配置、安全、错误和响应。
 - [app/domain/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/domain/README.md)：领域模型。
 - [app/infrastructure/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/infrastructure/README.md)：数据库与文件路径。

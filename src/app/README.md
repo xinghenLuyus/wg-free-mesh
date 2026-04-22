@@ -8,7 +8,7 @@
   - 标记 `app` 为 Python 包，不承载业务逻辑。
 - `main.py`
   - `lifespan(...)`：应用启动时初始化数据库。
-  - `create_app()`：创建 FastAPI 实例、注册异常处理、中间件、`/api/v0`、`/api/v1` 与前端静态资源托管。
+  - `create_app()`：创建 FastAPI 实例、注册异常处理、中间件、`/api/internal`、`/api/v0`、`/api/v1` 与前端静态资源托管。
   - `app`：供 `uvicorn` 或 `fastapi dev` 启动的应用对象。
 
 ## 当前子模块

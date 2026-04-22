@@ -9,11 +9,16 @@
   - `CurrentUser` / `DownloadGrant`：认证后的授权载体。
 - `control_plane_service.py`
   - `ControlPlaneService`：控制平面主服务，统一编排配置、节点、Mesh、同步态、运行态、快照、MQTT 设置，并把实时发布委托给统一发布计划。
+  - `test_mqtt_settings(...)`：对 MQTT Host、Port、TLS 发起真实 TCP / TLS 连通性测试。
 - `snapshot_service.py`
   - `SnapshotService`：负责快照压缩包创建、恢复、导入、导出、备注 manifest 同步和磁盘索引重建。
   - `rebuild_index_from_disk()`：扫描 `data/backups/`，把磁盘快照回填到 `backups` 表，避免恢复后快照元数据丢失。
 - `topology_service.py`
   - `TopologyService`：负责 Mesh 连接完整性、拓扑校验和系统级拓扑摘要，不再把这部分规则散落在仓储和 Router 中。
+- `emqx_service.py`
+  - `EmqxService`：集中管理 EMQX 管理 API 地址、节点 MQTT 凭据写入请求格式和 bind 时下发给客户端的 broker 参数。
+- `mqtt_auth_service.py`
+  - `MqttAuthService`：统一管理节点 MQTT 用户名、client_id、topic ACL 和 EMQX AuthZ 授权判断。
 - `config_service.py`
   - `ConfigService`：配置相关兼容入口。
 - `node_service.py`

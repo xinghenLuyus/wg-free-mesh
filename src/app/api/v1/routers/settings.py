@@ -18,12 +18,10 @@ class MqttSettingsRequest(BaseModel):
     host: str = ""
     port: int = Field(default=8883, ge=1, le=65535)
     tls: bool = True
-    username: str = ""
-    password: str = ""
 
-    @field_validator("host", "username", "password", mode="before")
+    @field_validator("host", mode="before")
     @classmethod
-    def normalize_optional_text(cls, value: str | None) -> str:
+    def normalize_host(cls, value: str | None) -> str:
         return strip_optional_text(value) or ""
 
 
@@ -103,14 +101,8 @@ async def update_mqtt_settings(payload: MqttSettingsRequest) -> ApiResponse[dict
 
 
 @router.post("/mqtt/test")
-def test_mqtt(payload: MqttSettingsRequest) -> ApiResponse[dict[str, Any]]:
-    return ok(
-        {
-            "success": bool(payload.host.strip()),
-            "message": "Test parameters saved. Real MQTT connectivity will be restored in the client phase.",
-            "latency_ms": 0,
-        }
-    )
+async def test_mqtt(payload: MqttSettingsRequest) -> ApiResponse[dict[str, Any]]:
+    return ok(await control_plane_service.test_mqtt_settings(payload.model_dump()))
 
 
 @router.post("/password")

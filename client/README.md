@@ -12,6 +12,8 @@
 - Windows 托盘只是后续可选附加项
 - 绑定通过 `wfmctl + HTTPS 临时 token` 完成
 - 运行期通信全部走 MQTT
+- MQTT 凭据按节点隔离，topic ACL 按节点收口
+- 配置下发和控制命令必须有 ACK，状态和日志是单向上报
 
 ## 设计原则
 

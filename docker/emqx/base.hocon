@@ -1,0 +1,58 @@
+node {
+  name = "emqx@127.0.0.1"
+  cookie = "wfm-emqx-cookie"
+}
+
+dashboard {
+  listeners.http {
+    bind = 18083
+  }
+}
+
+listeners.tcp.default {
+  bind = "0.0.0.0:1883"
+  max_connections = 1024000
+}
+
+listeners.ssl.default {
+  enable = false
+}
+
+listeners.wss.default {
+  enable = false
+}
+
+authentication = [
+  {
+    backend = built_in_database
+    mechanism = password_based
+    password_hash_algorithm {
+      name = sha256
+      salt_position = disable
+    }
+    user_id_type = username
+  }
+]
+
+authorization {
+  deny_action = ignore
+  no_match = deny
+  sources = [
+    {
+      type = http
+      enable = true
+      method = post
+      url = "__WFM_EMQX_AUTHZ_URL__"
+      headers {
+        "content-type" = "application/json"
+        "x-wfm-internal-key" = "__WFM_EMQX_AUTHZ_SHARED_KEY__"
+      }
+      body {
+        username = "${username}"
+        clientid = "${clientid}"
+        topic = "${topic}"
+        action = "${action}"
+      }
+    }
+  ]
+}

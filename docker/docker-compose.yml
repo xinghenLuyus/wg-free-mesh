@@ -3,27 +3,39 @@ services:
     build:
       context: ..
       dockerfile: docker/app/backend.Dockerfile
-    environment:
-      WFM_DEBUG: "false"
-      WFM_CORS_ORIGINS: '["http://localhost:8000"]'
-      WFM_MQTT_URL: "mqtt://mqtt:1883"
+    env_file:
+      - ./.env
     ports:
       - "8000:8000"
     volumes:
       - api_data:/app/data
     depends_on:
-      - mqtt
+      - emqx
 
-  mqtt:
-    image: eclipse-mosquitto:2
+  emqx:
+    image: emqx/emqx:5.8.5
+    env_file:
+      - ./.env
+    environment:
+      EMQX_NAME: emqx
+      EMQX_HOST: 127.0.0.1
+      EMQX_NODE__COOKIE: ${WFM_EMQX_NODE_COOKIE}
+      EMQX_DASHBOARD__DEFAULT_USERNAME: ${WFM_EMQX_API_USERNAME}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${WFM_EMQX_API_PASSWORD}
     ports:
       - "1883:1883"
+      - "8883:8883"
+      - "18083:18083"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
-      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - mqtt_data:/mosquitto/data
-      - mqtt_log:/mosquitto/log
+      - ./emqx/base.hocon:/opt/emqx/wfm/base.hocon:ro
+      - ./emqx/base.tls.hocon:/opt/emqx/wfm/base.tls.hocon:ro
+      - ./emqx/start-emqx.sh:/opt/emqx/wfm/start-emqx.sh:ro
+      - ./emqx/data:/opt/emqx/data
+      - ./emqx/log:/opt/emqx/log
+      - ./emqx/certs:/opt/emqx/etc/certs
+    command: ["/bin/sh", "/opt/emqx/wfm/start-emqx.sh"]
 
 volumes:
   api_data:
-  mqtt_data:
-  mqtt_log:

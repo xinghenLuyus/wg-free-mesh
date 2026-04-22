@@ -30,8 +30,6 @@ const mqttForm = reactive({
   host: '',
   port: 8883,
   tls: true,
-  username: '',
-  password: '',
 })
 
 const passwordForm = reactive({
@@ -83,7 +81,6 @@ const passwordRules: FormRules<typeof passwordForm> = {
 }
 
 const snapshots = shallowRef<SnapshotRead[]>([])
-const mqttTestResult = shallowRef('')
 const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type === 'snapshot.list.updated') {
     snapshots.value = (event.payload as unknown as SnapshotListUpdatedPayload).snapshots
@@ -153,10 +150,13 @@ async function testMqtt() {
   if (!valid) return
   try {
     const result = await api.testMqttSettings({ ...mqttForm })
-    mqttTestResult.value = `${result.success ? t('settings.connectionSuccess') : t('settings.connectionFailed')} / ${result.message}`
-    notify.success(t('settings.mqttTestDone'))
+    const message = `${result.success ? t('settings.connectionSuccess') : t('settings.connectionFailed')} / ${result.message}`
+    if (result.success) {
+      notify.success(message)
+    } else {
+      notify.error(message)
+    }
   } catch (error) {
-    mqttTestResult.value = t('settings.testFailed')
     notify.error(error instanceof ApiClientError ? error.message : t('settings.mqttTestFailed'))
   }
 }
@@ -417,12 +417,6 @@ onMounted(async () => {
           <el-form-item label="Port">
             <el-input-number v-model="mqttForm.port" :min="1" :max="65535" style="width: 100%" />
           </el-form-item>
-          <el-form-item label="Username">
-            <el-input v-model="mqttForm.username" autocomplete="username" />
-          </el-form-item>
-          <el-form-item label="Password">
-            <el-input v-model="mqttForm.password" type="password" show-password autocomplete="current-password" />
-          </el-form-item>
         </div>
 
         <div class="switch-row">
@@ -436,10 +430,6 @@ onMounted(async () => {
         <div class="action-row">
           <el-button type="primary" :icon="Check" @click="saveMqtt">{{ t('settings.saveMqtt') }}</el-button>
           <el-button :icon="Connection" @click="testMqtt">{{ t('settings.testConnection') }}</el-button>
-        </div>
-
-        <div v-if="mqttTestResult" class="result-callout">
-          {{ mqttTestResult }}
         </div>
       </el-form>
     </article>
@@ -692,7 +682,7 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 14px;
+  padding: 10px 14px;
   border: 1px solid var(--app-border-soft);
   border-radius: 8px;
   background: var(--app-surface-sunken);
@@ -717,16 +707,7 @@ onMounted(async () => {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-  margin-top: 4px;
-}
-
-.result-callout {
-  padding: 12px 14px;
-  border: 1px solid var(--app-border-accent);
-  border-radius: 8px;
-  background: var(--app-info-soft);
-  color: color-mix(in srgb, var(--app-text) 82%, var(--app-primary));
-  font-weight: 650;
+  margin-top: 12px;
 }
 
 .snapshot-list {

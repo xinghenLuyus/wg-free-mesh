@@ -571,14 +571,37 @@ Authorization: Bearer <access_token>
 ### `GET /api/v1/settings/mqtt`
 
 - 用途：获取客户端 MQTT 公网引导参数
+- 返回字段：
+  - `host`
+  - `port`
+  - `tls`
+- 说明：
+  - 这里只返回客户端可见的公网引导参数
+  - 服务端对 EMQX 使用的高权限账号密码不通过该接口暴露
 
 ### `PUT /api/v1/settings/mqtt`
 
 - 用途：更新客户端 MQTT 公网引导参数
+- 请求字段：
+  - `host`
+  - `port`
+  - `tls`
 
 ### `POST /api/v1/settings/mqtt/test`
 
 - 用途：测试 MQTT 连接
+- 请求字段：
+  - `host`
+  - `port`
+  - `tls`
+- 响应字段：
+  - `success`
+  - `message`
+  - `latency_ms`
+- 说明：
+  - 后端会真实发起 TCP 连接测试。
+  - 当 `tls=true` 时，后端还会继续执行 TLS 握手测试。
+  - 该接口测试的是当前后端到目标地址的可达性，不是未来客户端所在机器的网络可达性。
 
 ### `POST /api/v1/settings/password`
 
@@ -697,3 +720,58 @@ Authorization: Bearer <access_token>
 - 真正的 WireGuard 服务启停
 
 以上能力会在本轮接口里预留数据结构和运行位，但不恢复客户端代码。
+
+## 客户端 MQTT 集成补充约束
+
+客户端运行期继续走 MQTT，但推荐集成模式调整为：
+
+- Broker：EMQX
+- 账号真相源：`wfm`
+- ACL 真相源：`wfm`
+- 认证：EMQX 内建账号库
+- 授权：EMQX HTTP Authorization 回查 `wfm`
+
+### 客户端 bind 时的返回补充
+
+`POST /api/client/v1/bind` 响应中的 `mqtt` 至少应包含：
+
+- `host`
+- `port`
+- `tls`
+- `username`
+- `password`
+- `client_id`
+
+说明：
+
+- 由 `wfm` 负责为当前节点生成或轮换专属 MQTT 凭据
+- 由 `wfm` 负责把该账号同步到 EMQX
+- 一个动态节点只对应一套专属 MQTT 凭据
+
+### EMQX 内部授权接口
+
+#### `POST /api/internal/emqx/authz`
+
+- 用途：供 EMQX 在客户端 publish / subscribe 时回查授权结果
+- 不对外开放给前端或客户端
+
+请求核心字段：
+
+- `username`
+- `clientid`
+- `topic`
+- `action`
+- 请求头：`x-wfm-internal-key`
+
+响应语义：
+
+- `allow`
+- `deny`
+
+约束：
+
+- topic 权限按 `config_id + node_id` 收口
+- 客户端只能访问自身节点 topic
+- `x-wfm-internal-key` 必须与 `WFM_EMQX_AUTHZ_SHARED_KEY` 一致
+- 配置下发与控制命令必须依赖 ACK 才算服务端成功完成
+- 状态上报与事件日志属于单向消息，不走 ACK

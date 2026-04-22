@@ -40,9 +40,11 @@
 - `settings.py`
   - `_ui_settings_payload()`：读取界面偏好规范化结果。
   - `ui_settings()` / `update_ui_settings(...)`：界面语言和主题模式。
-  - `mqtt_settings()` / `test_mqtt(...)`：MQTT 设置读取与测试。
+  - `mqtt_settings()` / `test_mqtt(...)`：客户端 MQTT Host、Port、TLS 引导参数读取与真实连通性测试。
   - `update_password(...)`：设置页修改密码。
 - `system.py`
   - `_sse_frame(...)`：SSE 事件帧编码。
   - `health()`：健康检查。
   - `system_status(...)`：控制台系统状态聚合。
+
+内部基础设施回查接口单独放在 [api/internal/routers](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/internal/routers/README.md)，不混入 `/api/v1`。
