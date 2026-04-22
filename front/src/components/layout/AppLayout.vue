@@ -37,6 +37,7 @@ const topItems = computed(() => [
 
 const currentPath = computed(() => route.path)
 const systemStatusText = computed(() => {
+  if (systemStatus.value?.topology.invalid_config_count) return t('layout.meshAlert')
   if (health.value?.dev_test_api_enabled) return t('layout.runningDev')
   if (!systemStatus.value) return t('layout.checking')
   if (systemStatus.value.summary.pending_sync_nodes > 0) return t('layout.pendingSync')
@@ -45,13 +46,20 @@ const systemStatusText = computed(() => {
 })
 const systemStatusMeta = computed(() => {
   if (!systemStatus.value) return t('layout.statusMetaEmpty')
+  if (systemStatus.value.topology.invalid_config_count > 0) {
+    return t('layout.meshAlertMeta', {
+      configs: systemStatus.value.topology.invalid_config_count,
+      nodes: systemStatus.value.topology.invalid_node_count,
+    })
+  }
   return t('layout.statusMeta', {
     online: systemStatus.value.summary.online_nodes,
     pending: systemStatus.value.summary.pending_sync_nodes,
   })
 })
-const systemStatusType = computed<'success' | 'warning' | 'info'>(() => {
+const systemStatusType = computed<'success' | 'warning' | 'info' | 'danger'>(() => {
   if (!systemStatus.value) return 'info'
+  if (systemStatus.value.topology.invalid_config_count > 0) return 'danger'
   if (systemStatus.value.summary.pending_sync_nodes > 0) return 'warning'
   if (systemStatus.value.summary.online_nodes > 0) return 'success'
   return 'info'
@@ -124,10 +132,14 @@ onMounted(() => {
             :key="config.id"
             :to="`/configs/${config.id}`"
             class="sidebar-link sidebar-link--config"
-            :class="{ 'sidebar-link--active': isConfigActive(config.id) }"
+            :class="{
+              'sidebar-link--active': isConfigActive(config.id),
+              'sidebar-link--danger': config.topology_invalid,
+            }"
           >
             <el-icon><Files /></el-icon>
             <span>{{ config.name }}</span>
+            <span v-if="config.topology_invalid" class="sidebar-link__alert-dot" :title="t('configOverview.topologyFailed')"></span>
           </RouterLink>
         </div>
 
@@ -193,6 +205,9 @@ onMounted(() => {
 .sidebar-section { padding: 4px 12px 8px; color: var(--app-faint); font-size: 12px; font-weight: 800; letter-spacing: 0; }
 .sidebar-configs { display: grid; gap: 5px; }
 .sidebar-link--config span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sidebar-link--danger { border-color: color-mix(in srgb, var(--app-danger-border) 58%, transparent); color: color-mix(in srgb, var(--app-danger-text) 76%, var(--app-text)); }
+.sidebar-link--danger:hover { border-color: var(--app-danger-border); background: color-mix(in srgb, var(--app-danger-border) 10%, var(--app-surface-interactive)); color: var(--app-danger-text); }
+.sidebar-link__alert-dot { flex: 0 0 auto; width: 8px; height: 8px; margin-left: auto; border-radius: 999px; background: var(--app-danger-text); box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-danger-text) 14%, transparent); }
 .sidebar-system-status {
   margin: 0 14px 14px;
   padding: 16px 14px;
@@ -209,6 +224,7 @@ onMounted(() => {
 .sidebar-system-status__dot { width: 10px; height: 10px; border-radius: 999px; background: var(--app-faint); box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-faint) 12%, transparent); }
 .sidebar-system-status__dot[data-type='success'] { background: var(--el-color-success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--el-color-success) 13%, transparent); }
 .sidebar-system-status__dot[data-type='warning'] { background: var(--el-color-warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--el-color-warning) 13%, transparent); }
+.sidebar-system-status__dot[data-type='danger'] { background: var(--app-danger-text); box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-danger-text) 16%, transparent); }
 .sidebar-system-status__text { color: var(--app-text-strong); font-size: 13px; font-weight: 750; }
 .sidebar-system-status__meta { margin-top: 8px; color: var(--app-muted); font-size: 12px; }
 .main { min-width: 0; padding: 12px 12px 12px 0; }

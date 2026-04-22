@@ -108,6 +108,8 @@ const visibleNodes = computed(() => {
   })
 })
 
+const topologyInvalid = computed(() => overview.value?.topology.valid === false)
+
 function nodeTypeLabel(type: NodeRead['node_type']) {
   return type === 'static' ? t('nodeWorkspace.staticNode') : t('nodeWorkspace.dynamicNode')
 }
@@ -390,10 +392,11 @@ onMounted(async () => {
     <div v-if="loading && !overview" class="view-feedback view-feedback--silent" aria-hidden="true"></div>
     <div v-else-if="loadError && !overview" class="view-feedback view-feedback--error">{{ loadError }}</div>
     <template v-else-if="overview">
-    <div class="config-header-card">
+    <div class="config-header-card" :class="{ 'config-header-card--danger': topologyInvalid }">
       <div class="cfg-top-bar">
         <div class="cfg-name-group">
           <span class="cfg-name">{{ overview.config.name }}</span>
+          <el-tag v-if="topologyInvalid" type="danger" effect="dark">{{ t('configOverview.topologyFailed') }}</el-tag>
         </div>
         <div class="cfg-actions">
           <el-switch
@@ -464,7 +467,10 @@ onMounted(async () => {
         >
           <div class="node-card__head">
             <h3>{{ node.name }}</h3>
-            <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'">{{ node.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}</el-tag>
+            <div class="node-card__status-tags">
+              <el-tag v-if="node.mesh_error" type="danger">{{ t('configOverview.meshError') }}</el-tag>
+              <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'">{{ node.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}</el-tag>
+            </div>
           </div>
           <dl class="node-card__meta">
             <div>
@@ -501,7 +507,10 @@ onMounted(async () => {
           <div class="node-strip-card__main">
             <div class="node-strip-card__title">
               <h3>{{ node.name }}</h3>
-              <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'" size="small">{{ node.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}</el-tag>
+              <div class="node-strip-card__status-tags">
+                <el-tag v-if="node.mesh_error" type="danger" size="small">{{ t('configOverview.meshError') }}</el-tag>
+                <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'" size="small">{{ node.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}</el-tag>
+              </div>
             </div>
             <div class="node-strip-card__tags">
               <el-tag v-for="tag in node.tags" :key="tag" type="info" size="small">{{ tag }}</el-tag>
@@ -695,6 +704,7 @@ onMounted(async () => {
 .view-feedback--silent { min-height: 96px; background: transparent; border-color: transparent; box-shadow: none; }
 .view-feedback--error { border-color: var(--app-danger-border); background: color-mix(in srgb, var(--app-danger-border) 12%, var(--app-surface-elevated)); color: var(--app-danger-text); }
 .config-header-card { padding: 22px; border: 1px solid var(--app-border); border-radius: 8px; background: linear-gradient(180deg, var(--app-surface-elevated) 0%, var(--app-surface) 100%); box-shadow: var(--app-shadow-md); }
+.config-header-card--danger { border-color: var(--app-danger-border); box-shadow: 0 0 0 1px color-mix(in srgb, var(--app-danger-border) 26%, transparent), var(--app-shadow-md); }
 .cfg-top-bar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .cfg-name-group { display: flex; align-items: center; gap: 10px; }
 .cfg-name { color: var(--app-text-strong); font-size: 30px; font-weight: 750; line-height: 1.2; letter-spacing: 0; }
@@ -713,6 +723,7 @@ onMounted(async () => {
 .node-card:hover, .node-strip-card:hover { transform: translateY(-2px); border-color: var(--app-border-accent); box-shadow: var(--app-shadow-md); }
 .node-card:focus-visible, .node-strip-card:focus-visible, .tag-card:focus-visible { outline: 0; box-shadow: var(--app-focus), var(--app-shadow-md); }
 .node-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.node-card__status-tags, .node-strip-card__status-tags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .node-card__head h3 { margin: 0; color: var(--app-text-strong); font-size: 19px; }
 .node-card__meta { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
 .node-card__meta dt { color: var(--app-faint); font-size: 12px; }
@@ -722,7 +733,7 @@ onMounted(async () => {
 .node-strip-grid { display: grid; gap: 12px; }
 .node-strip-card { display: grid; grid-template-columns: minmax(220px, 1.2fr) minmax(320px, 2fr); gap: 16px; align-items: center; padding: 16px 18px; border: 1px solid var(--app-border); border-radius: 8px; background: linear-gradient(90deg, var(--app-surface-elevated) 0%, var(--app-surface) 100%); text-align: left; cursor: pointer; box-shadow: var(--app-shadow-sm); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
 .node-strip-card__main { display: grid; gap: 10px; }
-.node-strip-card__title { display: flex; align-items: center; gap: 10px; }
+.node-strip-card__title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .node-strip-card__title h3 { margin: 0; color: var(--app-text-strong); font-size: 18px; }
 .node-strip-card__facts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; color: var(--app-muted); }
 .node-strip-card__facts span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

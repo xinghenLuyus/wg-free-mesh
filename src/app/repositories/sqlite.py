@@ -177,7 +177,19 @@ class SQLiteStore:
                 ORDER BY configs.created_at DESC
                 """
             ).fetchall()
-        return [_config_from_row(row) for row in rows]
+        configs = [_config_from_row(row) for row in rows]
+        result: list[Config] = []
+        for config in configs:
+            topology = self._topology_issue_summary(config.id)
+            result.append(
+                config.model_copy(
+                    update={
+                        "topology_invalid": bool(config.enabled) and not bool(topology["valid"]),
+                        "topology_error_count": cast(int, topology["error_count"]) if config.enabled else 0,
+                    }
+                )
+            )
+        return result
 
     def get_config(self, config_id: str) -> Config:
         with connect() as connection:
@@ -1456,6 +1468,24 @@ class SQLiteStore:
         configs = self.list_configs()
         nodes = [node for config in configs for node in self.list_nodes(config.id)]
         runtimes = [self.get_runtime(node.config_id, node.id) for node in nodes]
+        invalid_configs: list[dict[str, object]] = []
+        invalid_node_ids: set[str] = set()
+        for config in configs:
+            if not config.enabled:
+                continue
+            topology = self._topology_issue_summary(config.id)
+            if not bool(topology["valid"]):
+                config_invalid_node_ids = cast(list[str], topology["invalid_node_ids"])
+                invalid_node_ids.update(config_invalid_node_ids)
+                invalid_configs.append(
+                    {
+                        "config_id": config.id,
+                        "config_name": config.name,
+                        "error_count": topology["error_count"],
+                        "invalid_node_count": topology["invalid_node_count"],
+                        "errors": topology["errors"],
+                    }
+                )
         return {
             "summary": {
                 "configs": len(configs),
@@ -1463,6 +1493,12 @@ class SQLiteStore:
                 "dynamic_nodes": len([node for node in nodes if node.node_type == NodeType.dynamic]),
                 "online_nodes": len([runtime for runtime in runtimes if runtime.online]),
                 "pending_sync_nodes": len([runtime for runtime in runtimes if runtime.config_sync_state != ConfigSyncState.in_sync]),
+            },
+            "topology": {
+                "valid": not invalid_configs,
+                "invalid_config_count": len(invalid_configs),
+                "invalid_node_count": len(invalid_node_ids),
+                "invalid_configs": invalid_configs,
             },
             "services": {"database": "ok", "mqtt": "deferred", "wireguard": "deferred"},
             "timestamp": now_utc(),
@@ -1472,6 +1508,8 @@ class SQLiteStore:
         config = self.get_config(config_id)
         nodes = self.list_nodes(config_id)
         runtimes = self.list_runtime_snapshot(config_id)
+        topology = self._topology_issue_summary(config_id)
+        invalid_node_ids = set(cast(list[str], topology["invalid_node_ids"]))
         runtime_by_node_id = {str(item["node_id"]): item for item in runtimes}
         return {
             "config": config,
@@ -1496,11 +1534,13 @@ class SQLiteStore:
                     "created_at": node.created_at.isoformat(),
                     "online": bool(runtime_by_node_id.get(node.id, {}).get("online", False)),
                     "peers_total": _int_value(runtime_by_node_id.get(node.id, {}).get("peers_total"), 0),
+                    "mesh_error": node.id in invalid_node_ids,
                 }
                 for node in nodes
             ],
             "runtime_snapshot": runtimes,
             "sync_status": self.get_sync_status_for_config(config_id),
+            "topology": topology,
         }
 
     def _sync_status_from_state(self, state: NodeConfigState) -> str:
@@ -1689,6 +1729,35 @@ class SQLiteStore:
             "messages": messages,
             "errors": errors,
             "warnings": warnings,
+        }
+
+    def _topology_issue_summary(self, config_id: str) -> dict[str, object]:
+        config = self.get_config(config_id)
+        nodes = {node.id: node for node in self.list_nodes(config_id)}
+        invalid_node_ids: set[str] = set()
+        errors: list[str] = []
+
+        for group_links in self._peer_link_groups(config_id).values():
+            if not group_links:
+                continue
+            forward = next((item for item in group_links if item.direction == "forward"), group_links[0])
+            reverse = next((item for item in group_links if item.direction == "reverse"), None)
+            local_node = nodes.get(forward.local_node_id)
+            peer_node = nodes.get(forward.peer_node_id)
+            if local_node is None or peer_node is None:
+                continue
+            integrity = self._connection_integrity(config, local_node, peer_node, forward, reverse)
+            group_enabled = forward.enabled or (reverse.enabled if reverse else False)
+            if group_enabled and str(integrity["status"]) == "broken":
+                invalid_node_ids.update({local_node.id, peer_node.id})
+                errors.append(str(integrity["message"]) or f"Mesh link between {local_node.name} and {peer_node.name} is broken.")
+
+        return {
+            "valid": not errors,
+            "errors": errors,
+            "error_count": len(errors),
+            "invalid_node_ids": sorted(invalid_node_ids),
+            "invalid_node_count": len(invalid_node_ids),
         }
 
     def _resolve_endpoint(self, config: Config, peer_node: Node, link: PeerLink) -> str | None:

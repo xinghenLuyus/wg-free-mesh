@@ -84,13 +84,17 @@ onMounted(async () => {
       v-for="config in configs"
       :key="config.id"
       class="config-card"
+      :class="{ 'config-card--danger': config.topology_invalid }"
       @click="openConfig(config.id)"
     >
       <div class="config-card__head">
         <span class="config-card__icon">
           <el-icon><Files /></el-icon>
         </span>
-        <el-tag :type="config.enabled ? 'success' : 'info'">{{ config.enabled ? t('home.enabled') : t('home.disabled') }}</el-tag>
+        <div class="config-card__status-tags">
+          <el-tag v-if="config.topology_invalid" type="danger">{{ t('configOverview.topologyFailed') }}</el-tag>
+          <el-tag :type="config.enabled ? 'success' : 'info'">{{ config.enabled ? t('home.enabled') : t('home.disabled') }}</el-tag>
+        </div>
       </div>
 
       <div class="config-card__body">
@@ -232,10 +236,19 @@ onMounted(async () => {
     box-shadow 180ms ease;
 }
 
+.config-card--danger {
+  border-color: var(--app-danger-border);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--app-danger-border) 24%, transparent), var(--app-shadow-sm);
+}
+
 .config-card:hover {
   transform: translateY(-3px);
   border-color: var(--app-border-accent);
   box-shadow: var(--app-shadow-md);
+}
+
+.config-card--danger:hover {
+  border-color: color-mix(in srgb, var(--app-danger-border) 80%, var(--app-primary));
 }
 
 .config-card:focus-visible {
@@ -248,6 +261,13 @@ onMounted(async () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.config-card__status-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .config-card__icon,

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
@@ -10,6 +11,7 @@ import { formatDateTime, setSystemTimeZone } from '@/utils/dateTime'
 import { notify } from '@/utils/notify'
 
 const { t } = useI18n()
+const router = useRouter()
 const health = shallowRef<HealthRead | null>(null)
 const status = shallowRef<SystemStatusRead | null>(null)
 const serverClockBaseMs = shallowRef<number | null>(null)
@@ -34,6 +36,7 @@ const streamConnectionText = computed(() => {
 })
 const realtimeBannerType = computed(() => (realtime.connected.value ? 'success' : 'warning'))
 const realtimeBannerText = computed(() => (realtime.connected.value ? t('system.realtimeOk') : t('system.realtimeDown')))
+const topologyHealthy = computed(() => status.value?.topology.valid !== false)
 
 function syncServerClock(timestamp: string | null | undefined) {
   if (!timestamp) return
@@ -42,6 +45,10 @@ function syncServerClock(timestamp: string | null | undefined) {
   serverClockBaseMs.value = parsed
   serverClockReceivedMs.value = Date.now()
   displayNowMs.value = Date.now()
+}
+
+function openConfig(configId: string) {
+  void router.push(`/configs/${configId}`)
 }
 
 const realtime = useRealtime((event: RealtimeEvent) => {
@@ -121,6 +128,39 @@ onBeforeUnmount(() => {
       </el-descriptions-item>
     </el-descriptions>
   </section>
+
+  <section v-if="status" class="content-band section-gap">
+    <div class="topology-head">
+      <h2>{{ t('system.topologyTitle') }}</h2>
+      <el-tag :type="topologyHealthy ? 'success' : 'danger'">
+        {{ topologyHealthy ? t('system.topologyHealthy') : t('system.topologyFailed') }}
+      </el-tag>
+    </div>
+    <el-descriptions :column="1" border :title="t('system.topologySummary')">
+      <el-descriptions-item :label="t('system.topologyConfigs')">{{ status.topology.invalid_config_count }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.topologyNodes')">{{ status.topology.invalid_node_count }}</el-descriptions-item>
+    </el-descriptions>
+
+    <div v-if="status.topology.invalid_configs.length" class="topology-list">
+      <button
+        v-for="item in status.topology.invalid_configs"
+        :key="item.config_id"
+        class="topology-card"
+        @click="openConfig(item.config_id)"
+      >
+        <div class="topology-card__head">
+          <strong>{{ item.config_name }}</strong>
+          <el-tag type="danger" size="small">{{ t('system.topologyConfigFailed') }}</el-tag>
+        </div>
+        <div class="topology-card__meta">
+          <span>{{ t('system.topologyConfigErrors', { count: item.error_count }) }}</span>
+          <span>{{ t('system.topologyConfigNodes', { count: item.invalid_node_count }) }}</span>
+        </div>
+        <p>{{ item.errors[0] }}</p>
+      </button>
+    </div>
+    <div v-else class="topology-empty">{{ t('system.topologyEmpty') }}</div>
+  </section>
 </template>
 
 <style scoped>
@@ -155,8 +195,82 @@ onBeforeUnmount(() => {
   margin-top: 20px;
 }
 
+.topology-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.topology-head h2 {
+  margin: 0;
+  color: var(--app-text);
+  font-size: 22px;
+}
+
+.topology-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.topology-card {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid var(--app-danger-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--app-danger-border) 10%, var(--app-surface-elevated));
+  text-align: left;
+  cursor: pointer;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+}
+
+.topology-card:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--app-shadow-md);
+  border-color: color-mix(in srgb, var(--app-danger-border) 88%, var(--app-primary));
+}
+
+.topology-card:focus-visible {
+  outline: 0;
+  box-shadow: var(--app-focus), var(--app-shadow-md);
+}
+
+.topology-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.topology-card__head strong {
+  color: var(--app-text-strong);
+  font-size: 16px;
+}
+
+.topology-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  color: var(--app-danger-text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.topology-card p,
+.topology-empty {
+  margin: 0;
+  color: var(--app-muted);
+  line-height: 1.6;
+}
+
 @media (max-width: 720px) {
-  .page-header {
+  .page-header,
+  .topology-head,
+  .topology-card__head {
     flex-direction: column;
     align-items: stretch;
   }

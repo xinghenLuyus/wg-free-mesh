@@ -169,6 +169,15 @@ Authorization: Bearer <access_token>
 ### `GET /api/v1/configs`
 
 - 用途：获取配置列表
+- 返回补充：
+  - `topology_invalid`
+  - `topology_error_count`
+
+说明：
+
+- 首页配置卡片和左侧配置列表直接使用这里返回的拓扑异常标记。
+- 如果配置已停用，列表层不再上浮其拓扑异常，前端只显示停用状态。
+- 前端不得自行遍历 Mesh 连接去推断配置是否异常。
 
 ### `POST /api/v1/configs`
 
@@ -214,12 +223,15 @@ Authorization: Bearer <access_token>
   - 节点统计
   - 节点完整列表
   - 节点卡片视图模型
+  - 拓扑异常摘要
   - 实时状态聚合
   - 同步状态聚合
 
 说明：
 
 - 配置概览页的节点卡片所需在线状态、Peer 数等聚合字段由后端返回。
+- 节点卡片额外返回 `mesh_error`，用于标记当前节点是否处于会触发拓扑失败的 Mesh 异常中。
+- 配置概览额外返回 `topology`，用于驱动配置头部异常态展示。
 - 前端可以做本页临时筛选和排序，但不得自己拼接业务视图模型。
 
 ## 节点管理
@@ -613,6 +625,17 @@ Authorization: Bearer <access_token>
 
 - 用途：系统状态聚合
 - 约束：必须已登录
+- 返回补充：
+  - `topology.valid`
+  - `topology.invalid_config_count`
+  - `topology.invalid_node_count`
+  - `topology.invalid_configs`
+
+说明：
+
+- `system/status` 除了系统健康，还承担全局业务异常摘要。
+- 已停用的配置不会再进入系统层拓扑异常统计；这类异常只保留在配置内部查看。
+- 左下角系统状态入口和系统状态页都直接消费这里返回的拓扑异常聚合，不在前端二次计算。
 
 ## SSE 实时流
 

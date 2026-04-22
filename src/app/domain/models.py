@@ -110,6 +110,8 @@ class Config(BaseModel):
     auto_sync: bool = True
     node_count: int = 0
     dynamic_node_count: int = 0
+    topology_invalid: bool = False
+    topology_error_count: int = 0
     updated_at: datetime = Field(default_factory=now_utc)
     created_at: datetime = Field(default_factory=now_utc)
 

@@ -57,6 +57,8 @@ export interface ConfigRead {
   auto_sync: boolean
   node_count: number
   dynamic_node_count: number
+  topology_invalid: boolean
+  topology_error_count: number
   created_at: string
   updated_at: string
 }
@@ -84,6 +86,30 @@ export interface ConfigOverviewNodeCardRead {
   created_at: string
   online: boolean
   peers_total: number
+  mesh_error: boolean
+}
+
+export interface TopologySummaryRead {
+  valid: boolean
+  error_count: number
+  invalid_node_count: number
+  invalid_node_ids: string[]
+  errors: string[]
+}
+
+export interface SystemTopologyInvalidConfigRead {
+  config_id: string
+  config_name: string
+  error_count: number
+  invalid_node_count: number
+  errors: string[]
+}
+
+export interface SystemTopologySummaryRead {
+  valid: boolean
+  invalid_config_count: number
+  invalid_node_count: number
+  invalid_configs: SystemTopologyInvalidConfigRead[]
 }
 
 export interface ConfigOverviewRead {
@@ -100,6 +126,7 @@ export interface ConfigOverviewRead {
   node_cards: ConfigOverviewNodeCardRead[]
   runtime_snapshot: RuntimeSnapshotItem[]
   sync_status: SyncStatusRead[]
+  topology: TopologySummaryRead
 }
 
 export interface NodeRead {
@@ -354,6 +381,7 @@ export interface SystemStatusRead {
     online_nodes: number
     pending_sync_nodes: number
   }
+  topology: SystemTopologySummaryRead
   services: {
     database: string
     mqtt: string
