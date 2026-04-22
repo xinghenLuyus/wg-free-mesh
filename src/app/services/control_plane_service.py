@@ -8,6 +8,8 @@ from pydantic import BaseModel
 
 from app.core.errors import AppError
 from app.domain.models import ControlStatus
+from app.events.publish_plan import PublishPlan
+from app.events.realtime_publisher import RealtimePublisher
 from app.repositories.sqlite import store
 from app.services.realtime_service import realtime_service
 
@@ -23,6 +25,9 @@ def _iso_datetime(value: object) -> str | None:
 
 
 class ControlPlaneService:
+    def __init__(self) -> None:
+        self.publisher = RealtimePublisher(self)
+
     def configs_payload(self) -> list[dict[str, Any]]:
         return [item.model_dump(mode="json") for item in self.list_configs()]
 
@@ -110,6 +115,36 @@ class ControlPlaneService:
                 await self.publish_node_workspace(config.id, node.id)
                 await self.publish_node_apply(config.id, node.id)
                 await self.publish_mesh_workspace(config.id, node.id)
+
+    def plan_for_mesh_change(self, config_id: str, affected_node_ids: list[str] | set[str]) -> PublishPlan:
+        plan = PublishPlan(refresh_configs=True, refresh_system_status=True)
+        plan.add_config_overview(config_id)
+        for node_id in affected_node_ids:
+            plan.add_node_scope(config_id, str(node_id))
+        return plan
+
+    def plan_for_config_change(
+        self,
+        config_id: str,
+        affected_node_ids: list[str] | set[str] | None = None,
+        include_overview: bool = True,
+    ) -> PublishPlan:
+        plan = PublishPlan(refresh_configs=True, refresh_system_status=True)
+        if include_overview:
+            plan.add_config_overview(config_id)
+        for node_id in affected_node_ids or []:
+            plan.add_node_scope(config_id, str(node_id))
+        return plan
+
+    def plan_for_node_change(self, config_id: str, affected_node_ids: list[str] | set[str]) -> PublishPlan:
+        plan = PublishPlan(refresh_configs=True, refresh_system_status=True)
+        plan.add_config_overview(config_id)
+        for node_id in affected_node_ids:
+            plan.add_node_scope(config_id, str(node_id))
+        return plan
+
+    async def publish_plan(self, plan: PublishPlan) -> None:
+        await self.publisher.publish(plan)
 
     async def publish_runtime(self, config_id: str, node_id: str) -> None:
         status = store.get_node_endpoint_status(config_id, node_id)

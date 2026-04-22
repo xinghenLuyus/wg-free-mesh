@@ -36,6 +36,9 @@ from app.domain.models import (
     sha256_text,
 )
 from app.infrastructure.database import backups_dir, connect, data_dir, wireguard_dir
+from app.projections.config_list_projection import config_list_projection
+from app.projections.config_overview_projection import config_overview_projection
+from app.projections.system_status_projection import system_status_projection
 from app.repositories.naming import node_config_artifact_stem as _node_config_artifact_stem, validate_config_name
 from app.repositories.row_mappers import (
     bool_value as _bool_value,
@@ -50,6 +53,7 @@ from app.repositories.row_mappers import (
     snapshot_from_row as _snapshot_from_row,
     state_from_row as _state_from_row,
 )
+from app.services.topology_service import topology_service
 
 
 def _int_value(value: object, default: int) -> int:
@@ -178,18 +182,7 @@ class SQLiteStore:
                 """
             ).fetchall()
         configs = [_config_from_row(row) for row in rows]
-        result: list[Config] = []
-        for config in configs:
-            topology = self._topology_issue_summary(config.id)
-            result.append(
-                config.model_copy(
-                    update={
-                        "topology_invalid": bool(config.enabled) and not bool(topology["valid"]),
-                        "topology_error_count": cast(int, topology["error_count"]) if config.enabled else 0,
-                    }
-                )
-            )
-        return result
+        return config_list_projection.project(configs, self._topology_issue_summary)
 
     def get_config(self, config_id: str) -> Config:
         with connect() as connection:
@@ -666,17 +659,10 @@ class SQLiteStore:
         return [_peer_link_from_row(row) for row in rows]
 
     def _peer_link_groups(self, config_id: str) -> dict[str, list[PeerLink]]:
-        groups: dict[str, list[PeerLink]] = {}
-        for link in self.list_peer_links(config_id):
-            groups.setdefault(link.link_group_id, []).append(link)
-        return groups
+        return topology_service.peer_link_groups(self.list_peer_links(config_id))
 
     def _link_endpoint_state(self, config: Config, peer_node: Node, link: PeerLink | None) -> str:
-        if link is None:
-            return "missing"
-        if link.endpoint_mode == EndpointMode.none:
-            return "disabled"
-        return "resolved" if self._resolve_endpoint(config, peer_node, link) else "unresolved"
+        return topology_service.link_endpoint_state(config, peer_node, link)
 
     def _connection_integrity(
         self,
@@ -686,17 +672,7 @@ class SQLiteStore:
         forward: PeerLink | None,
         reverse: PeerLink | None,
     ) -> dict[str, object]:
-        if forward is None or reverse is None:
-            return {"status": "healthy", "message": ""}
-
-        forward_state = self._link_endpoint_state(config, peer_node, forward)
-        reverse_state = self._link_endpoint_state(config, local_node, reverse)
-        if forward_state == "unresolved" and reverse_state == "unresolved":
-            return {
-                "status": "broken",
-                "message": f"Mesh link between {local_node.name} and {peer_node.name} is broken because both sides have no public endpoint.",
-            }
-        return {"status": "healthy", "message": ""}
+        return topology_service.connection_integrity(config, local_node, peer_node, forward, reverse)
 
     def _reconcile_node_dependency_changes(self, config_id: str, current: Node, updated: Node) -> dict[str, object]:
         links = self.list_peer_links(config_id)
@@ -1467,81 +1443,22 @@ class SQLiteStore:
     def system_status(self) -> dict[str, object]:
         configs = self.list_configs()
         nodes = [node for config in configs for node in self.list_nodes(config.id)]
-        runtimes = [self.get_runtime(node.config_id, node.id) for node in nodes]
-        invalid_configs: list[dict[str, object]] = []
-        invalid_node_ids: set[str] = set()
-        for config in configs:
-            if not config.enabled:
-                continue
-            topology = self._topology_issue_summary(config.id)
-            if not bool(topology["valid"]):
-                config_invalid_node_ids = cast(list[str], topology["invalid_node_ids"])
-                invalid_node_ids.update(config_invalid_node_ids)
-                invalid_configs.append(
-                    {
-                        "config_id": config.id,
-                        "config_name": config.name,
-                        "error_count": topology["error_count"],
-                        "invalid_node_count": topology["invalid_node_count"],
-                        "errors": topology["errors"],
-                    }
-                )
-        return {
-            "summary": {
-                "configs": len(configs),
-                "nodes": len(nodes),
-                "dynamic_nodes": len([node for node in nodes if node.node_type == NodeType.dynamic]),
-                "online_nodes": len([runtime for runtime in runtimes if runtime.online]),
-                "pending_sync_nodes": len([runtime for runtime in runtimes if runtime.config_sync_state != ConfigSyncState.in_sync]),
-            },
-            "topology": {
-                "valid": not invalid_configs,
-                "invalid_config_count": len(invalid_configs),
-                "invalid_node_count": len(invalid_node_ids),
-                "invalid_configs": invalid_configs,
-            },
-            "services": {"database": "ok", "mqtt": "deferred", "wireguard": "deferred"},
-            "timestamp": now_utc(),
-        }
+        runtimes = [self.get_runtime(node.config_id, node.id).model_dump(mode="json") for node in nodes]
+        return system_status_projection.project(configs, nodes, runtimes, self._topology_issue_summary)
 
     def config_overview(self, config_id: str) -> dict[str, object]:
         config = self.get_config(config_id)
         nodes = self.list_nodes(config_id)
         runtimes = self.list_runtime_snapshot(config_id)
         topology = self._topology_issue_summary(config_id)
-        invalid_node_ids = set(cast(list[str], topology["invalid_node_ids"]))
-        runtime_by_node_id = {str(item["node_id"]): item for item in runtimes}
-        return {
-            "config": config,
-            "stats": {
-                "total_nodes": len(nodes),
-                "dynamic_nodes": len([node for node in nodes if node.node_type == NodeType.dynamic]),
-                "static_nodes": len([node for node in nodes if node.node_type == NodeType.static]),
-                "online_nodes": len([item for item in runtimes if item["online"]]),
-                "pending_sync_nodes": len([item for item in runtimes if item["config_sync_state"] != ConfigSyncState.in_sync]),
-                "peer_links": len(self.list_peer_links(config_id)) // 2,
-            },
-            "nodes": nodes,
-            "node_cards": [
-                {
-                    "id": node.id,
-                    "name": node.name,
-                    "node_type": node.node_type,
-                    "virtual_ip": node.virtual_ip,
-                    "ipv4_address": node.ipv4_address,
-                    "ipv6_address": node.ipv6_address,
-                    "tags": node.tags,
-                    "created_at": node.created_at.isoformat(),
-                    "online": bool(runtime_by_node_id.get(node.id, {}).get("online", False)),
-                    "peers_total": _int_value(runtime_by_node_id.get(node.id, {}).get("peers_total"), 0),
-                    "mesh_error": node.id in invalid_node_ids,
-                }
-                for node in nodes
-            ],
-            "runtime_snapshot": runtimes,
-            "sync_status": self.get_sync_status_for_config(config_id),
-            "topology": topology,
-        }
+        return config_overview_projection.project(
+            config=config,
+            nodes=nodes,
+            runtimes=runtimes,
+            peer_link_count=len(self.list_peer_links(config_id)) // 2,
+            sync_status=self.get_sync_status_for_config(config_id),
+            topology=topology,
+        )
 
     def _sync_status_from_state(self, state: NodeConfigState) -> str:
         if not state.desired_sha256:
@@ -1700,76 +1617,21 @@ class SQLiteStore:
             return
 
     def _validate_mesh_payload(self, config_id: str) -> dict[str, object]:
-        errors: list[str] = []
-        warnings: list[str] = []
-        links = self.list_peer_links(config_id)
-        node_list = self.list_nodes(config_id)
-        nodes = {node.id: node for node in node_list}
-        config = self.get_config(config_id)
-        if len(node_list) >= 2 and not links:
-            warnings.append("Current config has no peer links.")
-
-        for group_id, group_links in self._peer_link_groups(config_id).items():
-            if not group_links:
-                continue
-            forward = next((item for item in group_links if item.direction == "forward"), group_links[0])
-            reverse = next((item for item in group_links if item.direction == "reverse"), None)
-            local_node = nodes.get(forward.local_node_id)
-            peer_node = nodes.get(forward.peer_node_id)
-            if local_node is None or peer_node is None:
-                continue
-            integrity = self._connection_integrity(config, local_node, peer_node, forward, reverse)
-            group_enabled = forward.enabled or (reverse.enabled if reverse else False)
-            if group_enabled and str(integrity["status"]) == "broken":
-                errors.append(str(integrity["message"]) or f"Mesh link group {group_id} is broken.")
-
-        messages = errors or warnings or ["Topology check passed."]
-        return {
-            "valid": not errors,
-            "messages": messages,
-            "errors": errors,
-            "warnings": warnings,
-        }
+        return topology_service.validate_mesh(
+            self.get_config(config_id),
+            self.list_nodes(config_id),
+            self.list_peer_links(config_id),
+        )
 
     def _topology_issue_summary(self, config_id: str) -> dict[str, object]:
-        config = self.get_config(config_id)
-        nodes = {node.id: node for node in self.list_nodes(config_id)}
-        invalid_node_ids: set[str] = set()
-        errors: list[str] = []
-
-        for group_links in self._peer_link_groups(config_id).values():
-            if not group_links:
-                continue
-            forward = next((item for item in group_links if item.direction == "forward"), group_links[0])
-            reverse = next((item for item in group_links if item.direction == "reverse"), None)
-            local_node = nodes.get(forward.local_node_id)
-            peer_node = nodes.get(forward.peer_node_id)
-            if local_node is None or peer_node is None:
-                continue
-            integrity = self._connection_integrity(config, local_node, peer_node, forward, reverse)
-            group_enabled = forward.enabled or (reverse.enabled if reverse else False)
-            if group_enabled and str(integrity["status"]) == "broken":
-                invalid_node_ids.update({local_node.id, peer_node.id})
-                errors.append(str(integrity["message"]) or f"Mesh link between {local_node.name} and {peer_node.name} is broken.")
-
-        return {
-            "valid": not errors,
-            "errors": errors,
-            "error_count": len(errors),
-            "invalid_node_ids": sorted(invalid_node_ids),
-            "invalid_node_count": len(invalid_node_ids),
-        }
+        return topology_service.summarize(
+            self.get_config(config_id),
+            self.list_nodes(config_id),
+            self.list_peer_links(config_id),
+        )
 
     def _resolve_endpoint(self, config: Config, peer_node: Node, link: PeerLink) -> str | None:
-        if link.endpoint_mode == "none":
-            return None
-        host = link.endpoint_manual_host if link.endpoint_mode == "manual" else self._endpoint_host_for_family(peer_node, link.endpoint_ref_family)
-        if not host:
-            return None
-        port = link.endpoint_manual_port if link.endpoint_port_mode == "manual" else peer_node.listen_port or config.default_listen_port
-        if not port:
-            return None
-        return f"[{host}]:{port}" if _is_ipv6_literal(host) else f"{host}:{port}"
+        return topology_service.resolve_endpoint(config, peer_node, link)
 
     def _conf_path(self, config_id: str, node_id: str) -> Path:
         target = wireguard_dir() / config_id

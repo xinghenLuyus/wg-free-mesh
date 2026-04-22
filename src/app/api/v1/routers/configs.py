@@ -55,9 +55,7 @@ def list_configs() -> ApiResponse[list[dict[str, Any]]]:
 @router.post("")
 async def create_config(payload: ConfigCreateRequest) -> ApiResponse[dict[str, Any]]:
     config = control_plane_service.create_config(payload.model_dump())
-    await control_plane_service.publish_configs()
-    await control_plane_service.publish_config_overview(config.id)
-    await control_plane_service.publish_system_status()
+    await control_plane_service.publish_plan(control_plane_service.plan_for_config_change(config.id))
     return ok(config.model_dump(mode="json"))
 
 
@@ -69,21 +67,18 @@ def get_config(config_id: str) -> ApiResponse[dict[str, Any]]:
 @router.put("/{config_id}")
 async def update_config(config_id: str, payload: ConfigUpdateRequest) -> ApiResponse[dict[str, Any]]:
     result = control_plane_service.update_config(config_id, payload.model_dump())
-    await control_plane_service.publish_configs()
-    await control_plane_service.publish_config_overview(config_id)
-    for node_id in result.get("affected_node_ids", []):
-        await control_plane_service.publish_node_workspace(config_id, str(node_id))
-        await control_plane_service.publish_node_apply(config_id, str(node_id))
-        await control_plane_service.publish_mesh_workspace(config_id, str(node_id))
-    await control_plane_service.publish_system_status()
+    await control_plane_service.publish_plan(
+        control_plane_service.plan_for_config_change(config_id, [str(item) for item in result.get("affected_node_ids", [])])
+    )
     return ok(result)
 
 
 @router.delete("/{config_id}")
 async def delete_config(config_id: str) -> ApiResponse[dict[str, str]]:
     control_plane_service.delete_config(config_id)
-    await control_plane_service.publish_configs()
-    await control_plane_service.publish_system_status()
+    await control_plane_service.publish_plan(
+        control_plane_service.plan_for_config_change(config_id, include_overview=False)
+    )
     return ok({"message": "Config deleted"})
 
 

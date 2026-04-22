@@ -16,12 +16,16 @@
 - `api/`：HTTP 与 SSE 路由入口。
 - `core/`：配置、错误、响应、安全、基础校验。
 - `domain/`：领域模型与枚举。
+- `events/`：实时事件发布计划与统一发布器。
 - `infrastructure/`：数据库与文件系统基础设施。
+- `projections/`：页面级读模型投影。
 - `repositories/`：SQLite 读写、命名规则、行映射。
 - `schemas/`：Pydantic 请求与响应模型。
-- `services/`：认证、控制平面、SSE 等应用服务。
+- `services/`：认证、控制平面、拓扑、SSE 等应用服务。
 
 ## 约定
 
 - `app/` 根目录不直接堆业务逻辑，业务行为优先下沉到 `services/` 与 `repositories/`。
+- 页面快照聚合优先放进 `projections/`，不要继续把大段 dict 拼装堆回仓储层。
+- 实时事件的影响面优先通过 `events/PublishPlan` 收束，不在 Router 中手写零散 `publish_xxx()`。
 - 新增代码文件时，必须同步更新当前目录或子目录的 README，说明用途与关键入口。
