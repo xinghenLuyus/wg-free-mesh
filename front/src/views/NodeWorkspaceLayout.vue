@@ -60,10 +60,16 @@ const settingsRules: FormRules<typeof settingsForm> = {
 const tabs = computed(() => {
   const configId = String(route.params.configId)
   const nodeId = String(route.params.nodeId)
+  const isStaticNode = node.value?.node_type === 'static'
   return [
     { label: t('nodeWorkspace.mesh'), path: `/configs/${configId}/nodes/${nodeId}/mesh`, align: 'left' as const },
     { label: t('nodeWorkspace.apply'), path: `/configs/${configId}/nodes/${nodeId}/apply`, align: 'left' as const },
-    { label: t('nodeWorkspace.control'), path: `/configs/${configId}/nodes/${nodeId}/control`, align: 'left' as const },
+    {
+      label: t('nodeWorkspace.control'),
+      path: `/configs/${configId}/nodes/${nodeId}/control`,
+      align: 'left' as const,
+      disabled: isStaticNode,
+    },
     { label: t('nodeWorkspace.download'), path: `/configs/${configId}/nodes/${nodeId}/download`, align: 'right' as const },
   ]
 })
@@ -128,6 +134,11 @@ function fillSettingsForm() {
 function openSettings() {
   fillSettingsForm()
   settingsVisible.value = true
+}
+
+function handleTabClick(disabled: boolean) {
+  if (!disabled) return
+  notify.info(t('nodeWorkspace.staticControlUnavailable'))
 }
 
 async function autofillKeys() {
@@ -266,9 +277,14 @@ onMounted(async () => {
         <RouterLink
           v-for="tab in primaryTabs"
           :key="tab.path"
-          :to="tab.path"
+          :to="tab.disabled ? route.fullPath : tab.path"
           class="node-tab"
-          :class="{ 'node-tab--active': route.path === tab.path }"
+          :class="{
+            'node-tab--active': route.path === tab.path,
+            'node-tab--disabled': tab.disabled,
+          }"
+          :aria-disabled="tab.disabled ? 'true' : 'false'"
+          @click.prevent="handleTabClick(Boolean(tab.disabled))"
         >
           {{ tab.label }}
         </RouterLink>
@@ -395,8 +411,11 @@ onMounted(async () => {
 .node-tab { min-height: 40px; padding: 10px 16px; border: 1px solid var(--app-border); border-radius: 8px; color: color-mix(in srgb, var(--app-text) 72%, var(--app-muted)); background: var(--app-surface); text-decoration: none; font-weight: 700; transition: transform 160ms ease, border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease; }
 .node-tab--action { border-color: var(--app-border-accent); background: var(--app-surface-interactive); color: color-mix(in srgb, var(--app-text) 84%, var(--app-primary)); }
 .node-tab:hover { transform: translateY(-1px); border-color: var(--app-border-accent); background: var(--app-surface-interactive); box-shadow: var(--app-shadow-sm); }
+.node-tab--disabled,
+.node-tab--disabled:hover { transform: none; border-color: var(--app-border-soft); background: var(--app-surface-sunken); color: var(--app-faint); box-shadow: none; cursor: not-allowed; }
 .node-tab:focus-visible { outline: 0; box-shadow: var(--app-focus); }
 .node-tab--active { color: var(--app-primary-strong); border-color: var(--app-primary); background: var(--app-surface-selected); }
+.node-tab--disabled.node-tab--active { color: var(--app-faint); border-color: var(--app-border-soft); background: var(--app-surface-sunken); }
 .view-feedback { padding: 18px 20px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-sunken); color: color-mix(in srgb, var(--app-text) 68%, var(--app-muted)); box-shadow: var(--app-shadow-sm); }
 .view-feedback--silent { min-height: 88px; background: transparent; border-color: transparent; box-shadow: none; }
 .view-feedback--error { border-color: var(--app-danger-border); background: var(--app-danger-soft); color: var(--app-danger-text); }

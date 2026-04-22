@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import { useConfigOverviewPrefs } from '@/composables/useConfigOverviewPrefs'
 import { useRealtime } from '@/composables/useRealtime'
 import type { ConfigOverviewNodeCardRead, ConfigOverviewRead, ConfigOverviewUpdatedPayload, NodeRead, RealtimeEvent, TagRead } from '@/types/api'
 import { notifyChangeHints } from '@/utils/changeHints'
@@ -27,9 +28,8 @@ const tags = shallowRef<TagRead[]>([])
 const settingsVisible = shallowRef(false)
 const createVisible = shallowRef(false)
 const tagVisible = shallowRef(false)
-const viewMode = shallowRef<ViewMode>('grid')
-const sortKey = shallowRef<SortKey>('name')
-const tagFilter = shallowRef('')
+const configId = computed(() => String(route.params.configId || ''))
+const { viewMode, sortKey, tagFilter } = useConfigOverviewPrefs(configId)
 const tagSearch = shallowRef('')
 const newTagName = shallowRef('')
 const selectedTagForAssignment = shallowRef('')
@@ -99,12 +99,33 @@ const visibleNodes = computed(() => {
     ? nodeCards.value.filter((node) => node.tags.includes(tagFilter.value))
     : nodeCards.value
 
+  const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
+  const compareText = (left: string | null | undefined, right: string | null | undefined) => {
+    const leftValue = String(left || '').trim()
+    const rightValue = String(right || '').trim()
+    if (!leftValue && !rightValue) return 0
+    if (!leftValue) return 1
+    if (!rightValue) return -1
+    return collator.compare(leftValue, rightValue)
+  }
+
   return [...filtered].sort((left: ConfigOverviewNodeCardRead, right: ConfigOverviewNodeCardRead) => {
-    if (sortKey.value === 'online') return Number(right.online) - Number(left.online)
-    if (sortKey.value === 'created_at') return right.created_at.localeCompare(left.created_at)
-    const leftValue = String(left[sortKey.value] ?? '')
-    const rightValue = String(right[sortKey.value] ?? '')
-    return leftValue.localeCompare(rightValue)
+    if (sortKey.value === 'online') {
+      const onlineDiff = Number(right.online) - Number(left.online)
+      return onlineDiff || compareText(left.name, right.name)
+    }
+    if (sortKey.value === 'created_at') {
+      return right.created_at.localeCompare(left.created_at) || compareText(left.name, right.name)
+    }
+    if (sortKey.value === 'node_type') {
+      const typeDiff = compareText(nodeTypeLabel(left.node_type), nodeTypeLabel(right.node_type))
+      return typeDiff || compareText(left.name, right.name)
+    }
+    if (sortKey.value === 'virtual_ip') {
+      const ipDiff = compareText(left.virtual_ip, right.virtual_ip)
+      return ipDiff || compareText(left.name, right.name)
+    }
+    return compareText(left.name, right.name)
   })
 })
 
@@ -377,6 +398,16 @@ watch(
   },
 )
 
+watch(
+  [allTags, tagFilter],
+  ([nextTags, nextTagFilter]) => {
+    if (!overview.value) return
+    if (nextTagFilter && !nextTags.includes(nextTagFilter)) {
+      tagFilter.value = ''
+    }
+  },
+)
+
 onMounted(async () => {
   try {
     await load()
@@ -506,7 +537,10 @@ onMounted(async () => {
         >
           <div class="node-strip-card__main">
             <div class="node-strip-card__title">
-              <h3>{{ node.name }}</h3>
+              <div class="node-strip-card__title-copy">
+                <h3>{{ node.name }}</h3>
+                <p>{{ nodeTypeLabel(node.node_type) }}</p>
+              </div>
               <div class="node-strip-card__status-tags">
                 <el-tag v-if="node.mesh_error" type="danger" size="small">{{ t('configOverview.meshError') }}</el-tag>
                 <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'" size="small">{{ node.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}</el-tag>
@@ -518,11 +552,18 @@ onMounted(async () => {
             </div>
           </div>
           <div class="node-strip-card__facts">
-            <span>{{ nodeTypeLabel(node.node_type) }}</span>
-            <span>{{ node.virtual_ip || t('configOverview.unsetVirtualIp') }}</span>
-            <span>IPv4 {{ node.ipv4_address || t('nodeWorkspace.unset') }}</span>
-            <span>IPv6 {{ node.ipv6_address || t('nodeWorkspace.unset') }}</span>
-            <span>Peer {{ node.peers_total }}</span>
+            <div class="node-strip-card__fact">
+              <span class="node-strip-card__fact-label">{{ t('nodeWorkspace.virtualIp') }}</span>
+              <span class="node-strip-card__fact-value">{{ node.virtual_ip || t('configOverview.unsetVirtualIp') }}</span>
+            </div>
+            <div class="node-strip-card__fact">
+              <span class="node-strip-card__fact-label">{{ t('nodeWorkspace.publicIpv4') }}</span>
+              <span class="node-strip-card__fact-value">{{ node.ipv4_address || t('nodeWorkspace.unset') }}</span>
+            </div>
+            <div class="node-strip-card__fact">
+              <span class="node-strip-card__fact-label">{{ t('nodeWorkspace.publicIpv6') }}</span>
+              <span class="node-strip-card__fact-value">{{ node.ipv6_address || t('nodeWorkspace.unset') }}</span>
+            </div>
           </div>
         </button>
       </div>
@@ -731,12 +772,16 @@ onMounted(async () => {
 .node-card__tags, .node-strip-card__tags { display: flex; flex-wrap: wrap; gap: 8px; }
 .node-card__empty { color: var(--app-faint); font-size: 13px; }
 .node-strip-grid { display: grid; gap: 12px; }
-.node-strip-card { display: grid; grid-template-columns: minmax(220px, 1.2fr) minmax(320px, 2fr); gap: 16px; align-items: center; padding: 16px 18px; border: 1px solid var(--app-border); border-radius: 8px; background: linear-gradient(90deg, var(--app-surface-elevated) 0%, var(--app-surface) 100%); text-align: left; cursor: pointer; box-shadow: var(--app-shadow-sm); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
-.node-strip-card__main { display: grid; gap: 10px; }
-.node-strip-card__title { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.node-strip-card { display: grid; grid-template-columns: minmax(250px, 1.05fr) minmax(420px, 1.45fr); gap: 18px; align-items: stretch; padding: 16px 18px; border: 1px solid var(--app-border); border-radius: 8px; background: linear-gradient(90deg, var(--app-surface-elevated) 0%, var(--app-surface) 100%); text-align: left; cursor: pointer; box-shadow: var(--app-shadow-sm); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
+.node-strip-card__main { display: grid; gap: 12px; min-width: 0; }
+.node-strip-card__title { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.node-strip-card__title-copy { display: grid; gap: 4px; min-width: 0; }
 .node-strip-card__title h3 { margin: 0; color: var(--app-text-strong); font-size: 18px; }
-.node-strip-card__facts { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; color: var(--app-muted); }
-.node-strip-card__facts span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node-strip-card__title-copy p { margin: 0; color: var(--app-faint); font-size: 13px; font-weight: 600; }
+.node-strip-card__facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.node-strip-card__fact { display: grid; gap: 6px; min-width: 0; padding: 12px 13px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: color-mix(in srgb, var(--app-surface-sunken) 88%, transparent); box-shadow: inset 0 1px 0 color-mix(in srgb, white 10%, transparent); }
+.node-strip-card__fact-label { color: var(--app-faint); font-size: 11px; font-weight: 700; letter-spacing: 0; }
+.node-strip-card__fact-value { color: var(--app-text-strong); font-size: 14px; font-weight: 700; line-height: 1.35; word-break: break-word; }
 .tag-manager { display: grid; gap: 16px; }
 .tag-manager__hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-sunken); }
 .tag-manager__hero h3 { margin: 0; color: var(--app-text-strong); }
@@ -778,10 +823,11 @@ onMounted(async () => {
   .cfg-props-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .node-toolbar { align-items: stretch; flex-direction: column; }
   .node-strip-card { grid-template-columns: 1fr; }
+  .node-strip-card__facts { grid-template-columns: 1fr; }
 }
 @media (max-width: 720px) {
-  .cfg-top-bar, .tag-manager__hero { flex-direction: column; align-items: stretch; }
-  .cfg-props-grid, .node-card__meta, .node-strip-card__facts, .form-grid, .tag-create-panel, .tag-manager__split { grid-template-columns: 1fr; }
+  .cfg-top-bar, .tag-manager__hero, .node-strip-card__title { flex-direction: column; align-items: stretch; }
+  .cfg-props-grid, .node-card__meta, .form-grid, .tag-create-panel, .tag-manager__split { grid-template-columns: 1fr; }
   .settings-danger-zone, .switch-row { flex-direction: column; align-items: stretch; }
 }
 </style>

@@ -299,6 +299,7 @@ export default {
     deleteConfirmText: '删除端点后，{name} 的节点信息、Mesh 连接和同步态配置都会一起移除。',
     deleted: '端点已删除',
     deleteFailed: '端点删除失败',
+    staticControlUnavailable: '静态节点没有端点控制功能',
   },
   endpointControl: {
     title: '端点控制',

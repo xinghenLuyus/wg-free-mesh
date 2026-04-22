@@ -299,6 +299,7 @@ export default {
     deleteConfirmText: 'After deletion, {name} node info, Mesh links, and staged config will all be removed.',
     deleted: 'Endpoint deleted',
     deleteFailed: 'Failed to delete endpoint',
+    staticControlUnavailable: 'Static nodes do not support endpoint control',
   },
   endpointControl: {
     title: 'Endpoint Control',
