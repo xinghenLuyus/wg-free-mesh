@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 
+from typing import Annotated
+
 from fastapi import Body, File, UploadFile
 from fastapi.responses import FileResponse
 
@@ -13,8 +15,19 @@ from app.services.control_plane_service import control_plane_service
 router = SessionProtectedAPIRouter(prefix="/backups", tags=["backups"])
 
 
+async def _import_snapshot_file(file: UploadFile) -> dict[str, object]:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_file:
+        temp_file.write(await file.read())
+        temp_path = Path(temp_file.name)
+    try:
+        return control_plane_service.import_snapshot(temp_path, file.filename).model_dump(mode="json")
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
 @router.post("/snapshot")
-async def create_snapshot(note: str = Body(default="")) -> ApiResponse[dict[str, object]]:
+async def create_snapshot(note: Annotated[str, Body()] = "") -> ApiResponse[dict[str, object]]:
     snapshot = control_plane_service.create_snapshot(note).model_dump(mode="json")
     await control_plane_service.publish_snapshots()
     return ok(snapshot)
@@ -27,7 +40,13 @@ def list_snapshots() -> ApiResponse[list[dict[str, object]]]:
 
 @router.get("/download/{snapshot_id}")
 def download_snapshot(snapshot_id: str) -> FileResponse:
-    path = control_plane_service.get_snapshot_path(snapshot_id)
+    path = control_plane_service.export_snapshot(snapshot_id)
+    return FileResponse(path=str(path), filename=path.name, media_type="application/octet-stream")
+
+
+@router.get("/export/{snapshot_id}")
+def export_snapshot(snapshot_id: str) -> FileResponse:
+    path = control_plane_service.export_snapshot(snapshot_id)
     return FileResponse(path=str(path), filename=path.name, media_type="application/octet-stream")
 
 
@@ -39,17 +58,17 @@ async def restore_snapshot(snapshot_id: str) -> ApiResponse[dict[str, str]]:
 
 
 @router.post("/upload")
-async def upload_snapshot(file: UploadFile = File(...)) -> ApiResponse[dict[str, str]]:
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_file:
-        temp_file.write(await file.read())
-        temp_path = Path(temp_file.name)
-    try:
-        control_plane_service.restore_uploaded_snapshot(temp_path)
-    finally:
-        if temp_path.exists():
-            temp_path.unlink()
-    await control_plane_service.publish_full_state()
-    return ok({"message": "Uploaded snapshot restored"})
+async def upload_snapshot(file: Annotated[UploadFile, File(...)]) -> ApiResponse[dict[str, object]]:
+    snapshot = await _import_snapshot_file(file)
+    await control_plane_service.publish_snapshots()
+    return ok(snapshot)
+
+
+@router.post("/import")
+async def import_snapshot(file: Annotated[UploadFile, File(...)]) -> ApiResponse[dict[str, object]]:
+    snapshot = await _import_snapshot_file(file)
+    await control_plane_service.publish_snapshots()
+    return ok(snapshot)
 
 
 @router.delete("/{snapshot_id}")
@@ -60,7 +79,10 @@ async def delete_snapshot(snapshot_id: str) -> ApiResponse[dict[str, str]]:
 
 
 @router.put("/{snapshot_id}/note")
-async def update_snapshot_note(snapshot_id: str, note: str = Body(default="")) -> ApiResponse[dict[str, object]]:
+async def update_snapshot_note(
+    snapshot_id: str,
+    note: Annotated[str, Body()] = "",
+) -> ApiResponse[dict[str, object]]:
     snapshot = control_plane_service.update_snapshot_note(snapshot_id, note).model_dump(mode="json")
     await control_plane_service.publish_snapshots()
     return ok(snapshot)

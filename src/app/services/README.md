@@ -9,6 +9,9 @@
   - `CurrentUser` / `DownloadGrant`：认证后的授权载体。
 - `control_plane_service.py`
   - `ControlPlaneService`：控制平面主服务，统一编排配置、节点、Mesh、同步态、运行态、快照、MQTT 设置，并把实时发布委托给统一发布计划。
+- `snapshot_service.py`
+  - `SnapshotService`：负责快照压缩包创建、恢复、导入、导出、备注 manifest 同步和磁盘索引重建。
+  - `rebuild_index_from_disk()`：扫描 `data/backups/`，把磁盘快照回填到 `backups` 表，避免恢复后快照元数据丢失。
 - `topology_service.py`
   - `TopologyService`：负责 Mesh 连接完整性、拓扑校验和系统级拓扑摘要，不再把这部分规则散落在仓储和 Router 中。
 - `config_service.py`
@@ -32,3 +35,4 @@
 - 旧模型名不得继续出现在服务层，例如 `NodeRole`、`NodeStatus`、`MeshLink`。
 - 修改服务层后需要通过 `mypy app`。
 - 实时服务必须保证后端停机时可主动收口，不允许把 SSE 连接的关闭完全寄托在浏览器先断开。
+- 快照备注属于压缩包内 manifest 和数据库元数据的双写内容，修改备注时必须同时更新两处。

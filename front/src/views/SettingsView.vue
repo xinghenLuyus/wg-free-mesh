@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Check, Connection, Delete, Files, Lock, Monitor, Plus, Setting } from '@element-plus/icons-vue'
+import { Check, Connection, Delete, Download, Edit, Files, Lock, Monitor, Plus, Setting, Upload } from '@element-plus/icons-vue'
+import { ElMessageBox } from 'element-plus'
 import type { FormInstance, FormItemRule, FormRules } from 'element-plus'
 import { computed, nextTick, onMounted, reactive, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -42,6 +43,7 @@ const selectedThemeMode = shallowRef<AppThemeMode>(preferencesStore.themeMode)
 const mqttFormRef = shallowRef<FormInstance>()
 const passwordFormRef = shallowRef<FormInstance>()
 const passwordResetting = shallowRef(false)
+const snapshotImportInput = shallowRef<HTMLInputElement | null>(null)
 const mqttRules: FormRules<typeof mqttForm> = {
   host: [requiredTextRule('fields.host')],
 }
@@ -180,12 +182,58 @@ async function savePassword() {
 }
 
 async function createSnapshot() {
+  const note = await promptSnapshotNote('')
+  if (note === null) return
   try {
-    await api.createSnapshot('')
-    await load()
+    await api.createSnapshot(note)
     notify.success(t('settings.snapshotCreated'))
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotCreateFailed'))
+  }
+}
+
+async function editSnapshotNote(snapshot: SnapshotRead) {
+  const note = await promptSnapshotNote(snapshot.note)
+  if (note === null) return
+  try {
+    await api.updateSnapshotNote(snapshot.id, note)
+    notify.success(t('settings.snapshotNoteSaved'))
+  } catch (error) {
+    notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotNoteSaveFailed'))
+  }
+}
+
+async function exportSnapshot(snapshot: SnapshotRead) {
+  try {
+    const blob = await api.exportSnapshot(snapshot.id)
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = snapshot.name
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+    notify.success(t('settings.snapshotExported'))
+  } catch (error) {
+    notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotExportFailed'))
+  }
+}
+
+function openSnapshotImport() {
+  snapshotImportInput.value?.click()
+}
+
+async function handleSnapshotImport(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file) return
+  try {
+    await api.importSnapshot(file)
+    notify.success(t('settings.snapshotImported'))
+  } catch (error) {
+    notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotImportFailed'))
   }
 }
 
@@ -201,10 +249,42 @@ async function restoreSnapshot(snapshotId: string) {
 async function removeSnapshot(snapshotId: string) {
   try {
     await api.deleteSnapshot(snapshotId)
-    await load()
     notify.success(t('settings.snapshotDeleted'))
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotDeleteFailed'))
+  }
+}
+
+function isDialogCancel(error: unknown) {
+  if (typeof error === 'string') {
+    return error === 'cancel' || error === 'close'
+  }
+  if (typeof error === 'object' && error !== null && 'action' in error) {
+    const action = String((error as { action?: unknown }).action || '')
+    return action === 'cancel' || action === 'close'
+  }
+  return false
+}
+
+async function promptSnapshotNote(initialValue: string) {
+  try {
+    const result = await ElMessageBox.prompt(
+      t('settings.snapshotNotePrompt'),
+      t('settings.snapshotNoteTitle'),
+      {
+        inputType: 'textarea',
+        inputValue: initialValue,
+        inputPlaceholder: t('settings.snapshotNotePlaceholder'),
+        confirmButtonText: t('common.confirm'),
+        cancelButtonText: t('common.cancel'),
+      },
+    )
+    return result.value.trim()
+  } catch (error) {
+    if (isDialogCancel(error)) {
+      return null
+    }
+    throw error
   }
 }
 
@@ -373,7 +453,11 @@ onMounted(async () => {
             <p>{{ t('settings.backupDescription') }}</p>
           </div>
         </div>
-        <el-button type="primary" :icon="Plus" @click="createSnapshot">{{ t('settings.createSnapshot') }}</el-button>
+        <div class="settings-card__head-actions">
+          <input ref="snapshotImportInput" class="snapshot-import-input" type="file" accept=".zip,application/zip" @change="handleSnapshotImport" />
+          <el-button :icon="Upload" @click="openSnapshotImport">{{ t('settings.importSnapshot') }}</el-button>
+          <el-button type="primary" :icon="Plus" @click="createSnapshot">{{ t('settings.createSnapshot') }}</el-button>
+        </div>
       </div>
 
       <div class="snapshot-list">
@@ -388,6 +472,8 @@ onMounted(async () => {
           <div class="snapshot-card__meta">
             <span>{{ snapshot.size }} bytes</span>
             <div class="snapshot-card__actions">
+              <el-button size="small" :icon="Edit" @click="editSnapshotNote(snapshot)">{{ t('settings.editSnapshotNote') }}</el-button>
+              <el-button size="small" :icon="Download" @click="exportSnapshot(snapshot)">{{ t('settings.exportSnapshot') }}</el-button>
               <el-button size="small" @click="restoreSnapshot(snapshot.id)">{{ t('settings.restore') }}</el-button>
               <el-button size="small" type="danger" plain :icon="Delete" @click="removeSnapshot(snapshot.id)">{{ t('common.delete') }}</el-button>
             </div>
@@ -472,6 +558,13 @@ onMounted(async () => {
 
 .settings-card__head--split {
   justify-content: space-between;
+}
+
+.settings-card__head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
 }
 
 .settings-card__icon,
@@ -641,6 +734,10 @@ onMounted(async () => {
   gap: 12px;
 }
 
+.snapshot-import-input {
+  display: none;
+}
+
 .snapshot-card {
   display: grid;
   grid-template-columns: minmax(260px, 1fr) auto;
@@ -704,6 +801,7 @@ onMounted(async () => {
 @media (max-width: 720px) {
   .settings-hero,
   .settings-card__head--split,
+  .settings-card__head-actions,
   .switch-row,
   .snapshot-card,
   .snapshot-card__meta {

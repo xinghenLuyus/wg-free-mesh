@@ -590,22 +590,43 @@ Authorization: Bearer <access_token>
 ### `POST /api/v1/backups/snapshot`
 
 - 用途：创建快照
+- 请求体：原始字符串 `note`
+- 说明：
+  - 后端会先登记快照元数据，再打包数据库和 WireGuard 目录。
+  - 快照包内会写入 manifest，保存快照 id、创建时间和备注。
 
 ### `GET /api/v1/backups/list`
 
 - 用途：获取快照列表
+- 说明：
+  - 列表由后端扫描 `data/backups/` 并重建索引后返回。
+  - 恢复快照后，快照记录不会再因为数据库回滚到旧状态而丢失。
 
 ### `GET /api/v1/backups/download/{snapshot_id}`
 
 - 用途：下载快照
 
+### `GET /api/v1/backups/export/{snapshot_id}`
+
+- 用途：导出快照
+- 说明：与 `download/{snapshot_id}` 等价，前端统一使用导出语义。
+
 ### `POST /api/v1/backups/upload`
 
-- 用途：上传快照包
+- 用途：兼容旧路径导入快照包
+
+### `POST /api/v1/backups/import`
+
+- 用途：导入快照包
+- 说明：
+  - 只导入到快照列表，不自动恢复。
+  - 导入时会校验压缩包结构，要求至少包含 `data/wg_free_mesh.db`。
 
 ### `POST /api/v1/backups/restore/{snapshot_id}`
 
 - 用途：恢复快照
+- 说明：
+  - 恢复后后端会重新扫描快照目录并重建 `backups` 表索引。
 
 ### `DELETE /api/v1/backups/{snapshot_id}`
 
@@ -614,6 +635,8 @@ Authorization: Bearer <access_token>
 ### `PUT /api/v1/backups/{snapshot_id}/note`
 
 - 用途：更新快照备注
+- 说明：
+  - 修改备注时，后端同时更新数据库元数据和压缩包内 manifest，保证导出、导入、恢复后备注一致。
 
 ## 系统状态
 

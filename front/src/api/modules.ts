@@ -164,6 +164,13 @@ export const api = {
   createSnapshot: (note: string) =>
     request<SnapshotRead>('/backups/snapshot', { method: 'POST', data: note }),
   snapshots: () => request<SnapshotRead[]>('/backups/list'),
+  exportSnapshot: (snapshotId: string) =>
+    request<Blob>(`/backups/export/${snapshotId}`, { responseType: 'blob' }),
+  importSnapshot: (file: File) => {
+    const data = new FormData()
+    data.append('file', file)
+    return request<SnapshotRead>('/backups/import', { method: 'POST', data })
+  },
   restoreSnapshot: (snapshotId: string) =>
     request<{ message: string }>(`/backups/restore/${snapshotId}`, { method: 'POST' }),
   deleteSnapshot: (snapshotId: string) =>

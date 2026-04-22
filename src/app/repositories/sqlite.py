@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import ipaddress
 import json
+from pathlib import Path
 import re
 import shutil
 from collections.abc import Iterable
-from pathlib import Path
 from sqlite3 import Row
 from typing import cast
-from zipfile import ZIP_DEFLATED, ZipFile
 
 from app.core.errors import AppError
 from app.domain.models import (
@@ -26,7 +25,6 @@ from app.domain.models import (
     NodeConfigState,
     NodeType,
     PeerLink,
-    SnapshotInfo,
     WgRuntimeState,
     derive_public_key,
     generate_private_key,
@@ -35,7 +33,7 @@ from app.domain.models import (
     now_utc,
     sha256_text,
 )
-from app.infrastructure.database import backups_dir, connect, data_dir, wireguard_dir
+from app.infrastructure.database import connect, data_dir, wireguard_dir
 from app.projections.config_list_projection import config_list_projection
 from app.projections.config_overview_projection import config_overview_projection
 from app.projections.system_status_projection import system_status_projection
@@ -50,7 +48,6 @@ from app.repositories.row_mappers import (
     parse_datetime as _parse_datetime,
     peer_link_from_row as _peer_link_from_row,
     runtime_from_row as _runtime_from_row,
-    snapshot_from_row as _snapshot_from_row,
     state_from_row as _state_from_row,
 )
 from app.services.topology_service import topology_service
@@ -1375,60 +1372,6 @@ class SQLiteStore:
             raise AppError("AUTH_FAILED", "Current password is incorrect", 401)
         with connect() as connection:
             connection.execute("UPDATE system_settings SET value = ?, updated_at = ? WHERE key = 'auth_password_hash'", (new_password, now_utc().isoformat()))
-
-    def create_snapshot(self, note: str) -> SnapshotInfo:
-        snapshot_id = now_utc().strftime("%Y%m%d_%H%M%S")
-        snapshot_name = f"snapshot_{snapshot_id}.zip"
-        snapshot_path = backups_dir() / snapshot_name
-        with ZipFile(snapshot_path, "w", compression=ZIP_DEFLATED) as archive:
-            database_path = data_dir() / "wg_free_mesh.db"
-            if database_path.exists():
-                archive.write(database_path, arcname="data/wg_free_mesh.db")
-            for file in wireguard_dir().rglob("*"):
-                if file.is_file():
-                    archive.write(file, arcname=str(file.relative_to(Path.cwd())))
-        snapshot = SnapshotInfo(id=snapshot_id, name=snapshot_name, path=str(snapshot_path), size=snapshot_path.stat().st_size, note=note, created_at=now_utc())
-        with connect() as connection:
-            connection.execute(
-                "INSERT INTO backups (id, name, path, size, note, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                (snapshot.id, snapshot.name, snapshot.path, snapshot.size, snapshot.note, snapshot.created_at.isoformat()),
-            )
-        return snapshot
-
-    def list_snapshots(self) -> list[SnapshotInfo]:
-        with connect() as connection:
-            rows = connection.execute("SELECT * FROM backups ORDER BY created_at DESC").fetchall()
-        return [_snapshot_from_row(row) for row in rows]
-
-    def get_snapshot(self, snapshot_id: str) -> SnapshotInfo:
-        with connect() as connection:
-            row = connection.execute("SELECT * FROM backups WHERE id = ?", (snapshot_id,)).fetchone()
-        if row is None:
-            raise AppError("SNAPSHOT_NOT_FOUND", "Snapshot not found", 404)
-        return _snapshot_from_row(row)
-
-    def delete_snapshot(self, snapshot_id: str) -> None:
-        snapshot = self.get_snapshot(snapshot_id)
-        path = Path(snapshot.path)
-        if path.exists():
-            path.unlink()
-        with connect() as connection:
-            connection.execute("DELETE FROM backups WHERE id = ?", (snapshot_id,))
-
-    def update_snapshot_note(self, snapshot_id: str, note: str) -> SnapshotInfo:
-        self.get_snapshot(snapshot_id)
-        with connect() as connection:
-            connection.execute("UPDATE backups SET note = ? WHERE id = ?", (note, snapshot_id))
-        return self.get_snapshot(snapshot_id)
-
-    def restore_snapshot(self, snapshot_id: str) -> None:
-        self.restore_snapshot_archive(Path(self.get_snapshot(snapshot_id).path))
-
-    def restore_snapshot_archive(self, path: Path) -> None:
-        if not path.exists():
-            raise AppError("SNAPSHOT_NOT_FOUND", "Snapshot package not found", 404)
-        with ZipFile(path, "r") as archive:
-            archive.extractall(Path.cwd())
 
     def create_keys(self) -> dict[str, str]:
         private_key, public_key = generate_key_pair()

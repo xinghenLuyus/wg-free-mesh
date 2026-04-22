@@ -12,6 +12,7 @@ from app.events.publish_plan import PublishPlan
 from app.events.realtime_publisher import RealtimePublisher
 from app.repositories.sqlite import store
 from app.services.realtime_service import realtime_service
+from app.services.snapshot_service import snapshot_service
 
 
 def _dump_model(value: object) -> dict[str, Any]:
@@ -353,25 +354,28 @@ class ControlPlaneService:
         store.update_password(current_password, new_password)
 
     def create_snapshot(self, note: str):
-        return store.create_snapshot(note)
+        return snapshot_service.create_snapshot(note)
 
     def list_snapshots(self):
-        return store.list_snapshots()
+        return snapshot_service.list_snapshots()
 
     def get_snapshot_path(self, snapshot_id: str) -> Path:
-        return Path(store.get_snapshot(snapshot_id).path)
+        return snapshot_service.get_snapshot_path(snapshot_id)
+
+    def export_snapshot(self, snapshot_id: str) -> Path:
+        return snapshot_service.export_snapshot(snapshot_id)
 
     def delete_snapshot(self, snapshot_id: str) -> None:
-        store.delete_snapshot(snapshot_id)
+        snapshot_service.delete_snapshot(snapshot_id)
 
     def update_snapshot_note(self, snapshot_id: str, note: str):
-        return store.update_snapshot_note(snapshot_id, note)
+        return snapshot_service.update_snapshot_note(snapshot_id, note)
 
     def restore_snapshot(self, snapshot_id: str) -> None:
-        store.restore_snapshot(snapshot_id)
+        snapshot_service.restore_snapshot(snapshot_id)
 
-    def restore_uploaded_snapshot(self, path: Path) -> None:
-        store.restore_snapshot_archive(path)
+    def import_snapshot(self, path: Path, original_name: str | None = None):
+        return snapshot_service.import_snapshot(path, original_name)
 
     def system_status(self):
         status = store.system_status()

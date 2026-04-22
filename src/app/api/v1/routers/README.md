@@ -13,7 +13,9 @@
   - `change_password(...)`：修改密码并轮换后台 token。
 - `backups.py`
   - `list_snapshots()`：读取快照列表。
-  - `download_snapshot(...)`：下载快照压缩包。
+  - `download_snapshot(...)` / `export_snapshot(...)`：下载快照压缩包。
+  - `upload_snapshot(...)` / `import_snapshot(...)`：导入快照压缩包并写入快照列表，不立即恢复。
+  - `update_snapshot_note(...)`：修改快照备注。
 - `configs.py`
   - `list_configs()`：配置列表。
   - `get_config(...)`：单个配置详情。
