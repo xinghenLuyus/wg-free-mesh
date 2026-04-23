@@ -12,7 +12,7 @@ from app.services.mqtt_auth_service import mqtt_auth_service
 class EmqxService:
     def __init__(self) -> None:
         self._base_url = settings.emqx_api_base_url.rstrip("/")
-        self._auth = (settings.emqx_api_username, settings.emqx_api_password)
+        self._auth = (settings.emqx_username, settings.emqx_password)
 
     def client_payload(
         self,
@@ -21,10 +21,22 @@ class EmqxService:
         password: str,
         client_id: str,
     ) -> dict[str, object]:
+        from app.repositories.sqlite import store
+
+        mqtt_settings = store.read_setting_json(
+            "mqtt_client",
+            {
+                "host": settings.mqtt_public_host,
+                "port": settings.mqtt_bind_port,
+                "tls": settings.mqtt_tls_enabled,
+            },
+        )
+        raw_port = mqtt_settings.get("port") or settings.mqtt_bind_port
+        port = int(str(raw_port))
         return {
-            "host": settings.mqtt_public_host,
-            "port": settings.mqtt_bind_port,
-            "tls": settings.mqtt_tls_enabled,
+            "host": str(mqtt_settings.get("host") or settings.mqtt_public_host),
+            "port": port,
+            "tls": bool(mqtt_settings.get("tls", settings.mqtt_tls_enabled)),
             "username": username,
             "password": password,
             "client_id": client_id,
@@ -62,11 +74,17 @@ class EmqxService:
                 params=params,
             )
 
-    def ensure_user_payload(self, *, user_id: str, password: str) -> dict[str, object]:
+    def create_user_payload(self, *, user_id: str, password: str, is_superuser: bool = False) -> dict[str, object]:
         return {
             "user_id": user_id,
             "password": password,
-            "is_superuser": False,
+            "is_superuser": is_superuser,
+        }
+
+    def update_user_payload(self, *, password: str, is_superuser: bool = False) -> dict[str, object]:
+        return {
+            "password": password,
+            "is_superuser": is_superuser,
         }
 
     def authz_request_payload(
@@ -94,10 +112,31 @@ class EmqxService:
 
     def upsert_node_user(self, *, node_id: str, password: str) -> httpx.Response:
         user_id = mqtt_auth_service.node_username(node_id)
-        payload = self.ensure_user_payload(user_id=user_id, password=password)
-        response = self.request("PUT", f"/api/v5/authentication/password_based:built_in_database/users/{user_id}", json=payload)
-        if response.status_code == 404:
-            return self.request("POST", "/api/v5/authentication/password_based:built_in_database/users", json=payload)
+        create_payload = self.create_user_payload(user_id=user_id, password=password)
+        response = self.request("POST", "/api/v5/authentication/password_based:built_in_database/users", json=create_payload)
+        if response.status_code == 409:
+            update_payload = self.update_user_payload(password=password)
+            return self.request(
+                "PUT",
+                f"/api/v5/authentication/password_based:built_in_database/users/{user_id}",
+                json=update_payload,
+            )
+        return response
+
+    def upsert_server_user(self) -> httpx.Response:
+        create_payload = self.create_user_payload(
+            user_id=settings.emqx_username,
+            password=settings.emqx_password,
+            is_superuser=True,
+        )
+        response = self.request("POST", "/api/v5/authentication/password_based:built_in_database/users", json=create_payload)
+        if response.status_code == 409:
+            update_payload = self.update_user_payload(password=settings.emqx_password, is_superuser=True)
+            return self.request(
+                "PUT",
+                f"/api/v5/authentication/password_based:built_in_database/users/{settings.emqx_username}",
+                json=update_payload,
+            )
         return response
 
     def delete_node_user(self, *, node_id: str) -> httpx.Response:

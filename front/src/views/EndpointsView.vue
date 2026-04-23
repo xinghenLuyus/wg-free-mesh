@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { RefreshRight, SwitchButton, VideoPause, VideoPlay } from '@element-plus/icons-vue'
-import { onMounted, shallowRef, watch } from 'vue'
+import { computed, onMounted, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
@@ -16,6 +16,9 @@ const { t } = useI18n()
 
 const endpointStatus = shallowRef<EndpointStatusRead | null>(null)
 const logs = shallowRef<ControlLogRead[]>([])
+const bindingCommand = shallowRef('')
+const bindingExpiresAt = shallowRef('')
+const bindingBusy = shallowRef(false)
 
 function nodeTypeLabel(type: 'dynamic' | 'static') {
   return type === 'static' ? t('nodeWorkspace.staticNode') : t('nodeWorkspace.dynamicNode')
@@ -34,6 +37,58 @@ async function sendAction(action: string) {
     notify.success(result.message)
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.commandFailed'))
+  }
+}
+
+const needsClientInit = computed(() => {
+  return endpointStatus.value?.node.node_type === 'dynamic' && !endpointStatus.value.client_state.client_initialized
+})
+
+function presenceLabel(state: string | undefined) {
+  if (state === 'online') return t('endpointControl.presenceOnline')
+  if (state === 'dropped') return t('endpointControl.presenceDropped')
+  return t('endpointControl.presenceOffline')
+}
+
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value)
+    return
+  }
+  const input = document.createElement('textarea')
+  input.value = value
+  input.style.position = 'fixed'
+  input.style.opacity = '0'
+  document.body.appendChild(input)
+  input.select()
+  document.execCommand('copy')
+  document.body.removeChild(input)
+}
+
+async function generateBindCommand() {
+  bindingBusy.value = true
+  try {
+    const result = await api.createClientBindCommand(String(route.params.configId), String(route.params.nodeId))
+    bindingCommand.value = result.command
+    bindingExpiresAt.value = result.expires_at
+    await copyText(result.command)
+    notify.success(t('endpointControl.bindCommandCopied'))
+  } catch (error) {
+    notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.bindCommandFailed'))
+  } finally {
+    bindingBusy.value = false
+  }
+}
+
+async function resetClient() {
+  try {
+    await api.resetClient(String(route.params.configId), String(route.params.nodeId))
+    await reloadNode()
+    bindingCommand.value = ''
+    bindingExpiresAt.value = ''
+    notify.success(t('endpointControl.clientReset'))
+  } catch (error) {
+    notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.clientResetFailed'))
   }
 }
 
@@ -90,16 +145,44 @@ onMounted(async () => {
         </el-tag>
       </div>
 
-      <div v-if="endpointStatus" class="endpoint-panels">
+      <div v-if="endpointStatus && needsClientInit" class="endpoint-panels">
+        <div class="endpoint-card endpoint-init">
+          <div>
+            <div class="endpoint-card__title">{{ t('endpointControl.clientInitTitle') }}</div>
+            <p class="endpoint-init__description">{{ t('endpointControl.clientInitDescription') }}</p>
+          </div>
+          <div class="endpoint-init__steps">
+            <div class="endpoint-init__step">
+              <strong>{{ t('endpointControl.downloadClientStep') }}</strong>
+              <span>{{ t('endpointControl.downloadClientPlaceholder') }}</span>
+            </div>
+            <div class="endpoint-init__step">
+              <strong>{{ t('endpointControl.bindCommandStep') }}</strong>
+              <span>{{ t('endpointControl.bindCommandDescription') }}</span>
+              <el-button type="primary" :loading="bindingBusy" @click="generateBindCommand">
+                {{ t('endpointControl.generateBindCommand') }}
+              </el-button>
+            </div>
+          </div>
+          <pre v-if="bindingCommand" class="bind-command">{{ bindingCommand }}</pre>
+          <div v-if="bindingExpiresAt" class="endpoint-init__expires">
+            {{ t('endpointControl.bindCommandExpiresAt', { time: formatDateTime(bindingExpiresAt) }) }}
+          </div>
+        </div>
+      </div>
+
+      <div v-else-if="endpointStatus" class="endpoint-panels">
         <div class="endpoint-card">
           <div class="endpoint-card__title">{{ t('endpointControl.runtimeStatus') }}</div>
           <el-descriptions :column="2" border>
             <el-descriptions-item :label="t('endpointControl.node')">{{ endpointStatus.node.name }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.type')">{{ nodeTypeLabel(endpointStatus.node.node_type) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.clientState')">{{ presenceLabel(endpointStatus.client_state.client_presence_state) }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.connectivity')">{{ endpointStatus.runtime.connectivity_state }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.wgState')">{{ endpointStatus.runtime.wg_runtime_state }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.peer')">{{ endpointStatus.runtime.peers_online }} / {{ endpointStatus.runtime.peers_total }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.lastSeen')">{{ formatDateTime(endpointStatus.runtime.last_seen) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.lastHeartbeat')">{{ formatDateTime(endpointStatus.client_state.last_heartbeat_at || null) }}</el-descriptions-item>
           </el-descriptions>
         </div>
 
@@ -108,8 +191,8 @@ onMounted(async () => {
           <div class="endpoint-controls">
             <el-button :icon="VideoPlay" @click="sendAction('start')">{{ t('endpointControl.startWg') }}</el-button>
             <el-button :icon="VideoPause" @click="sendAction('stop')">{{ t('endpointControl.stopWg') }}</el-button>
-            <el-button :icon="RefreshRight" @click="sendAction('restart')">{{ t('endpointControl.restartWg') }}</el-button>
-            <el-button type="primary" :icon="SwitchButton" @click="sendAction('sync')">{{ t('endpointControl.syncConfig') }}</el-button>
+            <el-button plain :icon="RefreshRight" @click="reloadNode">{{ t('endpointControl.refreshStatus') }}</el-button>
+            <el-button type="danger" plain :icon="SwitchButton" @click="resetClient">{{ t('endpointControl.resetClient') }}</el-button>
           </div>
         </div>
 
@@ -136,6 +219,13 @@ onMounted(async () => {
 .endpoint-card { display: grid; gap: 14px; padding: 16px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-elevated); box-shadow: var(--app-shadow-sm); }
 .endpoint-card__title { color: var(--app-text-strong); font-size: 17px; font-weight: 750; }
 .endpoint-controls { display: flex; flex-wrap: wrap; gap: 10px; }
+.endpoint-init { gap: 18px; }
+.endpoint-init__description { margin: 8px 0 0; color: var(--app-muted); line-height: 1.6; }
+.endpoint-init__steps { display: grid; gap: 12px; }
+.endpoint-init__step { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-sunken); }
+.endpoint-init__step strong { color: var(--app-text-strong); }
+.endpoint-init__step span, .endpoint-init__expires { color: var(--app-muted); }
+.bind-command { margin: 0; padding: 14px; border: 1px solid var(--app-border-strong); border-radius: 8px; overflow-x: auto; background: var(--app-surface-sunken); color: var(--app-text-strong); white-space: pre-wrap; word-break: break-all; }
 .empty-state { display: grid; place-items: center; min-height: 120px; border: 1px dashed var(--app-border-strong); border-radius: 8px; color: var(--app-muted); }
 @media (max-width: 860px) { .template-toolbar { flex-direction: column; align-items: stretch; } }
 </style>

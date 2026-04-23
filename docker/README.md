@@ -51,9 +51,15 @@ docker compose up -d emqx
 - MQTT TLS: `mqtts://127.0.0.1:8883`
 - EMQX Dashboard/API: `http://127.0.0.1:18083`
 
-默认 Dashboard 账号：
+默认 EMQX 统一账号密码：
 
 - `admin / public`
+
+这组账号密码由 `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD` 控制，并同时用于：
+
+- EMQX Dashboard 初始登录
+- EMQX REST 管理 API bootstrap key / secret
+- `wfm` 服务端 MQTT 超级用户
 
 ## TLS 开关
 
@@ -61,6 +67,8 @@ Docker Compose 使用 `docker/.env` 中的以下环境变量控制 EMQX 的启�
 
 ```env
 WFM_EMQX_NODE_COOKIE=wfm-emqx-cookie
+WFM_EMQX_USERNAME=admin
+WFM_EMQX_PASSWORD=public
 WFM_MQTT_TLS_ENABLED=false
 WFM_EMQX_AUTHZ_SHARED_KEY=wfm-internal-emqx-authz
 WFM_EMQX_AUTHZ_URL=http://host.docker.internal:8000/api/internal/emqx/authz
@@ -101,8 +109,8 @@ docker compose up -d emqx
 ```env
 WFM_MQTT_URL=mqtt://127.0.0.1:1883
 WFM_EMQX_API_BASE_URL=http://127.0.0.1:18083
-WFM_EMQX_API_USERNAME=admin
-WFM_EMQX_API_PASSWORD=public
+WFM_EMQX_USERNAME=admin
+WFM_EMQX_PASSWORD=public
 WFM_EMQX_AUTHZ_SHARED_KEY=wfm-internal-emqx-authz
 ```
 

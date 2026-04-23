@@ -295,6 +295,8 @@ export interface RuntimeSnapshotItem {
   last_seen: string | null
   last_probe_sent_at: string | null
   last_probe_ack_at: string | null
+  client_initialized: boolean
+  client_presence_state: 'online' | 'dropped' | 'offline' | string
 }
 
 export interface ControlLogRead {
@@ -332,6 +334,19 @@ export interface EndpointStatusRead {
     client_downloaded: boolean
     client_downloaded_at: string | null
   }
+  client_state: {
+    client_initialized: boolean
+    mqtt_username?: string
+    mqtt_client_id?: string
+    client_presence_state: 'online' | 'dropped' | 'offline' | string
+    boot_id?: string
+    session_id?: string
+    last_heartbeat_at?: string | null
+    last_detect_ack_at?: string | null
+    last_will_at?: string | null
+    last_event?: string
+    last_event_at?: string | null
+  }
   config_state: {
     desired_version: number
     staged_version: number
@@ -345,6 +360,12 @@ export interface EndpointStatusRead {
     server_apply_status: string
   }
   last_control: ControlLogRead | null
+}
+
+export interface ClientBindCommandRead {
+  command: string
+  token: string
+  expires_at: string
 }
 
 export interface MqttSettingsRead {

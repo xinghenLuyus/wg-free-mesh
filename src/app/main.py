@@ -10,11 +10,13 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.internal.router import internal_router
+from app.api.client.router import client_router
 from app.api.v0.router import api_v0_router
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.errors import install_exception_handlers
 from app.infrastructure.database import init_database
+from app.services.mqtt_ingress_service import mqtt_ingress_service
 from app.services.realtime_service import realtime_service
 
 
@@ -22,9 +24,11 @@ from app.services.realtime_service import realtime_service
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     init_database()
     realtime_service.startup()
+    mqtt_ingress_service.startup()
     try:
         yield
     finally:
+        await mqtt_ingress_service.shutdown()
         await realtime_service.shutdown()
 
 
@@ -47,6 +51,7 @@ def create_app() -> FastAPI:
     if settings.dev_test_api_enabled:
         app.include_router(api_v0_router)
     app.include_router(internal_router)
+    app.include_router(client_router)
     app.include_router(api_router)
 
     dist_dir = Path.cwd().parent / "front" / "dist"

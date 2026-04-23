@@ -19,6 +19,8 @@
   - `EmqxService`：集中管理 EMQX 管理 API 地址、节点 MQTT 凭据写入请求格式和 bind 时下发给客户端的 broker 参数。
 - `mqtt_auth_service.py`
   - `MqttAuthService`：统一管理节点 MQTT 用户名、client_id、topic ACL 和 EMQX AuthZ 授权判断。
+- `mqtt_ingress_service.py`
+  - `MqttIngressService`：服务端高权限 MQTT 客户端，订阅所有客户端上行 topic，处理 `heartbeat`、`event` 和 ACK，并把变化推送到 SSE。
 - `config_service.py`
   - `ConfigService`：配置相关兼容入口。
 - `node_service.py`

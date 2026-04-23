@@ -170,6 +170,29 @@ def init_database() -> None:
               FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS node_client_state (
+              node_id TEXT PRIMARY KEY,
+              config_id TEXT NOT NULL,
+              client_initialized INTEGER NOT NULL DEFAULT 0,
+              mqtt_username TEXT NOT NULL DEFAULT '',
+              mqtt_client_id TEXT NOT NULL DEFAULT '',
+              bind_token_hash TEXT NOT NULL DEFAULT '',
+              bind_token_expires_at TEXT,
+              bind_token_used_at TEXT,
+              client_presence_state TEXT NOT NULL DEFAULT 'offline',
+              boot_id TEXT NOT NULL DEFAULT '',
+              session_id TEXT NOT NULL DEFAULT '',
+              last_heartbeat_at TEXT,
+              last_detect_ack_at TEXT,
+              last_will_at TEXT,
+              last_event TEXT NOT NULL DEFAULT '',
+              last_event_at TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY (config_id) REFERENCES configs(id) ON DELETE CASCADE,
+              FOREIGN KEY (node_id) REFERENCES nodes(id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS endpoint_control_logs (
               id TEXT PRIMARY KEY,
               request_id TEXT NOT NULL UNIQUE,
@@ -206,6 +229,14 @@ def init_database() -> None:
         )
 
         now = now_utc().isoformat()
+        connection.execute(
+            """
+            INSERT OR IGNORE INTO node_client_state
+              (node_id, config_id, created_at, updated_at)
+            SELECT id, config_id, ?, ? FROM nodes
+            """,
+            (now, now),
+        )
         mqtt_row = connection.execute(
             "SELECT key FROM system_settings WHERE key = 'mqtt_client'"
         ).fetchone()
@@ -377,4 +408,12 @@ def init_database() -> None:
                     ts,
                     ts,
                 ),
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO node_client_state
+                  (node_id, config_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (node_id, config_id, ts, ts),
             )

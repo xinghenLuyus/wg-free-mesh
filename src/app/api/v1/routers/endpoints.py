@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 from fastapi.responses import PlainTextResponse
 
@@ -11,6 +11,7 @@ from app.api.v1.routing import SessionProtectedAPIRouter
 from app.core.responses import ApiResponse, ok
 from app.schemas.auth import DownloadTokenRead
 from app.services.control_plane_service import control_plane_service
+from app.services.emqx_service import emqx_service
 from app.services.auth_service import auth_service
 
 router = SessionProtectedAPIRouter(tags=["endpoints"])
@@ -22,11 +23,15 @@ class AppliedConfRequest(BaseModel):
 
 
 class ControlRequest(BaseModel):
-    action: str = Field(pattern="^(probe|start|stop|restart|wg_show|sync)$")
+    action: str = Field(pattern="^(start|stop)$")
 
 
 class ProbeBatchRequest(BaseModel):
     node_ids: list[str] = Field(default_factory=list)
+
+
+class BindCommandRequest(BaseModel):
+    server_url: str = ""
 
 
 @router.get("/configs/{config_id}/sync-status")
@@ -101,6 +106,23 @@ def runtime_snapshot(config_id: str) -> ApiResponse[list[dict[str, Any]]]:
 @router.get("/configs/{config_id}/nodes/{node_id}/endpoint/status")
 def endpoint_status(config_id: str, node_id: str) -> ApiResponse[dict[str, Any]]:
     return ok(control_plane_service.endpoint_status(config_id, node_id))
+
+
+@router.post("/configs/{config_id}/nodes/{node_id}/bind-command")
+def create_bind_command(config_id: str, node_id: str, payload: BindCommandRequest, request: Request) -> ApiResponse[dict[str, object]]:
+    server_url = payload.server_url.strip() or str(request.base_url).rstrip("/")
+    return ok(control_plane_service.create_client_bind_command(config_id, node_id, server_url))
+
+
+@router.post("/configs/{config_id}/nodes/{node_id}/reset-client")
+async def reset_client(config_id: str, node_id: str) -> ApiResponse[dict[str, object]]:
+    try:
+        emqx_service.delete_node_user(node_id=node_id)
+    except Exception:
+        pass
+    state = control_plane_service.reset_client_state(config_id, node_id)
+    await control_plane_service.publish_runtime(config_id, node_id)
+    return ok({"client_state": state})
 
 
 @router.get("/configs/{config_id}/nodes/{node_id}/endpoint/logs")

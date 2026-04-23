@@ -9,6 +9,7 @@ from app.api.v1.routing import SessionProtectedAPIRouter
 from app.core.responses import ApiResponse, ok
 from app.core.validation import normalize_string_list, strip_optional_text, strip_required_text
 from app.services.control_plane_service import control_plane_service
+from app.services.emqx_service import emqx_service
 
 router = SessionProtectedAPIRouter(tags=["nodes"])
 
@@ -120,6 +121,12 @@ def get_node(node_id: str) -> ApiResponse[dict[str, Any]]:
 async def update_node(node_id: str, payload: NodeRequest) -> ApiResponse[dict[str, Any]]:
     result = control_plane_service.update_node(node_id, payload.model_dump())
     node_config_id = str(result["config_id"])
+    if result.get("node_type") == "static":
+        try:
+            emqx_service.delete_node_user(node_id=node_id)
+        except Exception:
+            pass
+        control_plane_service.reset_client_state(node_config_id, node_id)
     affected_node_ids = [str(item) for item in result.get("affected_node_ids", [result["id"]])]
     await control_plane_service.publish_plan(control_plane_service.plan_for_node_change(node_config_id, affected_node_ids))
     return ok(result)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal
 
 from app.core.errors import AppError
+from app.core.config import settings
 from app.domain.models import NodeType
 from app.repositories.sqlite import store
 
@@ -22,12 +23,14 @@ class MqttAuthService:
             "subscribe": (
                 f"{prefix}/config/push",
                 f"{prefix}/control",
+                f"{prefix}/detect",
             ),
             "publish": (
-                f"{prefix}/status",
-                f"{prefix}/config/ack",
+                f"{prefix}/config/push/ack",
                 f"{prefix}/control/ack",
+                f"{prefix}/detect/ack",
                 f"{prefix}/event",
+                f"{prefix}/heartbeat",
             ),
         }
 
@@ -39,6 +42,8 @@ class MqttAuthService:
         topic: str,
         action: MqttAction,
     ) -> bool:
+        if username == settings.emqx_username:
+            return True
         try:
             node = store.get_node(username)
             config = store.get_config(node.config_id)

@@ -7,7 +7,7 @@
 - 所有前后端通信统一走 `/api/v1`
 - 所有响应统一使用 `{ success, data }` 或 `{ success, error }`
 - 先固化契约，再同步修改前后端
-- 客户端相关 enrollment、`.wgm`、`/api/client/enroll` 暂缓，不纳入本轮实现
+- 客户端不再使用 enrollment 文件或 `.wgm`；首次绑定使用 `/api/client/v1/bind`
 - 强实时场景优先使用 SSE，不依赖高频轮询
 
 ## 认证与会话
@@ -532,6 +532,17 @@ Authorization: Bearer <access_token>
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/endpoint/status`
 
 - 用途：获取单个节点运行状态
+- 返回补充：
+  - `client_initialized`
+  - `client_presence_state`
+
+说明：
+
+- `client_initialized=false` 时，端点页面进入客户端初始化页，而不是直接展示真正控制页。
+- `client_presence_state` 控制台只保留三态：
+  - `在线`
+  - `掉线`
+  - `离线`
 
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/endpoint/logs`
 
@@ -551,6 +562,30 @@ Authorization: Bearer <access_token>
 ### `POST /api/v1/configs/{config_id}/endpoint/probe-batch`
 
 - 用途：批量探测动态节点
+
+### `POST /api/v1/configs/{config_id}/nodes/{node_id}/bind-command`
+
+- 用途：为动态节点生成一次性客户端绑定命令
+- 鉴权：必须携带后台会话 Bearer Token
+- 约束：
+  - 仅动态节点可生成
+  - 默认有效期 5 分钟
+  - 只能成功使用一次
+  - 节点转为静态节点后必须立即失效
+- 响应：
+  - `command`
+  - `expires_at`
+
+### `POST /api/v1/configs/{config_id}/nodes/{node_id}/reset-client`
+
+- 用途：重置当前节点客户端初始化状态
+- 鉴权：必须携带后台会话 Bearer Token
+- 效果：
+  - 删除该节点当前 MQTT 凭据
+  - 删除或失效该节点绑定权限
+  - 清空客户端运行态
+  - 将 `client_initialized` 重置为 `false`
+  - 控制台端点页面重新回到初始化页
 
 ## 设置
 
@@ -716,7 +751,6 @@ Authorization: Bearer <access_token>
 
 - Go 客户端实现
 - enrollment token 与 `.wgm` 下载
-- 真实 MQTT 双向通信闭环
 - 真正的 WireGuard 服务启停
 
 以上能力会在本轮接口里预留数据结构和运行位，但不恢复客户端代码。
@@ -747,6 +781,8 @@ Authorization: Bearer <access_token>
 - 由 `wfm` 负责为当前节点生成或轮换专属 MQTT 凭据
 - 由 `wfm` 负责把该账号同步到 EMQX
 - 一个动态节点只对应一套专属 MQTT 凭据
+- 绑定 token 只能成功使用一次，bind 成功后立即失效
+- bind 成功后，对应节点需要被标记为 `client_initialized=true`
 
 ### EMQX 内部授权接口
 

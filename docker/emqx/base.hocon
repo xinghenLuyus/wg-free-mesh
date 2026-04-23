@@ -9,6 +9,10 @@ dashboard {
   }
 }
 
+api_key {
+  bootstrap_file = "etc/wfm-api-keys.conf"
+}
+
 listeners.tcp.default {
   bind = "0.0.0.0:1883"
   max_connections = 1024000

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import ssl
 from time import perf_counter
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -311,21 +311,57 @@ class ControlPlaneService:
         return {
             "node": _dump_model(status["node"]),
             "runtime": _dump_model(status["runtime"]),
+            "client_state": status["client_state"],
             "config_state": status["config_state"],
             "last_control": _dump_model(status["last_control"]) if status["last_control"] else None,
         }
+
+    def create_client_bind_command(self, config_id: str, node_id: str, server_url: str) -> dict[str, object]:
+        grant = store.create_client_bind_token(config_id, node_id)
+        token = str(grant["token"])
+        command = f'wfmctl bind --server "{server_url.rstrip("/")}" --token "{token}"'
+        return {
+            "command": command,
+            "token": token,
+            "expires_at": _iso_datetime(grant["expires_at"]) or "",
+        }
+
+    def client_bind_preview(self, token: str) -> dict[str, object]:
+        return store.validate_client_bind_token(token)
+
+    def mark_client_bound(self, config_id: str, node_id: str, *, username: str, client_id: str) -> dict[str, object]:
+        return store.mark_client_bound(config_id, node_id, username=username, client_id=client_id)
+
+    def reset_client_state(self, config_id: str, node_id: str) -> dict[str, object]:
+        return store.reset_client_state(config_id, node_id)
 
     def endpoint_logs(self, config_id: str, node_id: str):
         return [item.model_dump(mode="json") for item in store.list_endpoint_logs(config_id, node_id)]
 
     async def control_action(self, config_id: str, node_id: str, action: str):
+        if action not in {"start", "stop"}:
+            raise AppError("INVALID_ACTION", "Only start and stop are supported by MQTT control", 400)
+        from app.services.mqtt_ingress_service import mqtt_ingress_service
+
         log = store.create_control_log(config_id, node_id, action)
         await realtime_service.publish("control.log.created", {"config_id": config_id, "node_id": node_id, "log": log.model_dump(mode="json")})
-        result = store.apply_control_action(config_id, node_id, action)
-        updated_log = store.complete_control_log(log.request_id, ControlStatus.simulated, str(result["summary"]))
-        await realtime_service.publish("control.log.updated", {"config_id": config_id, "node_id": node_id, "log": updated_log.model_dump(mode="json")})
-        await self.publish_runtime(config_id, node_id)
-        return {"request_id": log.request_id, "message": result["summary"]}
+        payload = {
+            "type": "control",
+            "request_id": log.request_id,
+            "config_id": config_id,
+            "node_id": node_id,
+            "boot_id": "",
+            "session_id": "",
+            "sent_at": datetime.now(UTC).isoformat(),
+            "payload": {"action": action},
+        }
+        try:
+            await mqtt_ingress_service.publish_to_node(config_id=config_id, node_id=node_id, kind="control", payload=payload)
+        except Exception as exc:
+            updated_log = store.complete_control_log(log.request_id, ControlStatus.failed, "MQTT control publish failed", str(exc))
+            await realtime_service.publish("control.log.updated", {"config_id": config_id, "node_id": node_id, "log": updated_log.model_dump(mode="json")})
+            raise AppError("MQTT_CONTROL_UNAVAILABLE", "MQTT control channel is unavailable", 503, {"detail": str(exc)}) from exc
+        return {"request_id": log.request_id, "message": "Control command sent over MQTT"}
 
     async def probe_batch(self, config_id: str, node_ids: list[str]):
         dispatched: list[dict[str, str]] = []

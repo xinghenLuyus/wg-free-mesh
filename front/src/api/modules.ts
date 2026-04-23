@@ -4,6 +4,7 @@ import type {
   ConfigOverviewRead,
   ConfigRead,
   ControlLogRead,
+  ClientBindCommandRead,
   EndpointStatusRead,
   AppLocale,
   HealthRead,
@@ -138,6 +139,13 @@ export const api = {
     request<EndpointStatusRead>(`/configs/${configId}/nodes/${nodeId}/endpoint/status`),
   endpointLogs: (configId: string, nodeId: string) =>
     request<ControlLogRead[]>(`/configs/${configId}/nodes/${nodeId}/endpoint/logs`),
+  createClientBindCommand: (configId: string, nodeId: string) =>
+    request<ClientBindCommandRead>(`/configs/${configId}/nodes/${nodeId}/bind-command`, {
+      method: 'POST',
+      data: { server_url: window.location.origin },
+    }),
+  resetClient: (configId: string, nodeId: string) =>
+    request<{ client_state: EndpointStatusRead['client_state'] }>(`/configs/${configId}/nodes/${nodeId}/reset-client`, { method: 'POST' }),
   controlEndpoint: (configId: string, nodeId: string, action: string) =>
     request<{ request_id: string; message: string }>(
       `/configs/${configId}/nodes/${nodeId}/endpoint/control`,

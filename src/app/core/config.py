@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     mqtt_tls_cert_path: str = "/opt/emqx/etc/certs/server.crt"
     mqtt_tls_key_path: str = "/opt/emqx/etc/certs/server.key"
     emqx_api_base_url: str = "http://localhost:18083"
-    emqx_api_username: str = "admin"
-    emqx_api_password: str = "public"
+    emqx_username: str = "admin"
+    emqx_password: str = "public"
     emqx_authz_shared_key: str = "wfm-internal-emqx-authz"
     auth_token_expire_minutes: int = 1440
     auth_download_token_expire_minutes: int = 5

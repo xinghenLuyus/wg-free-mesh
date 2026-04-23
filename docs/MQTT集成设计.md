@@ -22,6 +22,7 @@
 职责边界：
 
 - `wfm`
+  - 使用统一账号密码作为 EMQX 管理 API 凭据和服务端 MQTT 超级用户
   - 生成或轮换节点专属 MQTT 用户名与密码
   - 调 EMQX 管理 API 创建、更新、删除账号
   - 对 EMQX 的 pub/sub 回查请求返回 allow / deny
@@ -70,13 +71,14 @@
 关键环境变量：
 
 - `WFM_EMQX_API_BASE_URL`
-- `WFM_EMQX_API_USERNAME`
-- `WFM_EMQX_API_PASSWORD`
+- `WFM_EMQX_USERNAME`
+- `WFM_EMQX_PASSWORD`
 - `WFM_EMQX_AUTHZ_SHARED_KEY`
 - `WFM_MQTT_URL`
 
 说明：
 
+- `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD` 是唯一 EMQX 账号密码，同时用于 Dashboard、REST 管理 API bootstrap key 与服务端 MQTT 超级用户。
 - 客户端可见的 MQTT `host / tls` 由前端设置页维护
 - Docker 只负责 EMQX 容器层的 TLS listener 与 AuthZ 回查地址
 - `docker/.env` 负责 compose 与容器之间的连接参数
@@ -138,12 +140,14 @@
 
 - `wfm/{config_id}/{node_id}/config/push`
 - `wfm/{config_id}/{node_id}/control`
+- `wfm/{config_id}/{node_id}/detect`
 
 允许发布：
 
-- `wfm/{config_id}/{node_id}/status`
-- `wfm/{config_id}/{node_id}/config/ack`
+- `wfm/{config_id}/{node_id}/heartbeat`
+- `wfm/{config_id}/{node_id}/config/push/ack`
 - `wfm/{config_id}/{node_id}/control/ack`
+- `wfm/{config_id}/{node_id}/detect/ack`
 - `wfm/{config_id}/{node_id}/event`
 
 如果节点不存在、节点不是动态节点、配置已停用、`client_id` 不匹配，授权必须直接拒绝。
@@ -157,9 +161,11 @@
 - `EmqxService` 管理 API 封装骨架
 - `MqttAuthService` 节点级 topic ACL 判断
 - `/api/internal/emqx/authz` 内部回查接口
+- 节点 bind 时创建或轮换 EMQX 账号
+- Go 客户端 bind 后保存本地 profile 并连接 MQTT
+- 服务端作为高权限 MQTT 客户端订阅上行 topic
 
-下一步：
+配套文档：
 
-- 节点 bind 时真正创建或轮换 EMQX 账号
-- 完成客户端 bind 响应中的 MQTT 凭据下发
-- 增加 EMQX 用户生命周期与本地业务状态的对账逻辑
+- [MQTT消息协议设计](D:/wenjian/stepsave/project/wg-free-mesh/docs/MQTT消息协议设计.md)
+- [客户端接入时序设计](D:/wenjian/stepsave/project/wg-free-mesh/docs/客户端接入时序设计.md)

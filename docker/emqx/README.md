@@ -14,6 +14,7 @@
 - `start-emqx.sh`
   - 按 `WFM_MQTT_TLS_ENABLED` 在两套配置之间切换
   - 启动前写入 `WFM_EMQX_AUTHZ_URL` 与 `WFM_EMQX_AUTHZ_SHARED_KEY`
+  - 启动前生成 `wfm-api-keys.conf`，将统一账号密码写成 EMQX REST API bootstrap key
 - `certs/`
   - TLS 证书目录
 - `data/`
@@ -26,6 +27,7 @@
 - 这些配置由 [docker/.env](D:/wenjian/stepsave/project/wg-free-mesh/docker/.env) 驱动，不读取 `src/.env`。
 - 本地开发时，`docker/.env` 负责容器侧回查地址与 TLS 开关，`src/.env` 负责本机后端连接 EMQX 管理 API 的参数。
 - `WFM_EMQX_NODE_COOKIE` 会通过环境变量注入 EMQX，避免使用默认不安全 Erlang cookie。
+- `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD` 是唯一需要维护的 EMQX 账号密码，同时用于 Dashboard、管理 API 与服务端 MQTT 超级用户。
 - plain 模式下会显式关闭默认 `ssl` / `wss` listener；TLS 模式只开启我们需要的 `8883`。
 
 - 默认 HTTP Authorization 回查：
