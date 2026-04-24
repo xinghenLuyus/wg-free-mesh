@@ -1,46 +1,80 @@
-# old code archive
+# archived / legacy workspaces
 bak/
 
-# environment
+# environment files
 .env
 .env.*
 !.env.example
 !src/.env.example
+!docker/.env.example
 
-# Python
+# Python caches and tooling
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.pyre/
+.hypothesis/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
 .venv/
 venv/
-dist/
-build/
+env/
+ENV/
 *.egg-info/
+pip-wheel-metadata/
 
-# Node / Vite
+# Python build outputs
+build/
+dist/
+
+# Go / client build outputs
+client/bin/
+client/build/
+*.test
+coverage.out
+.coverprofile
+
+# Node / frontend build outputs
 node_modules/
 front/node_modules/
 front/dist/
 front/.vite/
 front/.npm-cache/
 front/.pnpm-store/
+front/coverage/
 *.tsbuildinfo
 
-# runtime data
+# runtime data and local state
 data/
 logs/
+src/data/
+src/logs/
 *.log
+*.dump
+*.pid
 *.db
 *.sqlite
 *.sqlite3
 
+# local temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
 # Docker / local tooling
 .docker/
 
-# OS / editor
+# IDE / editor / OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 .vscode/
 .idea/

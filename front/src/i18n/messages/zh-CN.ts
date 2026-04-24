@@ -322,9 +322,9 @@ export default {
     staticControlUnavailable: '静态节点没有端点控制功能',
     mqttControlUnavailable: 'MQTT 服务已停用，端点控制功能不可用',
   },
-  endpointControl: {
-    title: '端点控制',
-    description: '查看当前节点运行状态、远程控制和控制日志。',
+    endpointControl: {
+      title: '端点控制',
+      description: '查看当前节点运行状态、远程控制和命令行回显。',
     realtimeOk: '实时连接正常',
     realtimeDown: '实时连接断开',
     runtimeStatus: '运行状态',
@@ -360,8 +360,8 @@ export default {
     mqttDisabledDescription: '当前已关闭 MQTT 相关服务，客户端绑定、远程控制和状态回传功能暂不可用。',
     clientReset: '客户端已重置',
     clientResetFailed: '客户端重置失败',
-    logs: '控制日志',
-    noLogs: '暂无日志',
+      cliOutput: '命令行回显',
+      noLogs: '暂无日志',
     commandFailed: '控制命令失败',
     loadFailed: '端点状态加载失败',
   },

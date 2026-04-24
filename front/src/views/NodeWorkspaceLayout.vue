@@ -9,7 +9,16 @@ import { useI18n } from 'vue-i18n'
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useRealtime } from '@/composables/useRealtime'
-import type { ConfigRead, EndpointStatusRead, NodeRead, NodeWorkspaceUpdatedPayload, RealtimeEvent, TagRead } from '@/types/api'
+import type {
+  ConfigRead,
+  EndpointStatusRead,
+  EndpointStatusUpdatedPayload,
+  NodeRead,
+  NodeWorkspaceUpdatedPayload,
+  RealtimeEvent,
+  RuntimeNodeUpdatedPayload,
+  TagRead,
+} from '@/types/api'
 import { notifyChangeHints } from '@/utils/changeHints'
 import { requiredTextRule } from '@/utils/formRules'
 import { normalizeTags, toNodeUpdatePayload } from '@/utils/nodePayload'
@@ -29,13 +38,38 @@ const loading = shallowRef(false)
 const loadError = shallowRef('')
 let loadTicket = 0
 const realtime = useRealtime((event: RealtimeEvent) => {
-  if (event.type !== 'node.workspace.updated') return
-  const payload = event.payload as unknown as NodeWorkspaceUpdatedPayload
-  if (payload.config_id !== String(route.params.configId) || payload.node_id !== String(route.params.nodeId)) return
-  config.value = payload.workspace.config
-  node.value = payload.workspace.node
-  endpointStatus.value = payload.workspace.endpoint_status
-  configTags.value = payload.workspace.tags
+  if (event.type === 'node.workspace.updated') {
+    const payload = event.payload as unknown as NodeWorkspaceUpdatedPayload
+    if (payload.config_id !== String(route.params.configId) || payload.node_id !== String(route.params.nodeId)) return
+    config.value = payload.workspace.config
+    node.value = payload.workspace.node
+    endpointStatus.value = payload.workspace.endpoint_status
+    configTags.value = payload.workspace.tags
+    return
+  }
+  if (event.type === 'endpoint.status.updated') {
+    const payload = event.payload as unknown as EndpointStatusUpdatedPayload
+    if (payload.config_id !== String(route.params.configId) || payload.node_id !== String(route.params.nodeId)) return
+    endpointStatus.value = payload.status
+    return
+  }
+  if (event.type === 'runtime.node.updated' && endpointStatus.value) {
+    const payload = event.payload as unknown as RuntimeNodeUpdatedPayload
+    if (payload.config_id !== String(route.params.configId) || payload.node_id !== String(route.params.nodeId)) return
+    endpointStatus.value = {
+      ...endpointStatus.value,
+      runtime: {
+        ...endpointStatus.value.runtime,
+        ...payload.runtime,
+      },
+      config_state: payload.config_state
+        ? {
+            ...endpointStatus.value.config_state,
+            ...payload.config_state,
+          }
+        : endpointStatus.value.config_state,
+    }
+  }
 })
 
 const settingsForm = reactive({

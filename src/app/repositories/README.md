@@ -5,8 +5,20 @@
 ## 当前内容
 
 - `sqlite.py`
-  - `SQLiteStore`：当前 SQLite 主仓储，承载配置、节点、Mesh、同步态、运行态和系统设置读写，并逐步把拓扑规则与页面投影委托给 `services/` 和 `projections/`。
-  - 节点在静态/动态之间切换时，会统一重置 `node_client_state` 和 `endpoint_runtime_status`，启动时也会补做一次运行态清洗，避免旧测试数据残留在线状态。
+  - `SQLiteStore`：对外兼容入口，只负责组合各个 SQLite mixin，并继续导出全局 `store`。
+- `sqlite_common.py`
+  - SQLite 仓储层公共 helper：数值/字符串归一化、AllowedIPs 校验、Endpoint payload 解析、标签归一化。
+- `sqlite_client_state.py`
+  - 客户端绑定、MQTT 心跳、客户端在线态、节点类型切换后的运行态清理。
+- `sqlite_config_mesh.py`
+  - 配置、节点、标签、Mesh 连接组、节点依赖变更与 peer link 持久化。
+- `sqlite_runtime.py`
+- `sqlite_endpoint_helpers.py`
+  - Mesh Endpoint 解析、keepalive 展示、拓扑校验代理、`.conf` 文件路径与落盘 helper。
+- `sqlite_runtime_state.py`
+  - 运行态快照、端点控制日志、控制 ACK 回写、端点状态聚合。
+- `sqlite_sync_settings.py`
+  - WireGuard 配置预览与同步、下载包、系统设置、密码、密钥生成、系统状态与配置概览聚合。
 - `snapshot_repository.py`
   - `SnapshotRepository`：只负责 `backups` 表元数据读写，不再承担压缩包创建、恢复、导入导出。
   - `list_snapshots()` / `get_snapshot(...)`：读取快照元数据。

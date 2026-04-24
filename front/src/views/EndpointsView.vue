@@ -20,6 +20,8 @@ const bindingCommand = shallowRef('')
 const bindingExpiresAt = shallowRef('')
 const bindingBusy = shallowRef(false)
 
+const outputLogs = computed(() => logs.value.filter((log) => log.action === 'event'))
+
 async function reloadNode() {
   const configId = String(route.params.configId)
   const nodeId = String(route.params.nodeId)
@@ -200,13 +202,13 @@ onMounted(async () => {
         </div>
 
         <div class="endpoint-card">
-          <div class="endpoint-card__title">{{ t('endpointControl.logs') }}</div>
+          <div class="endpoint-card__title">{{ t('endpointControl.cliOutput') }}</div>
           <el-timeline>
-            <el-timeline-item v-for="log in logs" :key="log.id" :timestamp="formatDateTime(log.created_at)">
-              {{ log.action }} / {{ log.status }} / {{ log.summary }}
+            <el-timeline-item v-for="log in outputLogs" :key="log.id" :timestamp="formatDateTime(log.created_at)">
+              <div class="endpoint-log-line">{{ log.detail || log.summary }}</div>
             </el-timeline-item>
           </el-timeline>
-          <div v-if="!logs.length" class="empty-state">{{ t('endpointControl.noLogs') }}</div>
+          <div v-if="!outputLogs.length" class="empty-state">{{ t('endpointControl.noLogs') }}</div>
         </div>
       </div>
     </div>
@@ -229,6 +231,7 @@ onMounted(async () => {
 .endpoint-init__step strong { color: var(--app-text-strong); }
 .endpoint-init__step span, .endpoint-init__expires { color: var(--app-muted); }
 .endpoint-disabled__message { color: var(--app-danger-text); line-height: 1.6; }
+.endpoint-log-line { color: var(--app-text-strong); white-space: pre-wrap; word-break: break-word; font-family: var(--app-font-mono, ui-monospace, SFMono-Regular, Consolas, monospace); }
 .bind-command { margin: 0; padding: 14px; border: 1px solid var(--app-border-strong); border-radius: 8px; overflow-x: auto; background: var(--app-surface-sunken); color: var(--app-text-strong); white-space: pre-wrap; word-break: break-all; }
 .empty-state { display: grid; place-items: center; min-height: 120px; border: 1px dashed var(--app-border-strong); border-radius: 8px; color: var(--app-muted); }
 @media (max-width: 860px) { .template-toolbar { flex-direction: column; align-items: stretch; } }

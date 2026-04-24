@@ -86,7 +86,7 @@ func (s *Session) Run(ctx context.Context) error {
 	if err := s.subscribe(ctx); err != nil {
 		return err
 	}
-	_ = s.publishEvent("mqtt_connected", "MQTT session established.")
+	_ = s.publishEvent("online", "Client connected and MQTT session established.")
 	_ = s.publishHeartbeat()
 	ticker := time.NewTicker(30 * time.Minute)
 	defer ticker.Stop()
@@ -124,6 +124,7 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 	_ = json.Unmarshal(m.Payload, &env)
 	switch m.Topic {
 	case s.topic("detect"):
+		_ = s.publishEvent("detect", "Server detect command received.")
 		_ = s.publish("detect/ack", s.envelope("detect/ack", env.RequestID, map[string]any{
 			"status":          "applied",
 			"agent_state":     "running",
@@ -137,12 +138,14 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 		if action == "" || action == "<nil>" {
 			action = "unknown"
 		}
+		_ = s.publishEvent("control", fmt.Sprintf("Received control command: %s", action))
 		_ = s.publish("control/ack", s.envelope("control/ack", env.RequestID, map[string]any{
 			"status":  "applied",
 			"action":  action,
 			"message": "Command acknowledged by minimal Go client.",
 		}))
 	case s.topic("config/push"):
+		_ = s.publishEvent("config_push", "Received config push command.")
 		_ = s.publish("config/push/ack", s.envelope("config/push/ack", env.RequestID, map[string]any{
 			"status":  "accepted",
 			"message": "Config received by minimal Go client.",
@@ -193,4 +196,3 @@ func (s *Session) envelope(kind, requestID string, payload map[string]any) Envel
 func (s *Session) topic(kind string) string {
 	return fmt.Sprintf("wfm/%s/%s/%s", s.profile.Profile.ConfigID, s.profile.Profile.NodeID, kind)
 }
-

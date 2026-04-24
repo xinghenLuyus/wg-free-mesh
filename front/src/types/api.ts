@@ -441,6 +441,13 @@ export interface EndpointStatusUpdatedPayload {
   status: EndpointStatusRead
 }
 
+export interface RuntimeNodeUpdatedPayload {
+  config_id: string
+  node_id: string
+  runtime: EndpointStatusRead['runtime']
+  config_state?: EndpointStatusRead['config_state']
+}
+
 export interface ControlLogEventPayload {
   config_id: string
   node_id: string

@@ -322,9 +322,9 @@ export default {
     staticControlUnavailable: 'Static nodes do not support endpoint control',
     mqttControlUnavailable: 'MQTT services are disabled, so endpoint control is unavailable',
   },
-  endpointControl: {
-    title: 'Endpoint Control',
-    description: 'View current node runtime, remote controls, and control logs.',
+    endpointControl: {
+      title: 'Endpoint Control',
+      description: 'View current node runtime, remote controls, and command output.',
     realtimeOk: 'Realtime connected',
     realtimeDown: 'Realtime disconnected',
     runtimeStatus: 'Runtime Status',
@@ -360,8 +360,8 @@ export default {
     mqttDisabledDescription: 'Client binding, remote control, and status reporting are unavailable while MQTT services are turned off.',
     clientReset: 'Client reset',
     clientResetFailed: 'Failed to reset client',
-    logs: 'Control Logs',
-    noLogs: 'No logs',
+      cliOutput: 'Command Output',
+      noLogs: 'No logs',
     commandFailed: 'Control command failed',
     loadFailed: 'Failed to load endpoint status',
   },

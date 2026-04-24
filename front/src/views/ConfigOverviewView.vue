@@ -10,7 +10,16 @@ import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useConfigOverviewPrefs } from '@/composables/useConfigOverviewPrefs'
 import { useRealtime } from '@/composables/useRealtime'
-import type { ConfigOverviewNodeCardRead, ConfigOverviewRead, ConfigOverviewUpdatedPayload, NodeRead, RealtimeEvent, TagRead } from '@/types/api'
+import type {
+  ConfigOverviewNodeCardRead,
+  ConfigOverviewRead,
+  ConfigOverviewUpdatedPayload,
+  NodeRead,
+  RealtimeEvent,
+  RuntimeNodeUpdatedPayload,
+  RuntimeSnapshotItem,
+  TagRead,
+} from '@/types/api'
 import { notifyChangeHints } from '@/utils/changeHints'
 import { cidrRule, requiredTextRule } from '@/utils/formRules'
 import { normalizeTags } from '@/utils/nodePayload'
@@ -38,12 +47,64 @@ const loading = shallowRef(false)
 const loadError = shallowRef('')
 let loadTicket = 0
 const realtime = useRealtime((event: RealtimeEvent) => {
-  if (event.type !== 'config.overview.updated') return
-  const payload = event.payload as unknown as ConfigOverviewUpdatedPayload
-  if (payload.config_id !== String(route.params.configId)) return
-  overview.value = payload.overview
-  fullNodes.value = payload.overview.nodes
-  tags.value = payload.tags
+  if (event.type === 'config.overview.updated') {
+    const payload = event.payload as unknown as ConfigOverviewUpdatedPayload
+    if (payload.config_id !== String(route.params.configId)) return
+    overview.value = payload.overview
+    fullNodes.value = payload.overview.nodes
+    tags.value = payload.tags
+    return
+  }
+  if (event.type === 'runtime.snapshot.updated' && overview.value) {
+    const payload = event.payload as { config_id?: string; items?: RuntimeSnapshotItem[] }
+    if (payload.config_id !== String(route.params.configId) || !Array.isArray(payload.items)) return
+    const runtimeByNodeId = new Map(payload.items.map((item) => [item.node_id, item]))
+    overview.value = {
+      ...overview.value,
+      stats: {
+        ...overview.value.stats,
+        online_nodes: payload.items.filter((item) => item.node_type === 'dynamic' && item.online).length,
+        pending_sync_nodes: payload.items.filter(
+          (item) => item.node_type === 'dynamic' && item.config_sync_state !== 'in_sync',
+        ).length,
+      },
+      runtime_snapshot: payload.items,
+      node_cards: overview.value.node_cards.map((card) => {
+        const runtime = runtimeByNodeId.get(card.id)
+        if (!runtime) return card
+        return {
+          ...card,
+          online: card.node_type === 'dynamic' ? runtime.online : false,
+          peers_total: runtime.peers_total,
+        }
+      }),
+    }
+    return
+  }
+  if (event.type === 'runtime.node.updated' && overview.value) {
+    const payload = event.payload as unknown as RuntimeNodeUpdatedPayload
+    if (payload.config_id !== String(route.params.configId)) return
+    overview.value = {
+      ...overview.value,
+      node_cards: overview.value.node_cards.map((card) =>
+        card.id === payload.node_id
+          ? {
+              ...card,
+              online: card.node_type === 'dynamic' ? payload.runtime.online : false,
+              peers_total: payload.runtime.peers_total,
+            }
+          : card,
+      ),
+      runtime_snapshot: overview.value.runtime_snapshot.map((item) =>
+        item.node_id === payload.node_id
+          ? {
+              ...item,
+              ...payload.runtime,
+            }
+          : item,
+      ),
+    }
+  }
 })
 const settingsFormRef = shallowRef<FormInstance>()
 const createFormRef = shallowRef<FormInstance>()
