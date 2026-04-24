@@ -6,6 +6,7 @@ import { useRoute } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useRealtime } from '@/composables/useRealtime'
 import type { ControlLogEventPayload, ControlLogRead, EndpointStatusRead, EndpointStatusUpdatedPayload, RealtimeEvent } from '@/types/api'
 import { formatDateTime } from '@/utils/dateTime'
@@ -13,29 +14,40 @@ import { notify } from '@/utils/notify'
 
 const route = useRoute()
 const { t } = useI18n()
+const actions = useAsyncActionGroup()
+const startingWg = actions.isPending('start-wg')
+const stoppingWg = actions.isPending('stop-wg')
+const refreshingStatus = actions.isPending('refresh-status')
+const resettingClient = actions.isPending('reset-client')
 
 const endpointStatus = shallowRef<EndpointStatusRead | null>(null)
 const logs = shallowRef<ControlLogRead[]>([])
 const bindingCommand = shallowRef('')
 const bindingExpiresAt = shallowRef('')
 const bindingBusy = shallowRef(false)
+let lastRealtimeVersion = 0
 
-const outputLogs = computed(() => logs.value.filter((log) => log.action === 'event'))
+const outputLogs = computed(() => logs.value.filter((log) => log.action === 'event').slice(0, 20))
 
 async function reloadNode() {
-  const configId = String(route.params.configId)
-  const nodeId = String(route.params.nodeId)
-  endpointStatus.value = await api.endpointStatus(configId, nodeId)
-  logs.value = await api.endpointLogs(configId, nodeId)
+  await actions.run('refresh-status', async () => {
+    const configId = String(route.params.configId)
+    const nodeId = String(route.params.nodeId)
+    endpointStatus.value = await api.endpointStatus(configId, nodeId)
+    logs.value = await api.endpointLogs(configId, nodeId)
+  })
 }
 
 async function sendAction(action: string) {
-  try {
-    const result = await api.controlEndpoint(String(route.params.configId), String(route.params.nodeId), action)
-    notify.success(result.message)
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.commandFailed'))
-  }
+  const key = action === 'start' ? 'start-wg' : action === 'stop' ? 'stop-wg' : `action-${action}`
+  await actions.run(key, async () => {
+    try {
+      const result = await api.controlEndpoint(String(route.params.configId), String(route.params.nodeId), action)
+      notify.success(result.message)
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.commandFailed'))
+    }
+  })
 }
 
 const needsClientInit = computed(() => {
@@ -81,15 +93,17 @@ async function generateBindCommand() {
 }
 
 async function resetClient() {
-  try {
-    await api.resetClient(String(route.params.configId), String(route.params.nodeId))
-    await reloadNode()
-    bindingCommand.value = ''
-    bindingExpiresAt.value = ''
-    notify.success(t('endpointControl.clientReset'))
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.clientResetFailed'))
-  }
+  await actions.run('reset-client', async () => {
+    try {
+      await api.resetClient(String(route.params.configId), String(route.params.nodeId))
+      await reloadNode()
+      bindingCommand.value = ''
+      bindingExpiresAt.value = ''
+      notify.success(t('endpointControl.clientReset'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.clientResetFailed'))
+    }
+  })
 }
 
 function upsertLog(nextLog: ControlLogRead) {
@@ -97,7 +111,9 @@ function upsertLog(nextLog: ControlLogRead) {
   const index = items.findIndex((item) => item.id === nextLog.id)
   if (index >= 0) items[index] = nextLog
   else items.unshift(nextLog)
-  logs.value = items.sort((left, right) => right.created_at.localeCompare(left.created_at))
+  logs.value = items
+    .sort((left, right) => right.created_at.localeCompare(left.created_at))
+    .slice(0, 20)
 }
 
 const realtime = useRealtime((event: RealtimeEvent) => {
@@ -126,10 +142,28 @@ onMounted(async () => {
   try {
     await reloadNode()
     realtime.connect()
+    lastRealtimeVersion = realtime.connectionVersion.value
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.loadFailed'))
   }
 })
+
+watch(
+  () => realtime.connectionVersion.value,
+  async (nextVersion) => {
+    if (nextVersion <= 0) return
+    if (lastRealtimeVersion === 0) {
+      lastRealtimeVersion = nextVersion
+      return
+    }
+    lastRealtimeVersion = nextVersion
+    try {
+      await reloadNode()
+    } catch {
+      // Keep reconnect reconciliation silent.
+    }
+  },
+)
 </script>
 
 <template>
@@ -194,21 +228,22 @@ onMounted(async () => {
             {{ t('endpointControl.mqttDisabledDescription') }}
           </div>
           <div class="endpoint-controls">
-            <el-button :icon="VideoPlay" :disabled="!mqttServiceEnabled" @click="sendAction('start')">{{ t('endpointControl.startWg') }}</el-button>
-            <el-button :icon="VideoPause" :disabled="!mqttServiceEnabled" @click="sendAction('stop')">{{ t('endpointControl.stopWg') }}</el-button>
-            <el-button plain :icon="RefreshRight" @click="reloadNode">{{ t('endpointControl.refreshStatus') }}</el-button>
-            <el-button type="danger" plain :icon="SwitchButton" :disabled="!mqttServiceEnabled" @click="resetClient">{{ t('endpointControl.resetClient') }}</el-button>
+            <el-button :icon="VideoPlay" :loading="startingWg" :disabled="!mqttServiceEnabled" @click="sendAction('start')">{{ t('endpointControl.startWg') }}</el-button>
+            <el-button :icon="VideoPause" :loading="stoppingWg" :disabled="!mqttServiceEnabled" @click="sendAction('stop')">{{ t('endpointControl.stopWg') }}</el-button>
+            <el-button plain :icon="RefreshRight" :loading="refreshingStatus" @click="reloadNode">{{ t('endpointControl.refreshStatus') }}</el-button>
+            <el-button type="danger" plain :icon="SwitchButton" :loading="resettingClient" :disabled="!mqttServiceEnabled" @click="resetClient">{{ t('endpointControl.resetClient') }}</el-button>
           </div>
         </div>
 
         <div class="endpoint-card">
           <div class="endpoint-card__title">{{ t('endpointControl.cliOutput') }}</div>
-          <el-timeline>
-            <el-timeline-item v-for="log in outputLogs" :key="log.id" :timestamp="formatDateTime(log.created_at)">
-              <div class="endpoint-log-line">{{ log.detail || log.summary }}</div>
-            </el-timeline-item>
-          </el-timeline>
-          <div v-if="!outputLogs.length" class="empty-state">{{ t('endpointControl.noLogs') }}</div>
+          <div v-if="outputLogs.length" class="endpoint-output-box">
+            <div v-for="log in outputLogs" :key="log.id" class="endpoint-output-box__entry">
+              <div class="endpoint-output-box__time">{{ formatDateTime(log.created_at) }}</div>
+              <pre class="endpoint-output-box__text">{{ log.detail || log.summary }}</pre>
+            </div>
+          </div>
+          <div v-else class="empty-state">{{ t('endpointControl.noLogs') }}</div>
         </div>
       </div>
     </div>
@@ -231,7 +266,33 @@ onMounted(async () => {
 .endpoint-init__step strong { color: var(--app-text-strong); }
 .endpoint-init__step span, .endpoint-init__expires { color: var(--app-muted); }
 .endpoint-disabled__message { color: var(--app-danger-text); line-height: 1.6; }
-.endpoint-log-line { color: var(--app-text-strong); white-space: pre-wrap; word-break: break-word; font-family: var(--app-font-mono, ui-monospace, SFMono-Regular, Consolas, monospace); }
+.endpoint-output-box {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--app-border-soft);
+  border-radius: 8px;
+  background: var(--app-surface-sunken);
+}
+.endpoint-output-box__entry {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--app-border-soft);
+}
+.endpoint-output-box__entry:last-child { border-bottom: 0; }
+.endpoint-output-box__time {
+  color: var(--app-faint);
+  font-size: 12px;
+  font-weight: 650;
+}
+.endpoint-output-box__text {
+  margin: 0;
+  color: var(--app-text-strong);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--app-font-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+  line-height: 1.55;
+}
 .bind-command { margin: 0; padding: 14px; border: 1px solid var(--app-border-strong); border-radius: 8px; overflow-x: auto; background: var(--app-surface-sunken); color: var(--app-text-strong); white-space: pre-wrap; word-break: break-all; }
 .empty-state { display: grid; place-items: center; min-height: 120px; border: 1px dashed var(--app-border-strong); border-radius: 8px; color: var(--app-muted); }
 @media (max-width: 860px) { .template-toolbar { flex-direction: column; align-items: stretch; } }

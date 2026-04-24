@@ -41,6 +41,11 @@ export function translateMeshText(message: string, t: TranslateFn) {
   match = value.match(/^Link (.+) is missing allowed_ips\.$/)
   if (match) return t('meshMessages.missingAllowedIps', { link: match[1] })
 
+  match = value.match(
+    /^Duplicate enabled peer links found between (.+) and (.+)\. Only one enabled link group is allowed for the same node pair\.$/,
+  )
+  if (match) return t('meshMessages.duplicateEnabledPeerLinks', { left: match[1], right: match[2] })
+
   if (value === 'Manual mode requires Host and Port') return t('meshMessages.manualNeedHostPort')
   if (value === 'Missing reverse link') return t('meshMessages.missingReverseLink')
   if (value === 'No Endpoint') return t('mesh.noneEndpoint')

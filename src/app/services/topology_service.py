@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+from typing import TypedDict
 
 from app.domain.models import Config, EndpointMode, EndpointPortMode, Node, PeerLink
 
@@ -13,11 +14,88 @@ def _is_ipv6_literal(value: str) -> bool:
 
 
 class TopologyService:
+    class DuplicateEnabledGroupError(TypedDict):
+        message: str
+        node_ids: set[str]
+
     def peer_link_groups(self, links: list[PeerLink]) -> dict[str, list[PeerLink]]:
         groups: dict[str, list[PeerLink]] = {}
         for link in links:
             groups.setdefault(link.link_group_id, []).append(link)
         return groups
+
+    def _pair_key(self, left_node_id: str, right_node_id: str) -> tuple[str, str]:
+        if left_node_id <= right_node_id:
+            return left_node_id, right_node_id
+        return right_node_id, left_node_id
+
+    def _group_primary_nodes(self, group_links: list[PeerLink]) -> tuple[str, str] | None:
+        if not group_links:
+            return None
+        primary = next((item for item in group_links if item.direction == "forward"), group_links[0])
+        return primary.local_node_id, primary.peer_node_id
+
+    def duplicate_enabled_group_errors(self, nodes: list[Node], links: list[PeerLink]) -> list[DuplicateEnabledGroupError]:
+        nodes_by_id = {node.id: node for node in nodes}
+        enabled_groups_by_pair: dict[tuple[str, str], list[str]] = {}
+
+        for group_id, group_links in self.peer_link_groups(links).items():
+            if not any(link.enabled for link in group_links):
+                continue
+            primary_nodes = self._group_primary_nodes(group_links)
+            if primary_nodes is None:
+                continue
+            pair_key = self._pair_key(*primary_nodes)
+            enabled_groups_by_pair.setdefault(pair_key, []).append(group_id)
+
+        duplicate_errors: list[TopologyService.DuplicateEnabledGroupError] = []
+        for (left_node_id, right_node_id), group_ids in enabled_groups_by_pair.items():
+            if len(group_ids) < 2:
+                continue
+            left_node = nodes_by_id.get(left_node_id)
+            right_node = nodes_by_id.get(right_node_id)
+            left_name = left_node.name if left_node else left_node_id
+            right_name = right_node.name if right_node else right_node_id
+            duplicate_errors.append(
+                {
+                    "message": (
+                        f"Duplicate enabled peer links found between {left_name} and {right_name}. "
+                        "Only one enabled link group is allowed for the same node pair."
+                    ),
+                    "node_ids": {left_node_id, right_node_id},
+                }
+            )
+        return duplicate_errors
+
+    def duplicate_enabled_group_messages_by_group(self, nodes: list[Node], links: list[PeerLink]) -> dict[str, str]:
+        grouped_links = self.peer_link_groups(links)
+        nodes_by_id = {node.id: node for node in nodes}
+        enabled_groups_by_pair: dict[tuple[str, str], list[str]] = {}
+
+        for group_id, group_links in grouped_links.items():
+            if not any(link.enabled for link in group_links):
+                continue
+            primary_nodes = self._group_primary_nodes(group_links)
+            if primary_nodes is None:
+                continue
+            pair_key = self._pair_key(*primary_nodes)
+            enabled_groups_by_pair.setdefault(pair_key, []).append(group_id)
+
+        messages_by_group: dict[str, str] = {}
+        for (left_node_id, right_node_id), group_ids in enabled_groups_by_pair.items():
+            if len(group_ids) < 2:
+                continue
+            left_node = nodes_by_id.get(left_node_id)
+            right_node = nodes_by_id.get(right_node_id)
+            left_name = left_node.name if left_node else left_node_id
+            right_name = right_node.name if right_node else right_node_id
+            message = (
+                f"Duplicate enabled peer links found between {left_name} and {right_name}. "
+                "Only one enabled link group is allowed for the same node pair."
+            )
+            for group_id in group_ids:
+                messages_by_group[group_id] = message
+        return messages_by_group
 
     def endpoint_host_for_family(self, node: Node, family: object) -> str | None:
         family_value = str(family or "ipv4")
@@ -76,6 +154,9 @@ class TopologyService:
         if len(nodes) >= 2 and not links:
             warnings.append("Current config has no peer links.")
 
+        for duplicate in self.duplicate_enabled_group_errors(nodes, links):
+            errors.append(str(duplicate["message"]))
+
         for group_id, group_links in self.peer_link_groups(links).items():
             if not group_links:
                 continue
@@ -102,6 +183,10 @@ class TopologyService:
         nodes_by_id = {node.id: node for node in nodes}
         invalid_node_ids: set[str] = set()
         errors: list[str] = []
+
+        for duplicate in self.duplicate_enabled_group_errors(nodes, links):
+            errors.append(str(duplicate["message"]))
+            invalid_node_ids.update(set(duplicate["node_ids"]))
 
         for group_links in self.peer_link_groups(links).values():
             if not group_links:

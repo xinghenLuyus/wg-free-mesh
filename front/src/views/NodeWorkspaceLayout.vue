@@ -8,6 +8,7 @@ import { useI18n } from 'vue-i18n'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useRealtime } from '@/composables/useRealtime'
 import type {
   ConfigRead,
@@ -16,7 +17,6 @@ import type {
   NodeRead,
   NodeWorkspaceUpdatedPayload,
   RealtimeEvent,
-  RuntimeNodeUpdatedPayload,
   TagRead,
 } from '@/types/api'
 import { notifyChangeHints } from '@/utils/changeHints'
@@ -27,6 +27,10 @@ import { notify } from '@/utils/notify'
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const actions = useAsyncActionGroup()
+const generatingKeys = actions.isPending('generate-keys')
+const savingSettings = actions.isPending('save-settings')
+const deletingNode = actions.isPending('delete-node')
 
 const config = shallowRef<ConfigRead | null>(null)
 const node = shallowRef<NodeRead | null>(null)
@@ -37,6 +41,7 @@ const settingsFormRef = shallowRef<FormInstance>()
 const loading = shallowRef(false)
 const loadError = shallowRef('')
 let loadTicket = 0
+let lastRealtimeVersion = 0
 const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type === 'node.workspace.updated') {
     const payload = event.payload as unknown as NodeWorkspaceUpdatedPayload
@@ -51,24 +56,6 @@ const realtime = useRealtime((event: RealtimeEvent) => {
     const payload = event.payload as unknown as EndpointStatusUpdatedPayload
     if (payload.config_id !== String(route.params.configId) || payload.node_id !== String(route.params.nodeId)) return
     endpointStatus.value = payload.status
-    return
-  }
-  if (event.type === 'runtime.node.updated' && endpointStatus.value) {
-    const payload = event.payload as unknown as RuntimeNodeUpdatedPayload
-    if (payload.config_id !== String(route.params.configId) || payload.node_id !== String(route.params.nodeId)) return
-    endpointStatus.value = {
-      ...endpointStatus.value,
-      runtime: {
-        ...endpointStatus.value.runtime,
-        ...payload.runtime,
-      },
-      config_state: payload.config_state
-        ? {
-            ...endpointStatus.value.config_state,
-            ...payload.config_state,
-          }
-        : endpointStatus.value.config_state,
-    }
   }
 })
 
@@ -181,42 +168,47 @@ function handleTabClick(disabled: boolean) {
 }
 
 async function autofillKeys() {
-  try {
-    const keys = await api.generateKeys()
-    settingsForm.private_key = keys.private_key
-    settingsForm.public_key = keys.public_key
-    notify.success(t('nodeWorkspace.keyGenerated'))
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.keyGenerateFailed'))
-  }
+  await actions.run('generate-keys', async () => {
+    try {
+      const keys = await api.generateKeys()
+      settingsForm.private_key = keys.private_key
+      settingsForm.public_key = keys.public_key
+      notify.success(t('nodeWorkspace.keyGenerated'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.keyGenerateFailed'))
+    }
+  })
 }
 
 async function saveNodeSettings() {
   if (!node.value) return
-  const valid = await settingsFormRef.value?.validate().catch(() => false)
-  if (!valid) return
-  try {
-    const result = await api.updateNode(node.value.id, toNodeUpdatePayload(node.value, {
-      name: settingsForm.name,
-      ipv4_address: settingsForm.ipv4_address || null,
-      ipv6_address: settingsForm.ipv6_address || null,
-      listen_port: settingsForm.listen_port,
-      virtual_ip: settingsForm.virtual_ip || null,
-      mtu: settingsForm.mtu,
-      dns: settingsForm.dns || null,
-      auto_sync: settingsForm.auto_sync,
-      node_type: settingsForm.node_type,
-      public_key: settingsForm.public_key,
-      private_key: settingsForm.private_key,
-      tags: normalizeTags(settingsForm.tags),
-    }))
-    settingsVisible.value = false
-    await load()
-    notify.success(t('nodeWorkspace.settingsSaved'))
-    notifyChangeHints(result.change_hints)
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.settingsSaveFailed'))
-  }
+  const currentNode = node.value
+  await actions.run('save-settings', async () => {
+    const valid = await settingsFormRef.value?.validate().catch(() => false)
+    if (!valid) return
+    try {
+      const result = await api.updateNode(currentNode.id, toNodeUpdatePayload(currentNode, {
+        name: settingsForm.name,
+        ipv4_address: settingsForm.ipv4_address || null,
+        ipv6_address: settingsForm.ipv6_address || null,
+        listen_port: settingsForm.listen_port,
+        virtual_ip: settingsForm.virtual_ip || null,
+        mtu: settingsForm.mtu,
+        dns: settingsForm.dns || null,
+        auto_sync: settingsForm.auto_sync,
+        node_type: settingsForm.node_type,
+        public_key: settingsForm.public_key,
+        private_key: settingsForm.private_key,
+        tags: normalizeTags(settingsForm.tags),
+      }))
+      settingsVisible.value = false
+      await load()
+      notify.success(t('nodeWorkspace.settingsSaved'))
+      notifyChangeHints(result.change_hints)
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.settingsSaveFailed'))
+    }
+  })
 }
 
 async function deleteNodeFromSettings() {
@@ -232,15 +224,22 @@ async function deleteNodeFromSettings() {
         confirmButtonClass: 'el-button--danger',
       },
     )
-    const configId = node.value.config_id
-    await api.deleteNode(node.value.id)
-    settingsVisible.value = false
-    notify.success(t('nodeWorkspace.deleted'))
-    await router.push(`/configs/${configId}`)
   } catch (error) {
     if (error === 'cancel' || error === 'close') return
     notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.deleteFailed'))
+    return
   }
+  await actions.run('delete-node', async () => {
+    try {
+      const configId = node.value!.config_id
+      await api.deleteNode(node.value!.id)
+      settingsVisible.value = false
+      notify.success(t('nodeWorkspace.deleted'))
+      await router.push(`/configs/${configId}`)
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.deleteFailed'))
+    }
+  })
 }
 
 watch(
@@ -254,10 +253,28 @@ watch(
   },
 )
 
+watch(
+  () => realtime.connectionVersion.value,
+  async (nextVersion) => {
+    if (nextVersion <= 0) return
+    if (lastRealtimeVersion === 0) {
+      lastRealtimeVersion = nextVersion
+      return
+    }
+    lastRealtimeVersion = nextVersion
+    try {
+      await load()
+    } catch {
+      // Reconnect reconciliation should stay silent; the regular SSE stream will continue.
+    }
+  },
+)
+
 onMounted(async () => {
   try {
     await load()
     realtime.connect()
+    lastRealtimeVersion = realtime.connectionVersion.value
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.loadFailed'))
   }
@@ -419,13 +436,13 @@ onMounted(async () => {
         <el-form-item :label="t('nodeWorkspace.publicKey')">
           <el-input v-model="settingsForm.public_key" type="textarea" :rows="3" />
         </el-form-item>
-        <el-button plain :icon="Key" @click="autofillKeys">{{ t('nodeWorkspace.generateKeys') }}</el-button>
+        <el-button plain :icon="Key" :loading="generatingKeys" @click="autofillKeys">{{ t('nodeWorkspace.generateKeys') }}</el-button>
       </el-form>
 
       <template #footer>
-        <el-button type="danger" plain :icon="Delete" @click="deleteNodeFromSettings">{{ t('nodeWorkspace.deleteEndpoint') }}</el-button>
+        <el-button type="danger" plain :icon="Delete" :loading="deletingNode" @click="deleteNodeFromSettings">{{ t('nodeWorkspace.deleteEndpoint') }}</el-button>
         <el-button @click="settingsVisible = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" @click="saveNodeSettings">{{ t('common.save') }}</el-button>
+        <el-button type="primary" :loading="savingSettings" @click="saveNodeSettings">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
   </div>

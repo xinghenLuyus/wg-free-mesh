@@ -152,16 +152,6 @@ class ControlPlaneService:
         await self.publisher.publish(plan)
 
     async def publish_runtime(self, config_id: str, node_id: str) -> None:
-        status = store.get_node_endpoint_status(config_id, node_id)
-        await realtime_service.publish(
-            "runtime.node.updated",
-            {
-                "config_id": config_id,
-                "node_id": node_id,
-                "runtime": _dump_model(status["runtime"]),
-                "config_state": status["config_state"],
-            },
-        )
         await realtime_service.publish(
             "endpoint.status.updated",
             {
@@ -174,18 +164,10 @@ class ControlPlaneService:
             "runtime.snapshot.updated",
             {"config_id": config_id, "items": self.runtime_snapshot(config_id)},
         )
-        await realtime_service.publish(
-            "sync.status.updated",
-            {"config_id": config_id, "node_id": node_id, "status": store.get_sync_status_for_node(config_id, node_id)},
-        )
-        await realtime_service.publish("system.status.updated", store.system_status())
-        await self.publish_node_workspace(config_id, node_id)
-        await self.publish_node_apply(config_id, node_id)
+        await realtime_service.publish("system.status.updated", self.system_status())
 
     async def publish_runtime_scope(self, config_id: str, node_id: str) -> None:
         await self.publish_runtime(config_id, node_id)
-        await self.publish_config_overview(config_id)
-        await self.publish_configs()
 
     def create_config(self, payload: dict[str, object]):
         return store.create_config(payload)

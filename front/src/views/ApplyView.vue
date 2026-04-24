@@ -6,6 +6,7 @@ import { useRoute } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useRealtime } from '@/composables/useRealtime'
 import { translateMeshText } from '@/utils/meshText'
 import { toNodeUpdatePayload } from '@/utils/nodePayload'
@@ -14,6 +15,9 @@ import type { NodeApplyUpdatedPayload, RealtimeEvent, SyncStatusRead } from '@/t
 
 const route = useRoute()
 const { t } = useI18n()
+const actions = useAsyncActionGroup()
+const syncingNode = actions.isPending('sync-node')
+const savingApplied = actions.isPending('save-applied')
 
 const syncStatus = shallowRef<SyncStatusRead | null>(null)
 const previewContent = shallowRef('')
@@ -73,24 +77,28 @@ async function loadNodeState() {
 
 async function saveApplied() {
   const configId = String(route.params.configId)
-  try {
-    await api.saveAppliedConf(configId, currentNodeId.value, appliedState.content)
-    await loadNodeState()
-    notify.success(t('apply.stagedSaved'))
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('apply.saveFailed'))
-  }
+  await actions.run('save-applied', async () => {
+    try {
+      await api.saveAppliedConf(configId, currentNodeId.value, appliedState.content)
+      await loadNodeState()
+      notify.success(t('apply.stagedSaved'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('apply.saveFailed'))
+    }
+  })
 }
 
 async function syncNode() {
   const configId = String(route.params.configId)
-  try {
-    await api.syncNode(configId, currentNodeId.value)
-    await loadNodeState()
-    notify.success(t('apply.synced'))
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('apply.syncFailed'))
-  }
+  await actions.run('sync-node', async () => {
+    try {
+      await api.syncNode(configId, currentNodeId.value)
+      await loadNodeState()
+      notify.success(t('apply.synced'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('apply.syncFailed'))
+    }
+  })
 }
 
 async function toggleAutoSync(nextValue: boolean | string | number) {
@@ -161,7 +169,7 @@ onMounted(async () => {
               @change="toggleAutoSync"
             />
           </div>
-          <el-button type="primary" :icon="Refresh" :disabled="topologyBlocked" @click="syncNode">
+          <el-button type="primary" :icon="Refresh" :loading="syncingNode" :disabled="topologyBlocked" @click="syncNode">
             {{ t('apply.syncConfig') }}
           </el-button>
         </div>
@@ -213,7 +221,7 @@ onMounted(async () => {
                   <span>{{ t('apply.stagedStateDescription') }}</span>
                 </div>
               </div>
-              <el-button size="small" type="primary" :icon="Check" @click="saveApplied">{{ t('apply.saveChanges') }}</el-button>
+              <el-button size="small" type="primary" :icon="Check" :loading="savingApplied" @click="saveApplied">{{ t('apply.saveChanges') }}</el-button>
             </div>
           </template>
           <div class="config-code-shell config-code-shell--editable">

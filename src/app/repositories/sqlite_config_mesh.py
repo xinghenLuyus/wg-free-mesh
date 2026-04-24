@@ -571,7 +571,9 @@ class SQLiteConfigMeshMixin:
             raise AppError("NODE_CONFIG_MISMATCH", "Node does not belong to this config", 400)
 
         links = self.list_peer_links(config_id)
-        nodes_by_id = {item.id: item for item in self.list_nodes(config_id)}
+        all_nodes = self.list_nodes(config_id)
+        nodes_by_id = {item.id: item for item in all_nodes}
+        duplicate_messages = topology_service.duplicate_enabled_group_messages_by_group(all_nodes, links)
         reverse_by_group: dict[str, PeerLink] = {}
         for link in links:
             if link.peer_node_id == node_id:
@@ -597,6 +599,8 @@ class SQLiteConfigMeshMixin:
                     "reverse": self._peer_link_direction_card(config, peer_node, node, reverse) if reverse else None,
                     "integrity_status": integrity["status"],
                     "integrity_message": integrity["message"],
+                    "duplicate_enabled_pair": link.link_group_id in duplicate_messages,
+                    "duplicate_message": duplicate_messages.get(link.link_group_id, ""),
                 }
             )
         return {"node": node.model_dump(mode="json"), "connections": connections, "validation": self._validate_mesh_payload(config_id)}

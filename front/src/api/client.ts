@@ -1,5 +1,6 @@
 import axios, { AxiosError, AxiosHeaders } from 'axios'
 
+import { API_BASE_URL } from '@/api/base'
 import { hasTranslation, translate } from '@/i18n'
 import type { ApiErrorResponse, ApiResponse } from '@/types/api'
 import { clearAuthToken, readAuthToken } from '@/utils/authToken'
@@ -20,7 +21,7 @@ export class ApiClientError extends Error {
 }
 
 export const http = axios.create({
-  baseURL: '/api/v1',
+  baseURL: API_BASE_URL,
   timeout: 20000,
 })
 

@@ -128,6 +128,8 @@ class MeshConnectionResponse(BaseModel):
     reverse: MeshConnectionDirectionResponse | None
     integrity_status: str
     integrity_message: str
+    duplicate_enabled_pair: bool
+    duplicate_message: str
 
 
 class MeshWorkspaceResponse(BaseModel):

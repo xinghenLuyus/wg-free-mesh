@@ -229,6 +229,8 @@ export interface MeshConnectionRead {
   reverse: MeshConnectionDirectionRead | null
   integrity_status: 'healthy' | 'broken'
   integrity_message: string
+  duplicate_enabled_pair: boolean
+  duplicate_message: string
 }
 
 export interface MeshWorkspaceRead {

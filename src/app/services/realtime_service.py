@@ -7,11 +7,45 @@ from app.domain.models import now_utc
 
 RealtimeEventPayload = dict[str, object]
 SubscriptionItem = RealtimeEventPayload | None
+SUBSCRIPTION_QUEUE_SIZE = 256
+
+
+class RealtimeSubscription:
+    def __init__(self, maxsize: int = SUBSCRIPTION_QUEUE_SIZE) -> None:
+        self._queue: asyncio.Queue[SubscriptionItem] = asyncio.Queue(maxsize=maxsize)
+        self._closed = False
+        self._overflowed = False
+
+    async def get(self) -> SubscriptionItem:
+        return await self._queue.get()
+
+    def put_nowait(self, item: SubscriptionItem) -> None:
+        if self._closed:
+            return
+        self._queue.put_nowait(item)
+
+    def close(self) -> None:
+        self._closed = True
+
+    def mark_overflowed(self) -> None:
+        self._overflowed = True
+        self._closed = True
+
+    @property
+    def overflowed(self) -> bool:
+        return self._overflowed
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def empty(self) -> bool:
+        return self._queue.empty()
 
 
 class RealtimeService:
     def __init__(self) -> None:
-        self._subscribers: set[asyncio.Queue[SubscriptionItem]] = set()
+        self._subscribers: set[RealtimeSubscription] = set()
         self._event_id = 0
         self._shutting_down = False
 
@@ -26,9 +60,10 @@ class RealtimeService:
         self._shutting_down = True
         subscribers = list(self._subscribers)
         self._subscribers.clear()
-        for queue in subscribers:
+        for subscription in subscribers:
+            subscription.close()
             try:
-                queue.put_nowait(None)
+                subscription.put_nowait(None)
             except asyncio.QueueFull:
                 pass
 
@@ -45,36 +80,39 @@ class RealtimeService:
         if self._shutting_down:
             return
         event = self.make_event(event_type, payload)
-        stale: list[asyncio.Queue[SubscriptionItem]] = []
-        for queue in self._subscribers:
+        stale: list[RealtimeSubscription] = []
+        for subscription in self._subscribers:
             try:
-                queue.put_nowait(event)
+                subscription.put_nowait(event)
             except asyncio.QueueFull:
-                stale.append(queue)
-        for queue in stale:
-            self._subscribers.discard(queue)
+                subscription.mark_overflowed()
+                stale.append(subscription)
+        for subscription in stale:
+            self._subscribers.discard(subscription)
 
-    def open_subscription(self) -> asyncio.Queue[SubscriptionItem]:
-        queue: asyncio.Queue[SubscriptionItem] = asyncio.Queue(maxsize=100)
+    def open_subscription(self) -> RealtimeSubscription:
+        subscription = RealtimeSubscription()
         if self._shutting_down:
-            queue.put_nowait(None)
-            return queue
-        self._subscribers.add(queue)
-        return queue
+            subscription.close()
+            subscription.put_nowait(None)
+            return subscription
+        self._subscribers.add(subscription)
+        return subscription
 
-    def close_subscription(self, queue: asyncio.Queue[SubscriptionItem]) -> None:
-        self._subscribers.discard(queue)
+    def close_subscription(self, subscription: RealtimeSubscription) -> None:
+        subscription.close()
+        self._subscribers.discard(subscription)
 
     async def subscribe(self) -> AsyncIterator[RealtimeEventPayload]:
-        queue = self.open_subscription()
+        subscription = self.open_subscription()
         try:
             while True:
-                item = await queue.get()
+                item = await subscription.get()
                 if item is None:
                     break
                 yield item
         finally:
-            self.close_subscription(queue)
+            self.close_subscription(subscription)
 
 
 realtime_service = RealtimeService()

@@ -7,6 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import type { ConfigRead, NodeRead } from '@/types/api'
 import { notifyChangeHints } from '@/utils/changeHints'
 import { notify } from '@/utils/notify'
@@ -14,6 +15,10 @@ import { notify } from '@/utils/notify'
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const actions = useAsyncActionGroup()
+const creatingNode = actions.isPending('submit-node')
+const suggestingIp = actions.isPending('suggest-ip')
+const generatingKeys = actions.isPending('generate-keys')
 
 const config = shallowRef<ConfigRead | null>(null)
 const nodes = shallowRef<NodeRead[]>([])
@@ -92,31 +97,37 @@ function openEdit(node: NodeRead) {
 }
 
 async function autofillKeys() {
-  const keys = await api.generateKeys()
-  form.private_key = keys.private_key
-  form.public_key = keys.public_key
+  await actions.run('generate-keys', async () => {
+    const keys = await api.generateKeys()
+    form.private_key = keys.private_key
+    form.public_key = keys.public_key
+  })
 }
 
 async function autofillVirtualIp() {
-  const suggestion = await api.suggestIp(String(route.params.configId))
-  form.virtual_ip = suggestion.ip
+  await actions.run('suggest-ip', async () => {
+    const suggestion = await api.suggestIp(String(route.params.configId))
+    form.virtual_ip = suggestion.ip
+  })
 }
 
 async function submit() {
-  try {
-    if (editingNodeId.value) {
-      const result = await api.updateNode(editingNodeId.value, form)
-      notify.success(t('nodes.saved'))
-      notifyChangeHints(result.change_hints)
-    } else {
-      await api.createNode(String(route.params.configId), form)
-      notify.success(t('nodes.created'))
+  await actions.run('submit-node', async () => {
+    try {
+      if (editingNodeId.value) {
+        const result = await api.updateNode(editingNodeId.value, form)
+        notify.success(t('nodes.saved'))
+        notifyChangeHints(result.change_hints)
+      } else {
+        await api.createNode(String(route.params.configId), form)
+        notify.success(t('nodes.created'))
+      }
+      dialogVisible.value = false
+      await loadNodes()
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('nodes.saveFailed'))
     }
-    dialogVisible.value = false
-    await loadNodes()
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('nodes.saveFailed'))
-  }
+  })
 }
 
 async function deleteNode(node: NodeRead) {
@@ -225,7 +236,7 @@ onMounted(async () => {
       <el-form-item :label="t('nodeWorkspace.virtualIp')">
         <el-input v-model="form.virtual_ip">
           <template #append>
-            <el-button @click="autofillVirtualIp">{{ t('configOverview.recommend') }}</el-button>
+            <el-button :loading="suggestingIp" @click="autofillVirtualIp">{{ t('configOverview.recommend') }}</el-button>
           </template>
         </el-input>
       </el-form-item>
@@ -235,11 +246,11 @@ onMounted(async () => {
       <el-form-item :label="t('nodeWorkspace.publicKey')">
         <el-input v-model="form.public_key" type="textarea" />
       </el-form-item>
-      <el-button plain :icon="Key" @click="autofillKeys">{{ t('nodeWorkspace.generateKeys') }}</el-button>
+      <el-button plain :icon="Key" :loading="generatingKeys" @click="autofillKeys">{{ t('nodeWorkspace.generateKeys') }}</el-button>
     </el-form>
     <template #footer>
       <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
-      <el-button type="primary" @click="submit">{{ t('common.save') }}</el-button>
+      <el-button type="primary" :loading="creatingNode" @click="submit">{{ t('common.save') }}</el-button>
     </template>
   </el-dialog>
 </template>

@@ -89,8 +89,21 @@ pnpm run dev
 访问：
 
 - 前端：`http://127.0.0.1:5173`
-- 开发态 `/api` 会代理到 `http://127.0.0.1:8000`
-- 开发态 SSE `/api/v1/events/stream` 也通过 Vite 代理转发到后端
+- 开发态 API 和 SSE 默认直接访问同主机的 `http://<当前主机>:8000`
+- 不再使用 Vite `server.proxy` 转发后端请求
+- 如需覆盖后端地址，可在前端环境变量中设置 `VITE_API_BASE_URL`
+
+开发态默认规则：
+
+- 当页面运行在 `5173` 时，前端会自动把 API / SSE 指向 `http://<当前主机>:8000`
+- 其它场景默认走当前源
+
+示例：
+
+```powershell
+$env:VITE_API_BASE_URL='http://127.0.0.1:8000'
+pnpm run dev
+```
 
 ## 检查与构建
 

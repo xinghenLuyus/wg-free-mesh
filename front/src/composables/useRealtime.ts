@@ -1,12 +1,12 @@
 import { onBeforeUnmount, shallowRef } from 'vue'
 
+import { REALTIME_STREAM_URL } from '@/api/base'
 import { translate } from '@/i18n'
 import type { RealtimeEvent } from '@/types/api'
 import { readAuthToken } from '@/utils/authToken'
 
 type RealtimeState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'degraded'
 
-const STREAM_URL = '/api/v1/events/stream'
 const INACTIVITY_TIMEOUT_MS = 45_000
 const WATCHDOG_INTERVAL_MS = 5_000
 const RECONNECT_BASE_MS = 3_000
@@ -16,6 +16,7 @@ const connected = shallowRef(false)
 const error = shallowRef('')
 const state = shallowRef<RealtimeState>('idle')
 const lastMessageAt = shallowRef<number | null>(null)
+const connectionVersion = shallowRef(0)
 const listeners = new Set<(event: RealtimeEvent) => void>()
 
 const streamController = shallowRef<AbortController | null>(null)
@@ -146,7 +147,7 @@ async function openStream() {
   streamController.value = controller
   state.value = reconnectCount > 0 ? 'reconnecting' : 'connecting'
 
-  const response = await fetch(STREAM_URL, {
+  const response = await fetch(REALTIME_STREAM_URL, {
     method: 'GET',
     headers: {
       Accept: 'text/event-stream',
@@ -168,6 +169,7 @@ async function openStream() {
   connected.value = true
   error.value = ''
   state.value = 'connected'
+  connectionVersion.value += 1
   reconnectCount = 0
   lastMessageAt.value = Date.now()
   clearReconnectTimer()
@@ -227,6 +229,7 @@ export function useRealtime(onMessage: (event: RealtimeEvent) => void) {
 
   return {
     connected,
+    connectionVersion,
     error,
     state,
     lastMessageAt,

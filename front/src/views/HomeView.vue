@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { Files, Plus } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
-import { onMounted, reactive, shallowRef } from 'vue'
+import { onMounted, reactive, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useRealtime } from '@/composables/useRealtime'
 import type { ConfigListUpdatedPayload, ConfigRead, RealtimeEvent } from '@/types/api'
 import { cidrRule, requiredTextRule } from '@/utils/formRules'
@@ -14,8 +15,11 @@ import { notify } from '@/utils/notify'
 
 const router = useRouter()
 const { t } = useI18n()
+const actions = useAsyncActionGroup()
+const creatingConfig = actions.isPending('create-config')
 
 const configs = shallowRef<ConfigRead[]>([])
+let lastRealtimeVersion = 0
 const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type === 'config.list.updated') {
     configs.value = (event.payload as unknown as ConfigListUpdatedPayload).configs
@@ -43,16 +47,18 @@ async function load() {
 }
 
 async function submit() {
-  const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return
-  try {
-    const config = await api.createConfig(form)
-    dialogVisible.value = false
-    await load()
-    await router.push(`/configs/${config.id}`)
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('home.createFailed'))
-  }
+  await actions.run('create-config', async () => {
+    const valid = await formRef.value?.validate().catch(() => false)
+    if (!valid) return
+    try {
+      const config = await api.createConfig(form)
+      dialogVisible.value = false
+      await load()
+      await router.push(`/configs/${config.id}`)
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('home.createFailed'))
+    }
+  })
 }
 
 async function openConfig(configId: string) {
@@ -63,10 +69,28 @@ onMounted(async () => {
   try {
     await load()
     realtime.connect()
+    lastRealtimeVersion = realtime.connectionVersion.value
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('home.loadFailed'))
   }
 })
+
+watch(
+  () => realtime.connectionVersion.value,
+  async (nextVersion) => {
+    if (nextVersion <= 0) return
+    if (lastRealtimeVersion === 0) {
+      lastRealtimeVersion = nextVersion
+      return
+    }
+    lastRealtimeVersion = nextVersion
+    try {
+      await load()
+    } catch {
+      // Keep reconnect reconciliation silent.
+    }
+  },
+)
 </script>
 
 <template>
@@ -167,7 +191,7 @@ onMounted(async () => {
 
     <template #footer>
       <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
-      <el-button type="primary" :icon="Plus" @click="submit">{{ t('home.create') }}</el-button>
+      <el-button type="primary" :icon="Plus" :loading="creatingConfig" @click="submit">{{ t('home.create') }}</el-button>
     </template>
   </el-dialog>
 </template>

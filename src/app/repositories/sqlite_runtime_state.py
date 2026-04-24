@@ -23,6 +23,20 @@ from app.repositories.sqlite_common import control_action_value
 
 
 class SQLiteRuntimeStateMixin:
+    def _trim_endpoint_logs(self, connection: object, config_id: str, node_id: str, limit: int = 20) -> None:
+        connection.execute(
+            """
+            DELETE FROM endpoint_control_logs
+            WHERE id IN (
+                SELECT id FROM endpoint_control_logs
+                WHERE config_id = ? AND node_id = ?
+                ORDER BY created_at DESC, id DESC
+                LIMIT -1 OFFSET ?
+            )
+            """,
+            (config_id, node_id, limit),
+        )
+
     def get_node_config_state(self, config_id: str, node_id: str):
         with connect() as connection:
             row = connection.execute("SELECT * FROM node_config_state WHERE config_id = ? AND node_id = ?", (config_id, node_id)).fetchone()
@@ -129,6 +143,7 @@ class SQLiteRuntimeStateMixin:
                     now,
                 ),
             )
+            self._trim_endpoint_logs(connection, config_id, node_id)
         return log
 
     def append_client_event_log(self, config_id: str, node_id: str, *, summary: str, detail: str = "", requested_by: str = "client") -> EndpointControlLog:
@@ -168,6 +183,7 @@ class SQLiteRuntimeStateMixin:
                     created_at,
                 ),
             )
+            self._trim_endpoint_logs(connection, config_id, node_id)
         return log
 
     def complete_control_log(self, request_id: str, status: ControlStatus, summary: str, detail: str = "") -> EndpointControlLog:

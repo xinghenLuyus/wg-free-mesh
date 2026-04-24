@@ -34,9 +34,28 @@ go build ./...
 常用命令：
 
 ```powershell
+go build -o .\bin\wfmctl.exe .\cmd\ctl
+go build -o .\bin\wfm-agent.exe .\cmd\agent
 go run .\cmd\ctl bind --server http://127.0.0.1:8000 --token <token>
 go run .\cmd\ctl list
 go run .\cmd\agent
+```
+
+如果只想更新单个二进制：
+
+```powershell
+cd D:\wenjian\stepsave\project\wg-free-mesh\client
+go build -o .\bin\wfmctl.exe .\cmd\ctl
+go build -o .\bin\wfm-agent.exe .\cmd\agent
+```
+
+如果需要为 Linux 或 macOS 交叉构建，可临时指定目标平台：
+
+```powershell
+$env:GOOS='linux'; $env:GOARCH='amd64'; go build -o .\bin\wfm-agent-linux-amd64 .\cmd\agent
+$env:GOOS='linux'; $env:GOARCH='amd64'; go build -o .\bin\wfmctl-linux-amd64 .\cmd\ctl
+Remove-Item Env:GOOS
+Remove-Item Env:GOARCH
 ```
 
 绑定 token 不应手写，应该在控制台动态节点的“端点控制”初始化页点击“生成节点绑定命令并复制”获得。

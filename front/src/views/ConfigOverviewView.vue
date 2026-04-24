@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useConfigOverviewPrefs } from '@/composables/useConfigOverviewPrefs'
 import { useRealtime } from '@/composables/useRealtime'
 import type {
@@ -16,7 +17,6 @@ import type {
   ConfigOverviewUpdatedPayload,
   NodeRead,
   RealtimeEvent,
-  RuntimeNodeUpdatedPayload,
   RuntimeSnapshotItem,
   TagRead,
 } from '@/types/api'
@@ -31,6 +31,15 @@ type SortKey = 'name' | 'virtual_ip' | 'created_at' | 'online' | 'node_type'
 const route = useRoute()
 const router = useRouter()
 const { t } = useI18n()
+const actions = useAsyncActionGroup()
+const savingConfig = actions.isPending('save-config')
+const deletingConfig = actions.isPending('delete-config')
+const togglingConfigEnabled = actions.isPending('toggle-config-enabled')
+const creatingTag = actions.isPending('create-tag')
+const applyingTag = actions.isPending('apply-tag')
+const generatingNodeKeys = actions.isPending('generate-node-keys')
+const suggestingNodeIp = actions.isPending('suggest-node-ip')
+const creatingNode = actions.isPending('create-node')
 const overview = shallowRef<ConfigOverviewRead | null>(null)
 const fullNodes = shallowRef<NodeRead[]>([])
 const tags = shallowRef<TagRead[]>([])
@@ -46,6 +55,7 @@ const selectedNodeIds = shallowRef<string[]>([])
 const loading = shallowRef(false)
 const loadError = shallowRef('')
 let loadTicket = 0
+let lastRealtimeVersion = 0
 const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type === 'config.overview.updated') {
     const payload = event.payload as unknown as ConfigOverviewUpdatedPayload
@@ -78,31 +88,6 @@ const realtime = useRealtime((event: RealtimeEvent) => {
           peers_total: runtime.peers_total,
         }
       }),
-    }
-    return
-  }
-  if (event.type === 'runtime.node.updated' && overview.value) {
-    const payload = event.payload as unknown as RuntimeNodeUpdatedPayload
-    if (payload.config_id !== String(route.params.configId)) return
-    overview.value = {
-      ...overview.value,
-      node_cards: overview.value.node_cards.map((card) =>
-        card.id === payload.node_id
-          ? {
-              ...card,
-              online: card.node_type === 'dynamic' ? payload.runtime.online : false,
-              peers_total: payload.runtime.peers_total,
-            }
-          : card,
-      ),
-      runtime_snapshot: overview.value.runtime_snapshot.map((item) =>
-        item.node_id === payload.node_id
-          ? {
-              ...item,
-              ...payload.runtime,
-            }
-          : item,
-      ),
     }
   }
 })
@@ -294,15 +279,17 @@ async function createTag() {
     notify.warning(t('configOverview.tagNameRequired'))
     return
   }
-  try {
-    const createdTag = await api.createTag(String(route.params.configId), tag)
-    selectedTagForAssignment.value = createdTag.name
-    newTagName.value = ''
-    await load()
-    notify.success(t('configOverview.tagCreated'))
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('configOverview.tagCreateFailed'))
-  }
+  await actions.run('create-tag', async () => {
+    try {
+      const createdTag = await api.createTag(String(route.params.configId), tag)
+      selectedTagForAssignment.value = createdTag.name
+      newTagName.value = ''
+      await load()
+      notify.success(t('configOverview.tagCreated'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('configOverview.tagCreateFailed'))
+    }
+  })
 }
 
 async function applySelectedTagToNodes() {
@@ -316,15 +303,17 @@ async function applySelectedTagToNodes() {
     return
   }
 
-  try {
-    await api.applyTagToNodes(String(route.params.configId), tag, selectedNodeIds.value)
-    await load()
-    selectedNodeIds.value = []
-    selectedTagForAssignment.value = tag
-    notify.success(t('configOverview.tagApplied'))
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('configOverview.tagApplyFailed'))
-  }
+  await actions.run('apply-tag', async () => {
+    try {
+      await api.applyTagToNodes(String(route.params.configId), tag, selectedNodeIds.value)
+      await load()
+      selectedNodeIds.value = []
+      selectedTagForAssignment.value = tag
+      notify.success(t('configOverview.tagApplied'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('configOverview.tagApplyFailed'))
+    }
+  })
 }
 
 async function removeTagFromNode(node: NodeRead, tag: string) {
@@ -357,17 +346,19 @@ async function deleteTag(tag: string) {
 }
 
 async function saveSettings() {
-  const valid = await settingsFormRef.value?.validate().catch(() => false)
-  if (!valid) return
-  try {
-    const result = await api.updateConfig(String(route.params.configId), { ...settingsForm })
-    settingsVisible.value = false
-    await load()
-    notify.success(t('configOverview.configSaved'))
-    notifyChangeHints(result.change_hints)
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('configOverview.configSaveFailed'))
-  }
+  await actions.run('save-config', async () => {
+    const valid = await settingsFormRef.value?.validate().catch(() => false)
+    if (!valid) return
+    try {
+      const result = await api.updateConfig(String(route.params.configId), { ...settingsForm })
+      settingsVisible.value = false
+      await load()
+      notify.success(t('configOverview.configSaved'))
+      notifyChangeHints(result.change_hints)
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('configOverview.configSaveFailed'))
+    }
+  })
 }
 
 async function deleteConfig() {
@@ -378,70 +369,87 @@ async function deleteConfig() {
       confirmButtonText: t('common.delete'),
       cancelButtonText: t('common.cancel'),
     })
-    await api.deleteConfig(String(route.params.configId))
-    notify.success(t('configOverview.configDeleted'))
-    settingsVisible.value = false
-    await router.push('/')
   } catch (error) {
     if (error instanceof ApiClientError) {
       notify.error(error.message)
     }
+    return
   }
+  await actions.run('delete-config', async () => {
+    try {
+      await api.deleteConfig(String(route.params.configId))
+      notify.success(t('configOverview.configDeleted'))
+      settingsVisible.value = false
+      await router.push('/')
+    } catch (error) {
+      if (error instanceof ApiClientError) {
+        notify.error(error.message)
+      }
+    }
+  })
 }
 
 async function toggleEnabled(value: boolean) {
   if (!overview.value) return
-  try {
-    await api.updateConfig(String(route.params.configId), {
-      ...overview.value.config,
-      enabled: value,
-    })
-    await load()
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('configOverview.enabledSaveFailed'))
-  }
+  await actions.run('toggle-config-enabled', async () => {
+    try {
+      await api.updateConfig(String(route.params.configId), {
+        ...overview.value!.config,
+        enabled: value,
+      })
+      await load()
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('configOverview.enabledSaveFailed'))
+    }
+  })
 }
 
 async function autofillKeys() {
-  const keys = await api.generateKeys()
-  createForm.private_key = keys.private_key
-  createForm.public_key = keys.public_key
+  await actions.run('generate-node-keys', async () => {
+    const keys = await api.generateKeys()
+    createForm.private_key = keys.private_key
+    createForm.public_key = keys.public_key
+  })
 }
 
 async function autofillVirtualIp() {
-  const suggestion = await api.suggestIp(String(route.params.configId))
-  createForm.virtual_ip = suggestion.ip
+  await actions.run('suggest-node-ip', async () => {
+    const suggestion = await api.suggestIp(String(route.params.configId))
+    createForm.virtual_ip = suggestion.ip
+  })
 }
 
 async function createNode() {
-  const valid = await createFormRef.value?.validate().catch(() => false)
-  if (!valid) return
-  const tags = createForm.tags_text
-    .split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
+  await actions.run('create-node', async () => {
+    const valid = await createFormRef.value?.validate().catch(() => false)
+    if (!valid) return
+    const tags = createForm.tags_text
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
 
-  try {
-    await api.createNode(String(route.params.configId), {
-      name: createForm.name,
-      ipv4_address: createForm.ipv4_address,
-      ipv6_address: createForm.ipv6_address,
-      listen_port: createForm.listen_port,
-      virtual_ip: createForm.virtual_ip,
-      mtu: createForm.mtu,
-      dns: createForm.dns,
-      auto_sync: createForm.auto_sync,
-      node_type: createForm.node_type,
-      public_key: createForm.public_key,
-      private_key: createForm.private_key,
-      tags,
-    })
-    createVisible.value = false
-    await load()
-    notify.success(t('configOverview.endpointCreated'))
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('configOverview.endpointCreateFailed'))
-  }
+    try {
+      await api.createNode(String(route.params.configId), {
+        name: createForm.name,
+        ipv4_address: createForm.ipv4_address,
+        ipv6_address: createForm.ipv6_address,
+        listen_port: createForm.listen_port,
+        virtual_ip: createForm.virtual_ip,
+        mtu: createForm.mtu,
+        dns: createForm.dns,
+        auto_sync: createForm.auto_sync,
+        node_type: createForm.node_type,
+        public_key: createForm.public_key,
+        private_key: createForm.private_key,
+        tags,
+      })
+      createVisible.value = false
+      await load()
+      notify.success(t('configOverview.endpointCreated'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('configOverview.endpointCreateFailed'))
+    }
+  })
 }
 
 function openNode(nodeId: string) {
@@ -473,10 +481,28 @@ onMounted(async () => {
   try {
     await load()
     realtime.connect()
+    lastRealtimeVersion = realtime.connectionVersion.value
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('configOverview.loadFailed'))
   }
 })
+
+watch(
+  () => realtime.connectionVersion.value,
+  async (nextVersion) => {
+    if (nextVersion <= 0) return
+    if (lastRealtimeVersion === 0) {
+      lastRealtimeVersion = nextVersion
+      return
+    }
+    lastRealtimeVersion = nextVersion
+    try {
+      await load()
+    } catch {
+      // Keep reconnect reconciliation silent.
+    }
+  },
+)
 </script>
 
 <template>
@@ -493,6 +519,8 @@ onMounted(async () => {
         <div class="cfg-actions">
           <el-switch
             :model-value="overview.config.enabled"
+            :loading="togglingConfigEnabled"
+            :disabled="togglingConfigEnabled"
             inline-prompt
             :active-text="t('common.enabled')"
             :inactive-text="t('common.disabled')"
@@ -664,11 +692,11 @@ onMounted(async () => {
           <div class="settings-danger-zone__title">{{ t('configOverview.deleteConfig') }}</div>
           <div class="settings-danger-zone__desc">{{ t('configOverview.deleteConfigDescription') }}</div>
         </div>
-        <el-button type="danger" plain @click="deleteConfig">{{ t('configOverview.deleteConfig') }}</el-button>
+        <el-button type="danger" plain :loading="deletingConfig" @click="deleteConfig">{{ t('configOverview.deleteConfig') }}</el-button>
       </div>
       <template #footer>
         <el-button @click="settingsVisible = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" @click="saveSettings">{{ t('common.save') }}</el-button>
+        <el-button type="primary" :loading="savingConfig" @click="saveSettings">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
 
@@ -696,7 +724,7 @@ onMounted(async () => {
           <el-form-item :label="t('nodeWorkspace.publicIpv6')"><el-input v-model="createForm.ipv6_address" :placeholder="t('nodeWorkspace.ipOrDomain')" /></el-form-item>
           <el-form-item :label="t('nodeWorkspace.virtualIp')" prop="virtual_ip" required>
             <el-input v-model="createForm.virtual_ip">
-              <template #append><el-button @click="autofillVirtualIp">{{ t('configOverview.recommend') }}</el-button></template>
+              <template #append><el-button :loading="suggestingNodeIp" @click="autofillVirtualIp">{{ t('configOverview.recommend') }}</el-button></template>
             </el-input>
           </el-form-item>
         </div>
@@ -705,11 +733,11 @@ onMounted(async () => {
         </el-form-item>
         <el-form-item :label="t('nodeWorkspace.privateKey')"><el-input v-model="createForm.private_key" type="textarea" /></el-form-item>
         <el-form-item :label="t('nodeWorkspace.publicKey')"><el-input v-model="createForm.public_key" type="textarea" /></el-form-item>
-        <el-button plain :icon="Key" @click="autofillKeys">{{ t('nodeWorkspace.generateKeys') }}</el-button>
+        <el-button plain :icon="Key" :loading="generatingNodeKeys" @click="autofillKeys">{{ t('nodeWorkspace.generateKeys') }}</el-button>
       </el-form>
       <template #footer>
         <el-button @click="createVisible = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" @click="createNode">{{ t('home.create') }}</el-button>
+        <el-button type="primary" :loading="creatingNode" @click="createNode">{{ t('home.create') }}</el-button>
       </template>
     </el-dialog>
 
@@ -725,7 +753,7 @@ onMounted(async () => {
 
         <div class="tag-create-panel">
           <el-input v-model="newTagName" :placeholder="t('configOverview.newTagName')" clearable @keyup.enter="createTag" />
-          <el-button type="primary" :icon="Plus" @click="createTag">{{ t('configOverview.createTag') }}</el-button>
+          <el-button type="primary" :icon="Plus" :loading="creatingTag" @click="createTag">{{ t('configOverview.createTag') }}</el-button>
         </div>
 
         <div class="tag-manager__split">
@@ -770,7 +798,7 @@ onMounted(async () => {
             >
               <el-option v-for="node in fullNodes" :key="node.id" :label="node.name" :value="node.id" />
             </el-select>
-            <el-button type="primary" class="tag-assign-button" @click="applySelectedTagToNodes">{{ t('configOverview.applyToNodes') }}</el-button>
+            <el-button type="primary" class="tag-assign-button" :loading="applyingTag" @click="applySelectedTagToNodes">{{ t('configOverview.applyToNodes') }}</el-button>
 
             <div class="tag-node-list">
               <div v-for="node in fullNodes" :key="node.id" class="tag-node-card">

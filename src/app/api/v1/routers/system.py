@@ -73,10 +73,14 @@ async def stream_events(request: Request, user: CurrentUserDep) -> StreamingResp
                     break
                 if await request.is_disconnected():
                     break
+                if subscription.closed and subscription.empty():
+                    break
                 timeout = max(0.0, next_clock - loop.time())
                 try:
                     event = await asyncio.wait_for(subscription.get(), timeout=timeout)
                 except asyncio.TimeoutError:
+                    if subscription.closed and subscription.empty():
+                        break
                     yield _sse_frame(
                         realtime_service.make_event(
                             "system.clock.sync",
@@ -88,6 +92,8 @@ async def stream_events(request: Request, user: CurrentUserDep) -> StreamingResp
                 if event is None:
                     break
                 yield _sse_frame(event)
+                if subscription.closed and subscription.empty():
+                    break
         except asyncio.CancelledError:
             raise
         except Exception:

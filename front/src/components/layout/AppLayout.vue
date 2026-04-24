@@ -1,14 +1,22 @@
 <script setup lang="ts">
 import { Files, House, InfoFilled, Setting, SwitchButton } from '@element-plus/icons-vue'
-import { computed, onMounted, shallowRef } from 'vue'
+import { computed, onMounted, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 
 import { api } from '@/api/modules'
+import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useRealtime } from '@/composables/useRealtime'
 import { useAuthStore } from '@/stores/auth'
 import { usePreferencesStore } from '@/stores/preferences'
-import type { ConfigListUpdatedPayload, ConfigRead, HealthRead, RealtimeEvent, SystemStatusRead } from '@/types/api'
+import type {
+  ConfigListUpdatedPayload,
+  ConfigOverviewUpdatedPayload,
+  ConfigRead,
+  HealthRead,
+  RealtimeEvent,
+  SystemStatusRead,
+} from '@/types/api'
 import { setSystemTimeZone } from '@/utils/dateTime'
 
 const route = useRoute()
@@ -16,16 +24,72 @@ const router = useRouter()
 const { t } = useI18n()
 const authStore = useAuthStore()
 const preferencesStore = usePreferencesStore()
+const actions = useAsyncActionGroup()
+const loggingOut = actions.isPending('logout')
 
 const configs = shallowRef<ConfigRead[]>([])
 const systemStatus = shallowRef<SystemStatusRead | null>(null)
 const health = shallowRef<HealthRead | null>(null)
+let lastRealtimeVersion = 0
+
+function patchConfig(configId: string, patch: Partial<ConfigRead>) {
+  configs.value = configs.value.map((config) => (config.id === configId ? { ...config, ...patch } : config))
+}
+
+function syncConfigTopologyFromSystemStatus(status: SystemStatusRead) {
+  const invalidMap = new Map(status.topology.invalid_configs.map((item) => [item.config_id, item.error_count]))
+  configs.value = configs.value.map((config) => ({
+    ...config,
+    topology_invalid: invalidMap.has(config.id),
+    topology_error_count: invalidMap.get(config.id) ?? 0,
+  }))
+}
+
+function patchSystemTopologyFromOverview(payload: ConfigOverviewUpdatedPayload) {
+  if (!systemStatus.value) return
+
+  const invalidConfigs = systemStatus.value.topology.invalid_configs.filter((item) => item.config_id !== payload.config_id)
+  if (payload.overview.config.enabled && !payload.overview.topology.valid) {
+    invalidConfigs.push({
+      config_id: payload.config_id,
+      config_name: payload.overview.config.name,
+      error_count: payload.overview.topology.error_count,
+      invalid_node_count: payload.overview.topology.invalid_node_count,
+      errors: payload.overview.topology.errors,
+    })
+  }
+
+  const invalidNodeCount = invalidConfigs.reduce((count, item) => count + item.invalid_node_count, 0)
+  systemStatus.value = {
+    ...systemStatus.value,
+    topology: {
+      valid: invalidConfigs.length === 0,
+      invalid_config_count: invalidConfigs.length,
+      invalid_node_count: invalidNodeCount,
+      invalid_configs: invalidConfigs,
+    },
+  }
+}
+
 const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type === 'config.list.updated') {
     configs.value = (event.payload as unknown as ConfigListUpdatedPayload).configs
   }
+  if (event.type === 'config.overview.updated' && event.payload) {
+    const payload = event.payload as unknown as ConfigOverviewUpdatedPayload
+    patchConfig(payload.config_id, {
+      name: payload.overview.config.name,
+      description: payload.overview.config.description,
+      enabled: payload.overview.config.enabled,
+      topology_invalid: !payload.overview.topology.valid && payload.overview.config.enabled,
+      topology_error_count: payload.overview.config.enabled ? payload.overview.topology.error_count : 0,
+      updated_at: payload.overview.config.updated_at,
+    })
+    patchSystemTopologyFromOverview(payload)
+  }
   if (event.type === 'system.status.updated' && event.payload) {
     systemStatus.value = event.payload as unknown as SystemStatusRead
+    syncConfigTopologyFromSystemStatus(systemStatus.value)
   }
 })
 
@@ -65,9 +129,11 @@ const systemStatusType = computed<'success' | 'warning' | 'info' | 'danger'>(() 
   if (!systemStatus.value) return 'info'
   if (systemStatus.value.topology.invalid_config_count > 0) return 'danger'
   if (systemStatus.value.services.mqtt === 'error') return 'warning'
+  if (systemStatus.value.services.mqtt === 'disabled') return 'info'
+  if (health.value?.dev_test_api_enabled) return 'success'
   if (systemStatus.value.summary.pending_sync_nodes > 0) return 'warning'
   if (systemStatus.value.summary.online_nodes > 0) return 'success'
-  return 'info'
+  return 'success'
 })
 const brandMeta = computed(() => (health.value?.version ? `${t('common.console')} · v${health.value.version}` : t('common.console')))
 
@@ -94,8 +160,10 @@ function isConfigActive(configId: string) {
 }
 
 async function handleLogout() {
-  await authStore.logout()
-  await router.push('/login')
+  await actions.run('logout', async () => {
+    await authStore.logout()
+    await router.push('/login')
+  })
 }
 
 onMounted(() => {
@@ -105,7 +173,21 @@ onMounted(() => {
   void loadHealth()
   void loadSystemTimezone()
   realtime.connect()
+  lastRealtimeVersion = realtime.connectionVersion.value
 })
+
+watch(
+  () => realtime.connectionVersion.value,
+  async (nextVersion) => {
+    if (nextVersion <= 0) return
+    if (lastRealtimeVersion === 0) {
+      lastRealtimeVersion = nextVersion
+      return
+    }
+    lastRealtimeVersion = nextVersion
+    await Promise.allSettled([loadConfigs(), loadSystemStatus(), loadHealth()])
+  },
+)
 </script>
 
 <template>
@@ -149,9 +231,9 @@ onMounted(() => {
         </div>
 
         <div class="sidebar-divider"></div>
-        <button class="sidebar-logout" @click="handleLogout">
+        <button class="sidebar-logout" :disabled="loggingOut" @click="handleLogout">
           <el-icon><SwitchButton /></el-icon>
-          <span>{{ t('layout.logout') }}</span>
+          <span>{{ loggingOut ? t('common.loading') : t('layout.logout') }}</span>
         </button>
       </nav>
 

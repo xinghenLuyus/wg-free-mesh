@@ -10,10 +10,9 @@ from datetime import UTC, datetime
 import aiomqtt
 
 from app.core.config import settings
-from app.domain.models import ControlStatus
 from app.repositories.sqlite import store
 from app.services.emqx_service import emqx_service
-from app.services.realtime_service import realtime_service
+from app.services.node_runtime_service import node_runtime_service
 
 
 class MqttIngressService:
@@ -24,6 +23,31 @@ class MqttIngressService:
         self._connected = False
         self._last_error = ""
         self._last_connected_at: str | None = None
+
+    async def _publish_system_status_update(self) -> None:
+        from app.services.control_plane_service import control_plane_service
+
+        await control_plane_service.publish_system_status()
+
+    async def _apply_status(
+        self,
+        *,
+        connected: bool | None = None,
+        last_error: str | None = None,
+        last_connected_at: str | None = None,
+    ) -> None:
+        changed = False
+        if connected is not None and self._connected != connected:
+            self._connected = connected
+            changed = True
+        if last_error is not None and self._last_error != last_error:
+            self._last_error = last_error
+            changed = True
+        if last_connected_at is not None and self._last_connected_at != last_connected_at:
+            self._last_connected_at = last_connected_at
+            changed = True
+        if changed:
+            await self._publish_system_status_update()
 
     def is_enabled(self) -> bool:
         if not settings.enable_mqtt_services:
@@ -71,7 +95,7 @@ class MqttIngressService:
                 pass
         self._task = None
         self._client = None
-        self._connected = False
+        await self._apply_status(connected=False)
 
     async def reconcile(self) -> None:
         if self.is_enabled():
@@ -82,28 +106,27 @@ class MqttIngressService:
     async def _run(self) -> None:
         while not self._stop_event.is_set():
             if not self.is_enabled():
-                self._connected = False
-                self._last_error = ""
+                await self._apply_status(connected=False, last_error="")
                 return
             try:
                 try:
                     response = await asyncio.to_thread(emqx_service.upsert_server_user)
                     if response.status_code >= 400:
-                        self._connected = False
-                        self._last_error = f"Failed to sync MQTT server user ({response.status_code})"
+                        await self._apply_status(
+                            connected=False,
+                            last_error=f"Failed to sync MQTT server user ({response.status_code})",
+                        )
                         await asyncio.sleep(5)
                         continue
                 except Exception:
-                    self._connected = False
-                    self._last_error = "Failed to sync MQTT server user"
+                    await self._apply_status(connected=False, last_error="Failed to sync MQTT server user")
                     await asyncio.sleep(5)
                     continue
                 await self._connect_once()
             except asyncio.CancelledError:
                 raise
             except Exception:
-                self._connected = False
-                self._last_error = "MQTT ingress connection loop failed"
+                await self._apply_status(connected=False, last_error="MQTT ingress connection loop failed")
                 await asyncio.sleep(5)
 
     async def _connect_once(self) -> None:
@@ -124,9 +147,7 @@ class MqttIngressService:
             tls_context=tls_context,
         ) as client:
             self._client = client
-            self._connected = True
-            self._last_error = ""
-            self._last_connected_at = datetime.now(UTC).isoformat()
+            await self._apply_status(connected=True, last_error="", last_connected_at=datetime.now(UTC).isoformat())
             for topic in (
                 "wfm/+/+/heartbeat",
                 "wfm/+/+/event",
@@ -138,7 +159,7 @@ class MqttIngressService:
             async for message in client.messages:
                 await self._handle_message(str(message.topic), bytes(message.payload))
         self._client = None
-        self._connected = False
+        await self._apply_status(connected=False)
 
     async def _handle_message(self, topic: str, payload: bytes) -> None:
         parts = topic.split("/")
@@ -150,52 +171,28 @@ class MqttIngressService:
         boot_id = str(body.get("boot_id") or "")
         session_id = str(body.get("session_id") or "")
         if kind == "heartbeat":
-            store.record_client_heartbeat(config_id, node_id, boot_id=boot_id, session_id=session_id)
+            await node_runtime_service.apply_heartbeat(config_id, node_id, boot_id=boot_id, session_id=session_id)
         elif kind == "event":
             raw_payload = body.get("payload")
             nested = raw_payload if isinstance(raw_payload, dict) else {}
             event = str(nested.get("event") or body.get("event") or "event")
             message = str(nested.get("message") or body.get("message") or "")
-            store.record_client_event(config_id, node_id, event=event, message=message, boot_id=boot_id, session_id=session_id)
-            log = store.append_client_event_log(
+            await node_runtime_service.apply_event(
                 config_id,
                 node_id,
-                summary=f"Client event: {event}",
-                detail=message,
-            )
-            await realtime_service.publish(
-                "control.log.created",
-                {"config_id": config_id, "node_id": node_id, "log": log.model_dump(mode="json")},
+                event=event,
+                message=message,
+                boot_id=boot_id,
+                session_id=session_id,
             )
         elif kind.endswith("/ack"):
-            store.record_client_heartbeat(config_id, node_id, boot_id=boot_id, session_id=session_id)
             if kind == "detect/ack":
-                store.record_detect_ack(config_id, node_id, boot_id=boot_id, session_id=session_id)
+                await node_runtime_service.apply_detect_ack(config_id, node_id, boot_id=boot_id, session_id=session_id)
+                return
             if kind == "control/ack":
-                await self._handle_control_ack(config_id, node_id, body)
-        await self._publish_node_state(config_id, node_id)
-
-    async def _handle_control_ack(self, config_id: str, node_id: str, body: dict[str, Any]) -> None:
-        request_id = str(body.get("request_id") or "")
-        if not request_id:
-            return
-        raw_payload = body.get("payload")
-        payload = raw_payload if isinstance(raw_payload, dict) else {}
-        status_text = str(payload.get("status") or "acked")
-        message = str(payload.get("message") or status_text)
-        action = str(payload.get("action") or "")
-        status = ControlStatus.failed if status_text == "failed" else ControlStatus.acked
-        try:
-            if status is ControlStatus.acked and action in {"start", "stop"}:
-                row = store.complete_control_log(request_id, status, message)
-                store.apply_control_action(row.config_id, row.node_id, action)
-            else:
-                row = store.complete_control_log(request_id, status, message)
-            await realtime_service.publish(
-                "control.log.updated",
-                {"config_id": config_id, "node_id": node_id, "log": row.model_dump(mode="json")},
-            )
-        except Exception:
+                await node_runtime_service.apply_control_ack(config_id, node_id, body)
+                return
+            await node_runtime_service.apply_generic_ack(config_id, node_id, boot_id=boot_id, session_id=session_id)
             return
 
     @staticmethod
@@ -207,14 +204,6 @@ class MqttIngressService:
         except Exception:
             return {}
         return parsed if isinstance(parsed, dict) else {}
-
-    async def _publish_node_state(self, config_id: str, node_id: str) -> None:
-        from app.services.control_plane_service import control_plane_service
-
-        try:
-            await control_plane_service.publish_runtime_scope(config_id, node_id)
-        except Exception:
-            return
 
     async def publish_to_node(
         self,

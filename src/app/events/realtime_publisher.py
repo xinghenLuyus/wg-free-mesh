@@ -10,6 +10,8 @@ class RealtimePublisher:
         self.control_plane = control_plane
 
     async def publish(self, plan: PublishPlan) -> None:
+        if plan.refresh_system_status:
+            await self.control_plane.publish_system_status()
         if plan.refresh_configs:
             await self.control_plane.publish_configs()
         for config_id in sorted(plan.config_overview_ids):
@@ -20,5 +22,3 @@ class RealtimePublisher:
             await self.control_plane.publish_node_apply(config_id, node_id)
         for config_id, node_id in sorted(plan.mesh_workspaces):
             await self.control_plane.publish_mesh_workspace(config_id, node_id)
-        if plan.refresh_system_status:
-            await self.control_plane.publish_system_status()

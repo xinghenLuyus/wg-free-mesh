@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { EditPen, Key, Plus } from '@element-plus/icons-vue'
+import { Delete, EditPen, Key, Plus } from '@element-plus/icons-vue'
+import { ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -7,6 +8,7 @@ import { useRoute } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useRealtime } from '@/composables/useRealtime'
 import type {
   MeshWorkspaceUpdatedPayload,
@@ -23,6 +25,10 @@ import { notify } from '@/utils/notify'
 
 const route = useRoute()
 const { t } = useI18n()
+const actions = useAsyncActionGroup()
+const creatingConnection = actions.isPending('submit-connection')
+const generatingPsk = actions.isPending('generate-psk')
+const deletingConnection = actions.isPending('delete-connection')
 
 type EndpointMode = 'auto' | 'none' | 'manual'
 type EndpointFamily = 'ipv4' | 'ipv6'
@@ -133,15 +139,27 @@ const endpointModeLabel = computed<Record<EndpointMode, string>>(() => ({
   manual: t('mesh.manual'),
 }))
 
+function connectionToggleKey(linkGroupId: string) {
+  return `toggle-connection:${linkGroupId}`
+}
+
+function connectionToggleLoading(linkGroupId: string) {
+  return actions.hasPending(connectionToggleKey(linkGroupId))
+}
+
 function nodeTypeLabel(type: NodeRead['node_type']) {
   return type === 'static' ? t('nodeWorkspace.staticNode') : t('nodeWorkspace.dynamicNode')
 }
 
+function nodeNameById(nodeId: string | null | undefined) {
+  if (!nodeId) return t('mesh.peerNode')
+  if (nodeId === currentNodeId.value) return currentNode.value?.name || t('mesh.currentNode')
+  return nodes.value.find((item) => item.id === nodeId)?.name || nodeId
+}
+
 function directionTitle(direction: MeshConnectionDirectionRead | null, fallback: string) {
   if (!direction) return fallback
-  const local = direction.local_node_id === currentNodeId.value ? currentNode.value : selectedPeer.value
-  const peer = direction.peer_node_id === currentNodeId.value ? currentNode.value : selectedPeer.value
-  return `${local?.name || t('mesh.localNode')} -> ${peer?.name || t('mesh.peerNode')}`
+  return `${nodeNameById(direction.local_node_id)} -> ${nodeNameById(direction.peer_node_id)}`
 }
 
 function endpointSummary(summary: string | undefined, mode: EndpointMode, host: string, port: number | null) {
@@ -277,13 +295,15 @@ function openEdit(connection: MeshConnectionRead) {
 }
 
 async function generatePsk() {
-  try {
-    const result = await api.generatePresharedKey()
-    form.preshared_key = result.preshared_key
-    notify.success(t('mesh.pskGenerated'))
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('mesh.pskFailed'))
-  }
+  await actions.run('generate-psk', async () => {
+    try {
+      const result = await api.generatePresharedKey()
+      form.preshared_key = result.preshared_key
+      notify.success(t('mesh.pskGenerated'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('mesh.pskFailed'))
+    }
+  })
 }
 
 function buildPayload() {
@@ -331,42 +351,76 @@ function directionPayload(direction: MeshConnectionDirectionRead) {
 }
 
 async function toggleConnection(connection: MeshConnectionRead, enabled: boolean) {
-  if (!connection.reverse) {
+  const reverse = connection.reverse
+  if (!reverse) {
     notify.error(t('mesh.missingReverse'))
     return
   }
-  try {
-    await api.updatePeerLinkGroup(connection.link_group_id, {
-      enabled,
-      notes: connection.notes,
-      preshared_key: connection.preshared_key || null,
-      forward: directionPayload(connection.forward),
-      reverse: directionPayload(connection.reverse),
-    })
-    await load()
-    notify.success(enabled ? t('mesh.peerEnabled') : t('mesh.peerDisabled'))
-  } catch (error) {
-    await load()
-    notify.error(error instanceof ApiClientError ? error.message : t('mesh.peerStateSaveFailed'))
-  }
+  await actions.run(connectionToggleKey(connection.link_group_id), async () => {
+    try {
+      await api.updatePeerLinkGroup(connection.link_group_id, {
+        enabled,
+        notes: connection.notes,
+        preshared_key: connection.preshared_key || null,
+        forward: directionPayload(connection.forward),
+        reverse: directionPayload(reverse),
+      })
+      await load()
+      notify.success(enabled ? t('mesh.peerEnabled') : t('mesh.peerDisabled'))
+    } catch (error) {
+      await load()
+      notify.error(error instanceof ApiClientError ? error.message : t('mesh.peerStateSaveFailed'))
+    }
+  })
 }
 
 async function submit() {
-  const valid = await formRef.value?.validate().catch(() => false)
-  if (!valid) return
-  try {
-    if (dialogMode.value === 'create') {
-      await api.createPeerLink(String(route.params.configId), buildPayload())
-      notify.success(t('mesh.created'))
-    } else if (editingConnection.value) {
-      await api.updatePeerLinkGroup(editingConnection.value.link_group_id, buildPayload())
-      notify.success(t('mesh.saved'))
+  await actions.run('submit-connection', async () => {
+    const valid = await formRef.value?.validate().catch(() => false)
+    if (!valid) return
+    try {
+      if (dialogMode.value === 'create') {
+        await api.createPeerLink(String(route.params.configId), buildPayload())
+        notify.success(t('mesh.created'))
+      } else if (editingConnection.value) {
+        await api.updatePeerLinkGroup(editingConnection.value.link_group_id, buildPayload())
+        notify.success(t('mesh.saved'))
+      }
+      dialogVisible.value = false
+      await load()
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('mesh.saveFailed'))
     }
-    dialogVisible.value = false
-    await load()
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('mesh.saveFailed'))
+  })
+}
+
+async function deleteConnection() {
+  if (!editingConnection.value) return
+  try {
+    await ElMessageBox.confirm(
+      t('mesh.deleteConnectionConfirm'),
+      t('mesh.deleteConnectionTitle'),
+      {
+        type: 'warning',
+        confirmButtonText: t('common.delete'),
+        cancelButtonText: t('common.cancel'),
+      },
+    )
+  } catch {
+    return
   }
+
+  await actions.run('delete-connection', async () => {
+    try {
+      await api.deletePeerLinkGroup(editingConnection.value!.link_group_id)
+      dialogVisible.value = false
+      editingConnection.value = null
+      await load()
+      notify.success(t('mesh.deleted'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('mesh.deleteFailed'))
+    }
+  })
 }
 
 watch(
@@ -414,13 +468,19 @@ onMounted(async () => {
           v-for="connection in connections"
           :key="connection.link_group_id"
           class="mesh-card"
-          :class="{ 'mesh-card--disabled': !connection.enabled, 'mesh-card--broken': connection.integrity_status === 'broken' }"
+          :class="{
+            'mesh-card--disabled': !connection.enabled,
+            'mesh-card--broken': connection.integrity_status === 'broken' || connection.duplicate_enabled_pair,
+          }"
         >
           <section class="mesh-direction">
             <div class="mesh-direction__head">
               <div class="mesh-direction__identity">
                 <div class="mesh-direction__title-row">
                   <div class="mesh-direction__title">{{ directionTitle(connection.forward, t('mesh.localToPeer')) }}</div>
+                  <el-tag v-if="connection.duplicate_enabled_pair" type="danger" size="small">
+                    {{ t('mesh.duplicateLinkPair') }}
+                  </el-tag>
                   <el-tag v-if="connection.integrity_status === 'broken'" type="danger" size="small">
                     {{ t('mesh.connectionBroken') }}
                   </el-tag>
@@ -431,6 +491,9 @@ onMounted(async () => {
                 <p v-if="connection.integrity_status === 'broken' && connection.integrity_message" class="mesh-direction__integrity">
                   {{ meshText(connection.integrity_message) }}
                 </p>
+                <p v-if="connection.duplicate_enabled_pair && connection.duplicate_message" class="mesh-direction__integrity">
+                  {{ meshText(connection.duplicate_message) }}
+                </p>
               </div>
               <div class="mesh-direction__actions">
                 <div class="peer-switch">
@@ -438,6 +501,8 @@ onMounted(async () => {
                   <el-switch
                     size="small"
                     :model-value="connection.enabled"
+                    :loading="connectionToggleLoading(connection.link_group_id)"
+                    :disabled="connectionToggleLoading(connection.link_group_id)"
                     @change="(value: boolean | string | number) => toggleConnection(connection, Boolean(value))"
                   />
                 </div>
@@ -579,7 +644,7 @@ onMounted(async () => {
           <el-form-item :label="t('mesh.psk')">
             <el-input v-model="form.preshared_key" :placeholder="t('mesh.nullable')">
               <template #append>
-                <el-button :icon="Key" @click="generatePsk">{{ t('mesh.autoGenerate') }}</el-button>
+                <el-button :icon="Key" :loading="generatingPsk" @click="generatePsk">{{ t('mesh.autoGenerate') }}</el-button>
               </template>
             </el-input>
           </el-form-item>
@@ -594,8 +659,18 @@ onMounted(async () => {
         </section>
       </el-form>
       <template #footer>
+        <el-button
+          v-if="dialogMode === 'edit'"
+          type="danger"
+          plain
+          :icon="Delete"
+          :loading="deletingConnection"
+          @click="deleteConnection"
+        >
+          {{ t('common.delete') }}
+        </el-button>
         <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" @click="submit">{{ submitText }}</el-button>
+        <el-button type="primary" :loading="creatingConnection" @click="submit">{{ submitText }}</el-button>
       </template>
     </el-dialog>
   </section>

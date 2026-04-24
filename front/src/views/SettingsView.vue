@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useRealtime } from '@/composables/useRealtime'
 import { SUPPORTED_LOCALES } from '@/i18n'
 import { useAuthStore } from '@/stores/auth'
@@ -26,6 +27,12 @@ import { notify } from '@/utils/notify'
 const { t } = useI18n()
 const authStore = useAuthStore()
 const preferencesStore = usePreferencesStore()
+const actions = useAsyncActionGroup()
+const savingPassword = actions.isPending('save-password')
+const savingMqtt = actions.isPending('save-mqtt')
+const testingMqtt = actions.isPending('test-mqtt')
+const creatingSnapshot = actions.isPending('create-snapshot')
+const importingSnapshot = actions.isPending('import-snapshot')
 const mqttForm = reactive({
   enabled: true,
   host: '',
@@ -149,61 +156,69 @@ async function saveThemeMode(themeMode: AppThemeMode) {
 }
 
 async function saveMqtt() {
-  const valid = await mqttFormRef.value?.validate().catch(() => false)
-  if (!valid) return
-  try {
-    Object.assign(mqttForm, await api.updateMqttSettings({ ...mqttForm }))
-    notify.success(t('settings.mqttSaved'))
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('settings.mqttSaveFailed'))
-  }
+  await actions.run('save-mqtt', async () => {
+    const valid = await mqttFormRef.value?.validate().catch(() => false)
+    if (!valid) return
+    try {
+      Object.assign(mqttForm, await api.updateMqttSettings({ ...mqttForm }))
+      notify.success(t('settings.mqttSaved'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('settings.mqttSaveFailed'))
+    }
+  })
 }
 
 async function testMqtt() {
-  const valid = await mqttFormRef.value?.validate().catch(() => false)
-  if (!valid) return
-  try {
-    const result = await api.testMqttSettings({ ...mqttForm })
-    const message = `${result.success ? t('settings.connectionSuccess') : t('settings.connectionFailed')} / ${result.message}`
-    if (result.success) {
-      notify.success(message)
-    } else {
-      notify.error(message)
+  await actions.run('test-mqtt', async () => {
+    const valid = await mqttFormRef.value?.validate().catch(() => false)
+    if (!valid) return
+    try {
+      const result = await api.testMqttSettings({ ...mqttForm })
+      const message = `${result.success ? t('settings.connectionSuccess') : t('settings.connectionFailed')} / ${result.message}`
+      if (result.success) {
+        notify.success(message)
+      } else {
+        notify.error(message)
+      }
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('settings.mqttTestFailed'))
     }
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('settings.mqttTestFailed'))
-  }
+  })
 }
 
 async function savePassword() {
-  const valid = await passwordFormRef.value?.validate().catch(() => false)
-  if (!valid) return
-  try {
-    await authStore.changePassword(passwordForm.current_password, passwordForm.new_password)
-    passwordResetting.value = true
-    passwordForm.current_password = ''
-    passwordForm.new_password = ''
-    await nextTick()
-    passwordFormRef.value?.clearValidate()
-    window.setTimeout(() => {
-      passwordResetting.value = false
+  await actions.run('save-password', async () => {
+    const valid = await passwordFormRef.value?.validate().catch(() => false)
+    if (!valid) return
+    try {
+      await authStore.changePassword(passwordForm.current_password, passwordForm.new_password)
+      passwordResetting.value = true
+      passwordForm.current_password = ''
+      passwordForm.new_password = ''
+      await nextTick()
       passwordFormRef.value?.clearValidate()
-    }, 0)
-    notify.success(t('settings.passwordSaved'))
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('settings.passwordFailed'))
-  }
+      window.setTimeout(() => {
+        passwordResetting.value = false
+        passwordFormRef.value?.clearValidate()
+      }, 0)
+      notify.success(t('settings.passwordSaved'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('settings.passwordFailed'))
+    }
+  })
 }
 
 async function createSnapshot() {
   const note = await promptSnapshotNote('')
   if (note === null) return
-  try {
-    await api.createSnapshot(note)
-    notify.success(t('settings.snapshotCreated'))
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotCreateFailed'))
-  }
+  await actions.run('create-snapshot', async () => {
+    try {
+      await api.createSnapshot(note)
+      notify.success(t('settings.snapshotCreated'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotCreateFailed'))
+    }
+  })
 }
 
 async function editSnapshotNote(snapshot: SnapshotRead) {
@@ -243,12 +258,14 @@ async function handleSnapshotImport(event: Event) {
   const file = input.files?.[0]
   input.value = ''
   if (!file) return
-  try {
-    await api.importSnapshot(file)
-    notify.success(t('settings.snapshotImported'))
-  } catch (error) {
-    notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotImportFailed'))
-  }
+  await actions.run('import-snapshot', async () => {
+    try {
+      await api.importSnapshot(file)
+      notify.success(t('settings.snapshotImported'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotImportFailed'))
+    }
+  })
 }
 
 async function restoreSnapshot(snapshotId: string) {
@@ -410,7 +427,7 @@ onMounted(async () => {
             autocomplete="new-password"
           />
         </el-form-item>
-        <el-button type="primary" :icon="Check" @click="savePassword">{{ t('settings.passwordSubmit') }}</el-button>
+        <el-button type="primary" :icon="Check" :loading="savingPassword" @click="savePassword">{{ t('settings.passwordSubmit') }}</el-button>
       </el-form>
     </article>
 
@@ -445,8 +462,8 @@ onMounted(async () => {
         </div>
 
         <div class="action-row">
-          <el-button type="primary" :icon="Check" @click="saveMqtt">{{ t('settings.saveMqtt') }}</el-button>
-          <el-button :icon="Connection" @click="testMqtt">{{ t('settings.testConnection') }}</el-button>
+          <el-button type="primary" :icon="Check" :loading="savingMqtt" @click="saveMqtt">{{ t('settings.saveMqtt') }}</el-button>
+          <el-button :icon="Connection" :loading="testingMqtt" @click="testMqtt">{{ t('settings.testConnection') }}</el-button>
         </div>
       </el-form>
     </article>
@@ -462,8 +479,8 @@ onMounted(async () => {
         </div>
         <div class="settings-card__head-actions">
           <input ref="snapshotImportInput" class="snapshot-import-input" type="file" accept=".zip,application/zip" @change="handleSnapshotImport" />
-          <el-button :icon="Upload" @click="openSnapshotImport">{{ t('settings.importSnapshot') }}</el-button>
-          <el-button type="primary" :icon="Plus" @click="createSnapshot">{{ t('settings.createSnapshot') }}</el-button>
+          <el-button :icon="Upload" :loading="importingSnapshot" @click="openSnapshotImport">{{ t('settings.importSnapshot') }}</el-button>
+          <el-button type="primary" :icon="Plus" :loading="creatingSnapshot" @click="createSnapshot">{{ t('settings.createSnapshot') }}</el-button>
         </div>
       </div>
 

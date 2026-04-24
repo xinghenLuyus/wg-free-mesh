@@ -17,6 +17,7 @@
   - Mesh Endpoint 解析、keepalive 展示、拓扑校验代理、`.conf` 文件路径与落盘 helper。
 - `sqlite_runtime_state.py`
   - 运行态快照、端点控制日志、控制 ACK 回写、端点状态聚合。
+  - 端点命令行回显日志按节点硬性保留最近 20 条，新日志入库后自动清理更老记录，防止表持续膨胀。
 - `sqlite_sync_settings.py`
   - WireGuard 配置预览与同步、下载包、系统设置、密码、密钥生成、系统状态与配置概览聚合。
 - `snapshot_repository.py`

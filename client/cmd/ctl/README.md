@@ -7,3 +7,9 @@
 - `wfmctl bind --server <url> --token <token>`
 - `wfmctl list`
 
+## 构建
+
+```powershell
+cd D:\wenjian\stepsave\project\wg-free-mesh\client
+go build -o .\bin\wfmctl.exe .\cmd\ctl
+```
