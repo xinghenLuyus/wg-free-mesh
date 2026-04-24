@@ -74,6 +74,8 @@ async def save_applied_conf(config_id: str, node_id: str, payload: AppliedConfRe
     result = control_plane_service.save_applied_conf(config_id, node_id, payload.content)
     await control_plane_service.publish_node_apply(config_id, node_id)
     await control_plane_service.publish_node_workspace(config_id, node_id)
+    await control_plane_service.publish_config_overview(config_id)
+    await control_plane_service.publish_system_status()
     return ok(result)
 
 

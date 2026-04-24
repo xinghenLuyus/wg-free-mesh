@@ -107,7 +107,7 @@ def list_nodes(config_id: str) -> ApiResponse[list[dict[str, Any]]]:
 @router.post("/configs/{config_id}/nodes")
 async def create_node(config_id: str, payload: NodeRequest) -> ApiResponse[dict[str, Any]]:
     node = control_plane_service.create_node(config_id, payload.model_dump())
-    await control_plane_service.publish_plan(control_plane_service.plan_for_node_change(config_id, [node.id]))
+    await control_plane_service.schedule_config_refresh(config_id, control_plane_service.plan_for_node_change(config_id, [node.id]))
     return ok(node.model_dump(mode="json"))
 
 
@@ -121,7 +121,10 @@ async def update_node(node_id: str, payload: NodeRequest) -> ApiResponse[dict[st
     result = control_plane_service.update_node(node_id, payload.model_dump())
     node_config_id = str(result["config_id"])
     affected_node_ids = [str(item) for item in result.get("affected_node_ids", [result["id"]])]
-    await control_plane_service.publish_plan(control_plane_service.plan_for_node_change(node_config_id, affected_node_ids))
+    await control_plane_service.schedule_config_refresh(
+        node_config_id,
+        control_plane_service.plan_for_node_change(node_config_id, affected_node_ids),
+    )
     return ok(result)
 
 
@@ -179,7 +182,7 @@ async def remove_tag_from_node(
 async def delete_node(node_id: str) -> ApiResponse[dict[str, str]]:
     node = control_plane_service.get_node(node_id)
     control_plane_service.delete_node(node_id)
-    await control_plane_service.publish_plan(control_plane_service.plan_for_node_change(node.config_id, []))
+    await control_plane_service.schedule_config_refresh(node.config_id, control_plane_service.plan_for_node_change(node.config_id, []))
     return ok({"message": "Node deleted"})
 
 

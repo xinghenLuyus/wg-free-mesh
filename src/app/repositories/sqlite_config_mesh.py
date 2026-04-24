@@ -47,7 +47,7 @@ from app.services.topology_service import topology_service
 
 
 class SQLiteConfigMeshMixin:
-    def list_configs(self) -> list[Config]:
+    def _list_configs_base(self) -> list[Config]:
         with connect() as connection:
             rows = connection.execute(
                 """
@@ -61,8 +61,60 @@ class SQLiteConfigMeshMixin:
                 ORDER BY configs.created_at DESC
                 """
             ).fetchall()
-        configs = [_config_from_row(row) for row in rows]
-        return config_list_projection.project(configs, self._topology_issue_summary)
+        return [_config_from_row(row) for row in rows]
+
+    def _list_nodes_for_configs(self, config_ids: Sequence[str]) -> list[Node]:
+        ids = [config_id for config_id in config_ids if config_id]
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        with connect() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM nodes WHERE config_id IN ({placeholders}) ORDER BY created_at ASC",
+                tuple(ids),
+            ).fetchall()
+        return [_node_from_row(row) for row in rows]
+
+    def _list_peer_links_for_configs(self, config_ids: Sequence[str]) -> list[PeerLink]:
+        ids = [config_id for config_id in config_ids if config_id]
+        if not ids:
+            return []
+        placeholders = ",".join("?" for _ in ids)
+        with connect() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM peer_links WHERE config_id IN ({placeholders}) ORDER BY created_at ASC",
+                tuple(ids),
+            ).fetchall()
+        return [_peer_link_from_row(row) for row in rows]
+
+    def _topology_summaries_for_prefetched(
+        self,
+        configs: Sequence[Config],
+        nodes: Sequence[Node],
+        links: Sequence[PeerLink],
+    ) -> dict[str, dict[str, object]]:
+        nodes_by_config: dict[str, list[Node]] = {}
+        for node in nodes:
+            nodes_by_config.setdefault(node.config_id, []).append(node)
+        links_by_config: dict[str, list[PeerLink]] = {}
+        for link in links:
+            links_by_config.setdefault(link.config_id, []).append(link)
+        return {
+            config.id: topology_service.summarize(
+                config,
+                nodes_by_config.get(config.id, []),
+                links_by_config.get(config.id, []),
+            )
+            for config in configs
+        }
+
+    def list_configs(self) -> list[Config]:
+        configs = self._list_configs_base()
+        config_ids = [config.id for config in configs]
+        nodes = self._list_nodes_for_configs(config_ids)
+        links = self._list_peer_links_for_configs(config_ids)
+        topology_by_config = self._topology_summaries_for_prefetched(configs, nodes, links)
+        return config_list_projection.project(configs, lambda config_id: topology_by_config.get(config_id, {"valid": True, "error_count": 0}))
 
     def get_config(self, config_id: str) -> Config:
         with connect() as connection:
@@ -178,7 +230,6 @@ class SQLiteConfigMeshMixin:
                 change_hints.append({"code": "CONFIG_ENDPOINTS_RECALCULATED", "level": "info", "count": len(recalculated_node_ids)})
                 affected_node_ids.update(recalculated_node_ids)
 
-        self.refresh_config_state(config_id)
         config = self.get_config(config_id)
         return {
             **config.model_dump(mode="json"),
@@ -335,7 +386,6 @@ class SQLiteConfigMeshMixin:
                     now,
                 ),
             )
-        self.refresh_config_state(config_id)
         return self.get_node(node.id)
 
     def update_node(self, node_id: str, payload: dict[str, object]) -> dict[str, object]:
@@ -397,7 +447,6 @@ class SQLiteConfigMeshMixin:
                     f"UPDATE peer_links SET persistent_keepalive = NULL, updated_at = ? WHERE id IN ({placeholders})",
                     (updated.updated_at.isoformat(), *keepalive_clear_ids),
                 )
-        self.refresh_config_state(current.config_id)
         node = self.get_node(node_id)
         return {
             **node.model_dump(mode="json"),
@@ -435,7 +484,6 @@ class SQLiteConfigMeshMixin:
             connection.execute("UPDATE nodes SET tags_json = ?, updated_at = ? WHERE id = ?", (json.dumps(updated_tags, ensure_ascii=True), now, node_id))
             for tag in updated_tags:
                 connection.execute("INSERT OR IGNORE INTO config_tags (config_id, name, created_at) VALUES (?, ?, ?)", (current.config_id, tag, now))
-        self.refresh_config_state(current.config_id)
         return self.get_node(node_id)
 
     def apply_tag_to_nodes(self, config_id: str, tag: str, node_ids: list[str]) -> list[Node]:
@@ -457,7 +505,6 @@ class SQLiteConfigMeshMixin:
                 node = nodes_by_id[node_id]
                 tags = normalize_tags([*node.tags, normalized_tag])
                 connection.execute("UPDATE nodes SET tags_json = ?, updated_at = ? WHERE id = ?", (json.dumps(tags, ensure_ascii=True), now, node_id))
-        self.refresh_config_state(config_id)
         return [self.get_node(node_id) for node_id in requested_ids]
 
     def remove_tag_from_node(self, node_id: str, tag: str) -> Node:
@@ -477,15 +524,12 @@ class SQLiteConfigMeshMixin:
             for node in affected:
                 tags = normalize_tags([item for item in node.tags if item != normalized_tag])
                 connection.execute("UPDATE nodes SET tags_json = ?, updated_at = ? WHERE id = ?", (json.dumps(tags, ensure_ascii=True), now, node.id))
-        if affected:
-            self.refresh_config_state(config_id)
         return len(affected)
 
     def delete_node(self, node_id: str) -> None:
         node = self.get_node(node_id)
         with connect() as connection:
             connection.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
-        self.refresh_config_state(node.config_id)
 
     def list_peer_links(self, config_id: str) -> list[PeerLink]:
         self.get_config(config_id)
@@ -656,7 +700,6 @@ class SQLiteConfigMeshMixin:
                         now,
                     ),
                 )
-        self.refresh_config_state(config_id)
         return [item for item in self.list_peer_links(config_id) if item.link_group_id == group_id]
 
     def update_peer_link_group(self, group_id: str, payload: dict[str, object]) -> list[PeerLink]:
@@ -694,7 +737,6 @@ class SQLiteConfigMeshMixin:
                         row["id"],
                     ),
                 )
-        self.refresh_config_state(config_id)
         return [item for item in self.list_peer_links(config_id) if item.link_group_id == group_id]
 
     def delete_peer_link_group(self, group_id: str) -> None:
@@ -704,4 +746,3 @@ class SQLiteConfigMeshMixin:
                 raise AppError("PEER_LINK_NOT_FOUND", "Peer link group not found", 404)
             config_id = row["config_id"]
             connection.execute("DELETE FROM peer_links WHERE link_group_id = ?", (group_id,))
-        self.refresh_config_state(config_id)

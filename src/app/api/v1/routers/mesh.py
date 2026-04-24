@@ -164,7 +164,10 @@ def peer_link_draft(
 async def create_peer_link_group(config_id: str, payload: PeerLinkGroupRequest) -> ApiResponse[list[dict[str, Any]]]:
     items = control_plane_service.create_peer_link_group(config_id, payload.model_dump())
     affected = {payload.forward.local_node_id, payload.reverse.local_node_id}
-    await control_plane_service.publish_plan(control_plane_service.plan_for_mesh_change(config_id, affected))
+    await control_plane_service.schedule_config_refresh(
+        config_id,
+        control_plane_service.plan_for_mesh_change(config_id, affected),
+    )
     return ok([item.model_dump(mode="json") for item in items])
 
 
@@ -173,7 +176,10 @@ async def update_peer_link_group(group_id: str, payload: PeerLinkGroupRequest) -
     items = control_plane_service.update_peer_link_group(group_id, payload.model_dump())
     config_id = control_plane_service.get_node(payload.forward.local_node_id).config_id
     affected = {payload.forward.local_node_id, payload.reverse.local_node_id}
-    await control_plane_service.publish_plan(control_plane_service.plan_for_mesh_change(config_id, affected))
+    await control_plane_service.schedule_config_refresh(
+        config_id,
+        control_plane_service.plan_for_mesh_change(config_id, affected),
+    )
     return ok([item.model_dump(mode="json") for item in items])
 
 
@@ -181,7 +187,10 @@ async def update_peer_link_group(group_id: str, payload: PeerLinkGroupRequest) -
 async def delete_peer_link_group(group_id: str) -> ApiResponse[dict[str, str]]:
     config_id, affected = control_plane_service.peer_link_group_context(group_id)
     control_plane_service.delete_peer_link_group(group_id)
-    await control_plane_service.publish_plan(control_plane_service.plan_for_mesh_change(config_id, affected))
+    await control_plane_service.schedule_config_refresh(
+        config_id,
+        control_plane_service.plan_for_mesh_change(config_id, affected),
+    )
     return ok({"message": "Peer link group deleted"})
 
 

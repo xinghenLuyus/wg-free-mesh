@@ -10,6 +10,8 @@
 - `control_plane_service.py`
   - `ControlPlaneService`：控制平面主服务，统一编排配置、节点、Mesh、同步态、运行态、快照、MQTT 设置，并把实时发布委托给统一发布计划。
   - 节点类型切换时负责把“动态节点专属资源”收口到后端：回收 MQTT 凭据、重置客户端状态、把运行态归零，避免静态节点残留在线脏状态。
+  - 配置、节点、Mesh 的写操作不再在仓储层内联执行整配置重算，而是交给控制平面的后台重算队列合并调度；同一配置短时间内多次变更会合并成一轮 `refresh_config_state(...) + publish_plan(...)`。
+  - 写操作会立即失效对应配置投影；配置重算排队或运行期间，详情读取会绕过旧缓存，避免前端在后台重算完成前读到过期开关状态。
   - `test_mqtt_settings(...)`：对 MQTT Host、Port、TLS 发起真实 TCP / TLS 连通性测试。
 - `snapshot_service.py`
   - `SnapshotService`：负责快照压缩包创建、恢复、导入、导出、备注 manifest 同步和磁盘索引重建。
@@ -30,6 +32,10 @@
   - `NodeRuntimeService`：统一收口节点在线/离线、客户端事件、探测 ACK、控制 ACK 和对应的运行态实时发布。
   - MQTT 入站不再自己直接拼装多组 SSE 事件，避免“写库逻辑”和“页面刷新逻辑”继续耦合。
   - 运行态实时发布默认只发送三类权威快照：`endpoint.status.updated`、`runtime.snapshot.updated`、`system.status.updated`。
+- `config_projection_service.py`
+  - `ConfigProjectionService`：集中生成单配置投影快照，统一收口 `config_overview + tags`，给后台重算发布链路和系统状态汇总复用。
+- `system_projection_service.py`
+  - `SystemProjectionService`：基于配置级投影快照汇总系统状态，避免每次 SSE 发布都重新走全库现算。
 - `config_service.py`
   - `ConfigService`：配置相关兼容入口。
 - `node_service.py`

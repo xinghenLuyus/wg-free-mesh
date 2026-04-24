@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import ssl
+import logging
 from time import perf_counter
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,8 +16,12 @@ from app.domain.models import ControlStatus, NodeType
 from app.events.publish_plan import PublishPlan
 from app.events.realtime_publisher import RealtimePublisher
 from app.repositories.sqlite import store
+from app.services.config_projection_service import ConfigProjectionSnapshot, config_projection_service
 from app.services.realtime_service import realtime_service
 from app.services.snapshot_service import snapshot_service
+from app.services.system_projection_service import system_projection_service
+
+logger = logging.getLogger(__name__)
 
 
 def _dump_model(value: object) -> dict[str, Any]:
@@ -32,6 +37,133 @@ def _iso_datetime(value: object) -> str | None:
 class ControlPlaneService:
     def __init__(self) -> None:
         self.publisher = RealtimePublisher(self)
+        self._refresh_queue: asyncio.Queue[str] | None = None
+        self._refresh_task: asyncio.Task[None] | None = None
+        self._refresh_lock = asyncio.Lock()
+        self._pending_refresh_plans: dict[str, PublishPlan] = {}
+        self._queued_refresh_ids: set[str] = set()
+        self._running_refresh_ids: set[str] = set()
+        self._config_projection_cache: dict[str, ConfigProjectionSnapshot] = {}
+
+    def startup(self) -> None:
+        if self._refresh_task and not self._refresh_task.done():
+            return
+        self._refresh_queue = asyncio.Queue()
+        self._pending_refresh_plans.clear()
+        self._queued_refresh_ids.clear()
+        self._running_refresh_ids.clear()
+        self._config_projection_cache.clear()
+        self._refresh_task = asyncio.create_task(self._refresh_worker(), name="config-refresh-worker")
+
+    async def shutdown(self) -> None:
+        task = self._refresh_task
+        self._refresh_task = None
+        self._refresh_queue = None
+        self._pending_refresh_plans.clear()
+        self._queued_refresh_ids.clear()
+        self._running_refresh_ids.clear()
+        self._config_projection_cache.clear()
+        if task is None:
+            return
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    def _merge_publish_plan(self, target: PublishPlan, incoming: PublishPlan) -> None:
+        target.refresh_configs = target.refresh_configs or incoming.refresh_configs
+        target.refresh_system_status = target.refresh_system_status or incoming.refresh_system_status
+        target.config_overview_ids.update(incoming.config_overview_ids)
+        target.node_workspaces.update(incoming.node_workspaces)
+        target.node_applies.update(incoming.node_applies)
+        target.mesh_workspaces.update(incoming.mesh_workspaces)
+
+    async def _refresh_worker(self) -> None:
+        assert self._refresh_queue is not None
+        while True:
+            config_id = await self._refresh_queue.get()
+            async with self._refresh_lock:
+                self._queued_refresh_ids.discard(config_id)
+                plan = self._pending_refresh_plans.pop(config_id, PublishPlan())
+                self._running_refresh_ids.add(config_id)
+            try:
+                await asyncio.to_thread(store.refresh_config_state, config_id)
+                snapshot = await asyncio.to_thread(config_projection_service.build, config_id)
+                self._config_projection_cache[config_id] = snapshot
+                await self.publish_plan(
+                    plan,
+                    config_snapshots={config_id: snapshot},
+                    system_status_payload=self.system_status(),
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("config refresh worker failed for %s", config_id)
+            finally:
+                async with self._refresh_lock:
+                    self._running_refresh_ids.discard(config_id)
+                    should_requeue = config_id in self._pending_refresh_plans and self._refresh_queue is not None
+                    if should_requeue and config_id not in self._queued_refresh_ids:
+                        self._queued_refresh_ids.add(config_id)
+                        await self._refresh_queue.put(config_id)
+
+    async def schedule_config_refresh(self, config_id: str, plan: PublishPlan) -> None:
+        self.invalidate_config_projection(config_id)
+        if self._refresh_queue is None or self._refresh_task is None or self._refresh_task.done():
+            await asyncio.to_thread(store.refresh_config_state, config_id)
+            snapshot = await asyncio.to_thread(config_projection_service.build, config_id)
+            self._config_projection_cache[config_id] = snapshot
+            await self.publish_plan(
+                plan,
+                config_snapshots={config_id: snapshot},
+                system_status_payload=self.system_status(),
+            )
+            return
+        async with self._refresh_lock:
+            existing = self._pending_refresh_plans.get(config_id)
+            if existing is None:
+                existing = PublishPlan()
+                self._pending_refresh_plans[config_id] = existing
+            self._merge_publish_plan(existing, plan)
+            if config_id not in self._queued_refresh_ids and config_id not in self._running_refresh_ids:
+                self._queued_refresh_ids.add(config_id)
+                await self._refresh_queue.put(config_id)
+
+    def invalidate_config_projection(self, config_id: str) -> None:
+        self._config_projection_cache.pop(config_id, None)
+
+    def _config_refresh_in_flight(self, config_id: str) -> bool:
+        return config_id in self._pending_refresh_plans or config_id in self._queued_refresh_ids or config_id in self._running_refresh_ids
+
+    def _build_config_projection(self, config_id: str, *, use_cache: bool = True, store_cache: bool = True) -> ConfigProjectionSnapshot:
+        if use_cache:
+            cached = self._config_projection_cache.get(config_id)
+            if cached is not None:
+                return cached
+        snapshot = config_projection_service.build(config_id)
+        if store_cache:
+            self._config_projection_cache[config_id] = snapshot
+        return snapshot
+
+    def _serialize_config_projection(self, snapshot: ConfigProjectionSnapshot) -> dict[str, Any]:
+        overview = snapshot.overview.copy()
+        overview["config"] = _dump_model(overview["config"])
+        nodes = overview.get("nodes", [])
+        overview["nodes"] = [_dump_model(item) for item in nodes] if isinstance(nodes, list) else []
+        runtime_snapshot = overview.get("runtime_snapshot", [])
+        if isinstance(runtime_snapshot, list):
+            overview["runtime_snapshot"] = [
+                {
+                    **item,
+                    "last_seen": _iso_datetime(item.get("last_seen")),
+                    "last_probe_sent_at": _iso_datetime(item.get("last_probe_sent_at")),
+                    "last_probe_ack_at": _iso_datetime(item.get("last_probe_ack_at")),
+                }
+                for item in runtime_snapshot
+                if isinstance(item, dict)
+            ]
+        return {"config_id": snapshot.config_id, "overview": overview, "tags": snapshot.tags}
 
     def configs_payload(self) -> list[dict[str, Any]]:
         return [item.model_dump(mode="json") for item in self.list_configs()]
@@ -70,15 +202,15 @@ class ControlPlaneService:
     async def publish_system_status(self) -> None:
         await realtime_service.publish("system.status.updated", self.system_status())
 
+    async def publish_system_status_payload(self, payload: dict[str, object]) -> None:
+        await realtime_service.publish("system.status.updated", payload)
+
     async def publish_config_overview(self, config_id: str) -> None:
-        await realtime_service.publish(
-            "config.overview.updated",
-            {
-                "config_id": config_id,
-                "overview": self.config_overview(config_id),
-                "tags": self.list_tags(config_id),
-            },
-        )
+        snapshot = self._build_config_projection(config_id, use_cache=False, store_cache=True)
+        await self.publish_config_overview_snapshot(snapshot)
+
+    async def publish_config_overview_snapshot(self, snapshot: ConfigProjectionSnapshot) -> None:
+        await realtime_service.publish("config.overview.updated", self._serialize_config_projection(snapshot))
 
     async def publish_node_workspace(self, config_id: str, node_id: str) -> None:
         await realtime_service.publish(
@@ -148,8 +280,14 @@ class ControlPlaneService:
             plan.add_node_scope(config_id, str(node_id))
         return plan
 
-    async def publish_plan(self, plan: PublishPlan) -> None:
-        await self.publisher.publish(plan)
+    async def publish_plan(
+        self,
+        plan: PublishPlan,
+        *,
+        config_snapshots: dict[str, ConfigProjectionSnapshot] | None = None,
+        system_status_payload: dict[str, object] | None = None,
+    ) -> None:
+        await self.publisher.publish(plan, config_snapshots=config_snapshots, system_status_payload=system_status_payload)
 
     async def publish_runtime(self, config_id: str, node_id: str) -> None:
         await realtime_service.publish(
@@ -160,10 +298,8 @@ class ControlPlaneService:
                 "status": self.endpoint_status(config_id, node_id),
             },
         )
-        await realtime_service.publish(
-            "runtime.snapshot.updated",
-            {"config_id": config_id, "items": self.runtime_snapshot(config_id)},
-        )
+        snapshot = self._build_config_projection(config_id, use_cache=False, store_cache=True)
+        await realtime_service.publish("runtime.snapshot.updated", {"config_id": config_id, "items": snapshot.overview["runtime_snapshot"]})
         await realtime_service.publish("system.status.updated", self.system_status())
 
     async def publish_runtime_scope(self, config_id: str, node_id: str) -> None:
@@ -173,10 +309,12 @@ class ControlPlaneService:
         return store.create_config(payload)
 
     def update_config(self, config_id: str, payload: dict[str, object]):
+        self.invalidate_config_projection(config_id)
         return store.update_config(config_id, payload)
 
     def delete_config(self, config_id: str) -> None:
         store.delete_config(config_id)
+        self.invalidate_config_projection(config_id)
 
     def list_configs(self):
         return store.list_configs()
@@ -185,11 +323,9 @@ class ControlPlaneService:
         return store.get_config(config_id)
 
     def config_overview(self, config_id: str):
-        overview = store.config_overview(config_id)
-        overview["config"] = _dump_model(overview["config"])
-        nodes = overview.get("nodes", [])
-        overview["nodes"] = [_dump_model(item) for item in nodes] if isinstance(nodes, list) else []
-        return overview
+        use_cache = not self._config_refresh_in_flight(config_id)
+        snapshot = self._build_config_projection(config_id, use_cache=use_cache, store_cache=use_cache)
+        return self._serialize_config_projection(snapshot)["overview"]
 
     def list_nodes(self, config_id: str):
         return store.list_nodes(config_id)
@@ -198,10 +334,12 @@ class ControlPlaneService:
         return store.get_node(node_id)
 
     def create_node(self, config_id: str, payload: dict[str, object]):
+        self.invalidate_config_projection(config_id)
         return store.create_node(config_id, payload)
 
     def update_node(self, node_id: str, payload: dict[str, object]):
         previous = store.get_node(node_id)
+        self.invalidate_config_projection(previous.config_id)
         result = store.update_node(node_id, payload)
         current = store.get_node(node_id)
         if previous.node_type != current.node_type:
@@ -219,21 +357,30 @@ class ControlPlaneService:
         return store.list_tags(config_id)
 
     def create_tag(self, config_id: str, tag: str):
+        self.invalidate_config_projection(config_id)
         return store.create_tag(config_id, tag)
 
     def apply_tag_to_nodes(self, config_id: str, tag: str, node_ids: list[str]):
+        self.invalidate_config_projection(config_id)
         return store.apply_tag_to_nodes(config_id, tag, node_ids)
 
     def replace_node_tags(self, node_id: str, tags: list[str]):
+        config_id = store.get_node(node_id).config_id
+        self.invalidate_config_projection(config_id)
         return store.replace_node_tags(node_id, tags)
 
     def remove_tag_from_node(self, node_id: str, tag: str):
+        config_id = store.get_node(node_id).config_id
+        self.invalidate_config_projection(config_id)
         return store.remove_tag_from_node(node_id, tag)
 
     def delete_tag_from_config(self, config_id: str, tag: str):
+        self.invalidate_config_projection(config_id)
         return store.delete_tag_from_config(config_id, tag)
 
     def delete_node(self, node_id: str) -> None:
+        node = store.get_node(node_id)
+        self.invalidate_config_projection(node.config_id)
         store.delete_node(node_id)
 
     def suggest_virtual_ip(self, config_id: str):
@@ -261,12 +408,17 @@ class ControlPlaneService:
         return store.build_peer_link_draft(config_id, node_id, peer_node_id, endpoint_ref_family)
 
     def create_peer_link_group(self, config_id: str, payload: dict[str, object]):
+        self.invalidate_config_projection(config_id)
         return store.create_peer_link_group(config_id, payload)
 
     def update_peer_link_group(self, group_id: str, payload: dict[str, object]):
+        config_id, _ = self.peer_link_group_context(group_id)
+        self.invalidate_config_projection(config_id)
         return store.update_peer_link_group(group_id, payload)
 
     def delete_peer_link_group(self, group_id: str) -> None:
+        config_id, _ = self.peer_link_group_context(group_id)
+        self.invalidate_config_projection(config_id)
         store.delete_peer_link_group(group_id)
 
     def validate_mesh(self, config_id: str) -> dict[str, object]:
@@ -486,16 +638,11 @@ class ControlPlaneService:
         return snapshot_service.import_snapshot(path, original_name)
 
     def system_status(self):
-        status = store.system_status()
         mqtt_status = self.mqtt_service_status()
-        return {
-            **status,
-            "services": {
-                **status["services"],
-                "mqtt": str(mqtt_status["status"]),
-            },
-            "timestamp": _iso_datetime(status["timestamp"]) or "",
-        }
+        configs = store._list_configs_base()
+        snapshots = [self._build_config_projection(config.id, use_cache=True, store_cache=True) for config in configs]
+        status = system_projection_service.build(snapshots, mqtt_status=str(mqtt_status["status"]))
+        return {**status, "timestamp": _iso_datetime(status["timestamp"]) or ""}
 
 
 control_plane_service = ControlPlaneService()

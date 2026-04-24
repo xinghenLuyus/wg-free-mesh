@@ -169,3 +169,9 @@ class SQLiteEndpointHelpersMixin:
 
     def _write_service_conf(self, config_id: str, node_id: str, content: str) -> None:
         self._conf_path(config_id, node_id).write_text(content, encoding="utf-8")
+
+    def _write_service_conf_if_changed(self, config_id: str, node_id: str, content: str) -> None:
+        conf_path = self._conf_path(config_id, node_id)
+        if conf_path.exists() and conf_path.read_text(encoding="utf-8") == content:
+            return
+        conf_path.write_text(content, encoding="utf-8")

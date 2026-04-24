@@ -69,12 +69,59 @@ class SQLiteRuntimeStateMixin:
             )
         return runtime
 
+    def _list_runtime_rows(self, config_id: str) -> dict[str, EndpointRuntimeStatus]:
+        with connect() as connection:
+            rows = connection.execute("SELECT * FROM endpoint_runtime_status WHERE config_id = ?", (config_id,)).fetchall()
+        return {str(row["node_id"]): _runtime_from_row(row) for row in rows}
+
+    def _list_runtime_rows_for_configs(self, config_ids: list[str]) -> dict[str, dict[str, EndpointRuntimeStatus]]:
+        ids = [config_id for config_id in config_ids if config_id]
+        if not ids:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        with connect() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM endpoint_runtime_status WHERE config_id IN ({placeholders})",
+                tuple(ids),
+            ).fetchall()
+        runtime_by_config: dict[str, dict[str, EndpointRuntimeStatus]] = {}
+        for row in rows:
+            config_id = str(row["config_id"])
+            runtime_by_config.setdefault(config_id, {})[str(row["node_id"])] = _runtime_from_row(row)
+        return runtime_by_config
+
+    def _list_node_config_states(self, config_id: str):
+        with connect() as connection:
+            rows = connection.execute("SELECT * FROM node_config_state WHERE config_id = ?", (config_id,)).fetchall()
+        return {str(row["node_id"]): _state_from_row(row) for row in rows}
+
     def list_runtime_snapshot(self, config_id: str) -> list[dict[str, object]]:
+        runtime_map = self._list_runtime_rows(config_id)
+        state_map = self._list_node_config_states(config_id)
+        client_states = self.list_client_states(config_id)
         items: list[dict[str, object]] = []
         for node in self.list_nodes(config_id):
-            runtime = self.get_runtime(config_id, node.id)
-            state = self.get_node_config_state(config_id, node.id)
-            client_state = self.get_client_state(config_id, node.id)
+            runtime = runtime_map.get(node.id)
+            if runtime is None:
+                runtime = self.get_runtime(config_id, node.id)
+            elif node.node_type == NodeType.static:
+                runtime = runtime.model_copy(
+                    update={
+                        "online": False,
+                        "connectivity_state": ConnectivityState.offline,
+                        "wg_running": False,
+                        "wg_runtime_state": WgRuntimeState.stopped,
+                        "last_seen": None,
+                        "last_probe_sent_at": None,
+                        "last_probe_ack_at": None,
+                        "last_control_channel_seen_at": None,
+                        "last_connectivity_reason": "static-node",
+                        "client_downloaded": False,
+                        "client_downloaded_at": None,
+                    }
+                )
+            state = state_map.get(node.id) or self.get_node_config_state(config_id, node.id)
+            client_state = client_states.get(node.id) or {"client_initialized": False, "client_presence_state": "offline"}
             items.append(
                 {
                     "node_id": node.id,

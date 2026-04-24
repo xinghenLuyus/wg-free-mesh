@@ -50,6 +50,42 @@ class SQLiteClientStateMixin:
             "last_event_at": row["last_event_at"],
         }
 
+    def list_client_states(self, config_id: str) -> dict[str, dict[str, object]]:
+        self.get_config(config_id)
+        with connect() as connection:
+            now = now_utc().isoformat()
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO node_client_state
+                  (node_id, config_id, created_at, updated_at)
+                SELECT id, config_id, ?, ?
+                FROM nodes
+                WHERE config_id = ?
+                """,
+                (now, now, config_id),
+            )
+            rows = connection.execute(
+                "SELECT * FROM node_client_state WHERE config_id = ?",
+                (config_id,),
+            ).fetchall()
+        states: dict[str, dict[str, object]] = {}
+        for row in rows:
+            node_id = str(row["node_id"])
+            states[node_id] = {
+                "client_initialized": _bool_value(row["client_initialized"]),
+                "mqtt_username": row["mqtt_username"],
+                "mqtt_client_id": row["mqtt_client_id"],
+                "client_presence_state": row["client_presence_state"],
+                "boot_id": row["boot_id"],
+                "session_id": row["session_id"],
+                "last_heartbeat_at": row["last_heartbeat_at"],
+                "last_detect_ack_at": row["last_detect_ack_at"],
+                "last_will_at": row["last_will_at"],
+                "last_event": row["last_event"],
+                "last_event_at": row["last_event_at"],
+            }
+        return states
+
     def _reset_runtime_row(
         self,
         connection: object,

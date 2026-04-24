@@ -2,21 +2,27 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 
 from app.core.errors import AppError
-from app.domain.models import ConfigSyncState, derive_public_key, generate_key_pair, generate_private_key, now_utc, sha256_text
+from app.domain.models import Config, ConfigSyncState, Node, PeerLink, derive_public_key, generate_key_pair, generate_private_key, now_utc, sha256_text
 from app.infrastructure.database import connect
 from app.projections.config_overview_projection import config_overview_projection
 from app.projections.system_status_projection import system_status_projection
 from app.repositories.naming import node_config_artifact_stem as _node_config_artifact_stem
 from app.repositories.row_mappers import state_from_row as _state_from_row
+from app.services.topology_service import topology_service
 
 
 class SQLiteSyncSettingsMixin:
-    def build_wg_preview(self, config_id: str, node_id: str) -> dict[str, object]:
-        config = self.get_config(config_id)
-        node = self.get_node(node_id)
-        links = [item for item in self.list_peer_links(config_id) if item.local_node_id == node_id and item.enabled]
+    def _build_wg_preview_for_node(
+        self,
+        config: Config,
+        node: Node,
+        nodes_by_id: dict[str, Node],
+        peer_links_by_local: dict[str, list[PeerLink]],
+    ) -> dict[str, object]:
+        links = peer_links_by_local.get(node.id, [])
         lines = ["[Interface]", f"PrivateKey = {node.private_key}"]
         if node.virtual_ip:
             lines.append(f"Address = {node.virtual_ip}")
@@ -28,7 +34,7 @@ class SQLiteSyncSettingsMixin:
         if effective_mtu:
             lines.append(f"MTU = {effective_mtu}")
         for link in links:
-            peer_node = self.get_node(link.peer_node_id)
+            peer_node = nodes_by_id[link.peer_node_id]
             lines.extend(["", f"# Peer: {peer_node.name}", "[Peer]", f"PublicKey = {peer_node.public_key}", f"AllowedIPs = {link.allowed_ips}"])
             if link.preshared_key:
                 lines.append(f"PresharedKey = {link.preshared_key}")
@@ -38,26 +44,80 @@ class SQLiteSyncSettingsMixin:
             if endpoint and link.persistent_keepalive:
                 lines.append(f"PersistentKeepalive = {link.persistent_keepalive}")
         content = "\n".join(lines) + "\n"
-        return {"node_id": node_id, "node_name": node.name, "content": content, "sha256": sha256_text(content)}
+        return {"node_id": node.id, "node_name": node.name, "content": content, "sha256": sha256_text(content)}
+
+    def _sync_statuses_for_nodes(self, config_id: str, nodes: Sequence[Node]) -> list[dict[str, object]]:
+        runtime_map = self._list_runtime_rows(config_id)
+        state_map = self._list_node_config_states(config_id)
+        mesh_validation = self._validate_mesh_payload(config_id)
+        topology_valid = bool(mesh_validation["valid"])
+        topology_messages = mesh_validation["errors"] if not topology_valid else mesh_validation["warnings"]
+        items: list[dict[str, object]] = []
+        for node in nodes:
+            state = state_map.get(node.id) or self.get_node_config_state(config_id, node.id)
+            runtime = runtime_map.get(node.id) or self.get_runtime(config_id, node.id)
+            items.append(
+                {
+                    "node_id": node.id,
+                    "node_name": node.name,
+                    "node_type": node.node_type,
+                    "auto_sync": node.auto_sync,
+                    "desired_version": state.desired_version,
+                    "staged_version": state.staged_version,
+                    "confirmed_version": state.confirmed_version,
+                    "desired_sha256": state.desired_sha256,
+                    "staged_sha256": state.staged_sha256,
+                    "confirmed_sha256": state.confirmed_sha256,
+                    "reported_local_sha256": state.reported_local_sha256,
+                    "reported_local_version": state.reported_local_version,
+                    "status": self._sync_status_from_state(state),
+                    "runtime_status": runtime.config_sync_state,
+                    "topology_valid": topology_valid,
+                    "topology_messages": topology_messages,
+                }
+            )
+        return items
+
+    def build_wg_preview(self, config_id: str, node_id: str) -> dict[str, object]:
+        config = self.get_config(config_id)
+        node = self.get_node(node_id)
+        nodes = self.list_nodes(config_id)
+        nodes_by_id = {item.id: item for item in nodes}
+        peer_links_by_local: dict[str, list[PeerLink]] = {}
+        for link in self.list_peer_links(config_id):
+            if link.enabled:
+                peer_links_by_local.setdefault(link.local_node_id, []).append(link)
+        return self._build_wg_preview_for_node(config, node, nodes_by_id, peer_links_by_local)
 
     def refresh_config_state(self, config_id: str) -> None:
         config = self.get_config(config_id)
-        peer_links = self.list_peer_links(config_id)
         nodes = self.list_nodes(config_id)
-        mesh_validation = self._validate_mesh_payload(config_id)
+        peer_links = self.list_peer_links(config_id)
+        nodes_by_id = {node.id: node for node in nodes}
+        peer_links_by_local: dict[str, list[PeerLink]] = {}
+        for link in peer_links:
+            if link.enabled:
+                peer_links_by_local.setdefault(link.local_node_id, []).append(link)
+        mesh_validation = topology_service.validate_mesh(config, nodes, peer_links)
         topology_valid = bool(mesh_validation["valid"])
-        for node in nodes:
-            preview = self.build_wg_preview(config_id, node.id)
-            with connect() as connection:
-                row = connection.execute("SELECT * FROM node_config_state WHERE node_id = ?", (node.id,)).fetchone()
-                state = _state_from_row(row)
+        runtime_map = self._list_runtime_rows(config_id)
+        state_map = self._list_node_config_states(config_id)
+        now = now_utc().isoformat()
+        with connect() as connection:
+            for node in nodes:
+                preview = self._build_wg_preview_for_node(config, node, nodes_by_id, peer_links_by_local)
+                state = state_map.get(node.id)
+                if state is None:
+                    row = connection.execute("SELECT * FROM node_config_state WHERE node_id = ?", (node.id,)).fetchone()
+                    if row is None:
+                        continue
+                    state = _state_from_row(row)
                 desired_text = str(preview["content"])
                 desired_sha = str(preview["sha256"])
                 desired_version = state.desired_version + 1 if state.desired_sha256 != desired_sha else state.desired_version
                 staged_text = state.staged_text
                 staged_sha = state.staged_sha256
                 staged_version = state.staged_version
-                now = now_utc().isoformat()
                 if node.auto_sync and topology_valid:
                     staged_text = desired_text
                     staged_sha = desired_sha
@@ -82,13 +142,15 @@ class SQLiteSyncSettingsMixin:
                         node.id,
                     ),
                 )
-                peer_total = len([item for item in peer_links if item.local_node_id == node.id and item.enabled])
-                peer_online = 0
-                for link in peer_links:
-                    if link.local_node_id != node.id or not link.enabled:
-                        continue
-                    if self.get_runtime(config_id, link.peer_node_id).online:
-                        peer_online += 1
+                active_links = peer_links_by_local.get(node.id, [])
+                peer_total = len(active_links)
+                peer_online = len(
+                    [
+                        link
+                        for link in active_links
+                        if bool((runtime_map.get(link.peer_node_id) or self.get_runtime(config_id, link.peer_node_id)).online)
+                    ]
+                )
                 connection.execute(
                     """
                     UPDATE endpoint_runtime_status
@@ -103,10 +165,11 @@ class SQLiteSyncSettingsMixin:
                         node.id,
                     ),
                 )
-                self._write_service_conf(config_id, node.id, staged_text)
+                self._write_service_conf_if_changed(config_id, node.id, staged_text)
 
     def get_sync_status_for_config(self, config_id: str) -> list[dict[str, object]]:
-        return [self.get_sync_status_for_node(config_id, node.id) for node in self.list_nodes(config_id)]
+        nodes = self.list_nodes(config_id)
+        return self._sync_statuses_for_nodes(config_id, nodes)
 
     def get_sync_status_for_node(self, config_id: str, node_id: str) -> dict[str, object]:
         self.get_config(config_id)
@@ -258,10 +321,18 @@ class SQLiteSyncSettingsMixin:
         return {"private_key": private_key, "public_key": derive_public_key(private_key)}
 
     def system_status(self) -> dict[str, object]:
-        configs = self.list_configs()
-        nodes = [node for config in configs for node in self.list_nodes(config.id)]
-        runtimes = [self.get_runtime(node.config_id, node.id).model_dump(mode="json") for node in nodes]
-        return system_status_projection.project(configs, nodes, runtimes, self._topology_issue_summary)
+        configs = self._list_configs_base()
+        config_ids = [config.id for config in configs]
+        nodes = self._list_nodes_for_configs(config_ids)
+        runtime_rows_by_config = self._list_runtime_rows_for_configs(config_ids)
+        runtimes = [
+            runtime.model_dump(mode="json")
+            for config_id in config_ids
+            for runtime in runtime_rows_by_config.get(config_id, {}).values()
+        ]
+        peer_links = self._list_peer_links_for_configs(config_ids)
+        topology_by_config = self._topology_summaries_for_prefetched(configs, nodes, peer_links)
+        return system_status_projection.project(configs, nodes, runtimes, lambda config_id: topology_by_config.get(config_id, {"valid": True, "errors": [], "error_count": 0, "invalid_node_ids": [], "invalid_node_count": 0}))
 
     def config_overview(self, config_id: str) -> dict[str, object]:
         config = self.get_config(config_id)
@@ -273,6 +344,6 @@ class SQLiteSyncSettingsMixin:
             nodes=nodes,
             runtimes=runtimes,
             peer_link_count=len(self.list_peer_links(config_id)) // 2,
-            sync_status=self.get_sync_status_for_config(config_id),
+            sync_status=self._sync_statuses_for_nodes(config_id, nodes),
             topology=topology,
         )

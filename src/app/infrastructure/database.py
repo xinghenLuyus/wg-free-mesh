@@ -42,6 +42,9 @@ def connect() -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(_database_path())
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    connection.execute("PRAGMA journal_mode = WAL")
+    connection.execute("PRAGMA synchronous = NORMAL")
+    connection.execute("PRAGMA busy_timeout = 5000")
     try:
         yield connection
         connection.commit()
@@ -225,6 +228,17 @@ def init_database() -> None:
               note TEXT NOT NULL DEFAULT '',
               created_at TEXT NOT NULL
             );
+
+            CREATE INDEX IF NOT EXISTS idx_nodes_config_id ON nodes(config_id);
+            CREATE INDEX IF NOT EXISTS idx_peer_links_config_id ON peer_links(config_id);
+            CREATE INDEX IF NOT EXISTS idx_peer_links_local_enabled ON peer_links(config_id, local_node_id, enabled);
+            CREATE INDEX IF NOT EXISTS idx_peer_links_peer_node ON peer_links(config_id, peer_node_id);
+            CREATE INDEX IF NOT EXISTS idx_runtime_status_config_id ON endpoint_runtime_status(config_id);
+            CREATE INDEX IF NOT EXISTS idx_runtime_status_config_node ON endpoint_runtime_status(config_id, node_id);
+            CREATE INDEX IF NOT EXISTS idx_node_config_state_config_id ON node_config_state(config_id);
+            CREATE INDEX IF NOT EXISTS idx_client_state_config_id ON node_client_state(config_id);
+            CREATE INDEX IF NOT EXISTS idx_endpoint_control_logs_config_node_created
+              ON endpoint_control_logs(config_id, node_id, created_at DESC);
             """
         )
 
