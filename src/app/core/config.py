@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     mqtt_public_port: int = 1883
     mqtt_public_tls_port: int = 8883
     mqtt_tls_enabled: bool = False
+    enable_mqtt_services: bool = True
     mqtt_tls_ca_path: str = "/opt/emqx/etc/certs/ca.crt"
     mqtt_tls_cert_path: str = "/opt/emqx/etc/certs/server.crt"
     mqtt_tls_key_path: str = "/opt/emqx/etc/certs/server.key"

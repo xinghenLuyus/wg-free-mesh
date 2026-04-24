@@ -9,7 +9,7 @@ import shutil
 from collections.abc import Iterable
 from datetime import UTC, timedelta
 from sqlite3 import Row
-from typing import cast
+from typing import Any, cast
 
 from app.core.errors import AppError
 from app.domain.models import (
@@ -204,6 +204,82 @@ class SQLiteStore:
             "last_event_at": row["last_event_at"],
         }
 
+    def _reset_runtime_row(
+        self,
+        connection: object,
+        config_id: str,
+        node_id: str,
+        *,
+        reason: str,
+        clear_downloaded: bool = False,
+    ) -> None:
+        now = now_utc().isoformat()
+        downloaded_sql = ", client_downloaded = 0, client_downloaded_at = NULL" if clear_downloaded else ""
+        cast(Any, connection).execute(
+            f"""
+            UPDATE endpoint_runtime_status
+            SET online = 0,
+                connectivity_state = ?,
+                wg_running = 0,
+                wg_runtime_state = ?,
+                last_seen = NULL,
+                last_probe_sent_at = NULL,
+                last_probe_ack_at = NULL,
+                last_control_channel_seen_at = NULL,
+                last_connectivity_reason = ?,
+                updated_at = ?
+                {downloaded_sql}
+            WHERE config_id = ? AND node_id = ?
+            """,
+            (ConnectivityState.offline.value, WgRuntimeState.stopped.value, reason, now, config_id, node_id),
+        )
+
+    def _reset_client_state_row(self, connection: object, config_id: str, node_id: str) -> None:
+        now = now_utc().isoformat()
+        cast(Any, connection).execute(
+            """
+            UPDATE node_client_state
+            SET client_initialized = 0,
+                mqtt_username = '',
+                mqtt_client_id = '',
+                bind_token_hash = '',
+                bind_token_expires_at = NULL,
+                bind_token_used_at = NULL,
+                client_presence_state = 'offline',
+                boot_id = '',
+                session_id = '',
+                last_heartbeat_at = NULL,
+                last_detect_ack_at = NULL,
+                last_will_at = NULL,
+                last_event = '',
+                last_event_at = NULL,
+                updated_at = ?
+            WHERE config_id = ? AND node_id = ?
+            """,
+            (now, config_id, node_id),
+        )
+
+    def reconcile_node_operational_state(self, config_id: str, node_id: str) -> dict[str, object]:
+        node = self.get_node(node_id)
+        self._ensure_client_state(config_id, node_id)
+        with connect() as connection:
+            if node.node_type == NodeType.static:
+                self._reset_client_state_row(connection, config_id, node_id)
+                self._reset_runtime_row(connection, config_id, node_id, reason="static-node", clear_downloaded=True)
+            else:
+                self._reset_client_state_row(connection, config_id, node_id)
+                self._reset_runtime_row(connection, config_id, node_id, reason="dynamic-node-uninitialized", clear_downloaded=True)
+        return {
+            "runtime": self.get_runtime(config_id, node_id),
+            "client_state": self.get_client_state(config_id, node_id),
+        }
+
+    def reconcile_runtime_integrity(self) -> None:
+        for config in self.list_configs():
+            for node in self.list_nodes(config.id):
+                if node.node_type == NodeType.static:
+                    self.reconcile_node_operational_state(config.id, node.id)
+
     def create_client_bind_token(self, config_id: str, node_id: str) -> dict[str, object]:
         config = self.get_config(config_id)
         node = self.get_node(node_id)
@@ -270,34 +346,16 @@ class SQLiteStore:
         return self.get_client_state(config_id, node_id)
 
     def reset_client_state(self, config_id: str, node_id: str) -> dict[str, object]:
-        now = now_utc().isoformat()
         self._ensure_client_state(config_id, node_id)
         with connect() as connection:
-            connection.execute(
-                """
-                UPDATE node_client_state
-                SET client_initialized = 0,
-                    mqtt_username = '',
-                    mqtt_client_id = '',
-                    bind_token_hash = '',
-                    bind_token_expires_at = NULL,
-                    bind_token_used_at = NULL,
-                    client_presence_state = 'offline',
-                    boot_id = '',
-                    session_id = '',
-                    last_heartbeat_at = NULL,
-                    last_detect_ack_at = NULL,
-                    last_will_at = NULL,
-                    last_event = '',
-                    last_event_at = NULL,
-                    updated_at = ?
-                WHERE config_id = ? AND node_id = ?
-                """,
-                (now, config_id, node_id),
-            )
+            self._reset_client_state_row(connection, config_id, node_id)
+            self._reset_runtime_row(connection, config_id, node_id, reason="client-reset", clear_downloaded=True)
         return self.get_client_state(config_id, node_id)
 
     def record_client_heartbeat(self, config_id: str, node_id: str, *, boot_id: str = "", session_id: str = "") -> dict[str, object]:
+        node = self.get_node(node_id)
+        if node.node_type != NodeType.dynamic:
+            return self.get_client_state(config_id, node_id)
         now = now_utc().isoformat()
         self._ensure_client_state(config_id, node_id)
         with connect() as connection:
@@ -337,6 +395,9 @@ class SQLiteStore:
         boot_id: str = "",
         session_id: str = "",
     ) -> dict[str, object]:
+        node = self.get_node(node_id)
+        if node.node_type != NodeType.dynamic:
+            return self.get_client_state(config_id, node_id)
         now = now_utc().isoformat()
         presence = "offline" if event == "offline" else "online"
         self._ensure_client_state(config_id, node_id)
@@ -367,6 +428,40 @@ class SQLiteStore:
                     """,
                     (ConnectivityState.offline.value, "client-will-message", now, config_id, node_id),
                 )
+        return self.get_client_state(config_id, node_id)
+
+    def record_detect_ack(self, config_id: str, node_id: str, *, boot_id: str = "", session_id: str = "") -> dict[str, object]:
+        node = self.get_node(node_id)
+        if node.node_type != NodeType.dynamic:
+            return self.get_client_state(config_id, node_id)
+        now = now_utc().isoformat()
+        self._ensure_client_state(config_id, node_id)
+        with connect() as connection:
+            connection.execute(
+                """
+                UPDATE node_client_state
+                SET client_presence_state = 'online',
+                    boot_id = COALESCE(NULLIF(?, ''), boot_id),
+                    session_id = COALESCE(NULLIF(?, ''), session_id),
+                    last_detect_ack_at = ?,
+                    updated_at = ?
+                WHERE config_id = ? AND node_id = ?
+                """,
+                (boot_id, session_id, now, now, config_id, node_id),
+            )
+            connection.execute(
+                """
+                UPDATE endpoint_runtime_status
+                SET online = 1,
+                    connectivity_state = ?,
+                    last_seen = ?,
+                    last_probe_ack_at = ?,
+                    last_connectivity_reason = ?,
+                    updated_at = ?
+                WHERE config_id = ? AND node_id = ?
+                """,
+                (ConnectivityState.online.value, now, now, "detect-ack", now, config_id, node_id),
+            )
         return self.get_client_state(config_id, node_id)
 
     def list_configs(self) -> list[Config]:
@@ -1130,14 +1225,32 @@ class SQLiteStore:
         return _state_from_row(row)
 
     def get_runtime(self, config_id: str, node_id: str) -> EndpointRuntimeStatus:
+        node = self.get_node(node_id)
         with connect() as connection:
             row = connection.execute(
                 "SELECT * FROM endpoint_runtime_status WHERE config_id = ? AND node_id = ?",
                 (config_id, node_id),
-            ).fetchone()
+        ).fetchone()
         if row is None:
             raise AppError("RUNTIME_NOT_FOUND", "Node runtime state not found", 404)
-        return _runtime_from_row(row)
+        runtime = _runtime_from_row(row)
+        if node.node_type == NodeType.static:
+            return runtime.model_copy(
+                update={
+                    "online": False,
+                    "connectivity_state": ConnectivityState.offline,
+                    "wg_running": False,
+                    "wg_runtime_state": WgRuntimeState.stopped,
+                    "last_seen": None,
+                    "last_probe_sent_at": None,
+                    "last_probe_ack_at": None,
+                    "last_control_channel_seen_at": None,
+                    "last_connectivity_reason": "static-node",
+                    "client_downloaded": False,
+                    "client_downloaded_at": None,
+                }
+            )
+        return runtime
 
     def list_runtime_snapshot(self, config_id: str) -> list[dict[str, object]]:
         items: list[dict[str, object]] = []
@@ -1211,6 +1324,53 @@ class SQLiteStore:
                     None,
                     now,
                     now,
+                ),
+            )
+        return log
+
+    def append_client_event_log(
+        self,
+        config_id: str,
+        node_id: str,
+        *,
+        summary: str,
+        detail: str = "",
+        requested_by: str = "client",
+    ) -> EndpointControlLog:
+        self.get_node(node_id)
+        log = EndpointControlLog(
+            config_id=config_id,
+            node_id=node_id,
+            action=ControlAction.event,
+            status=ControlStatus.acked,
+            requested_by=requested_by,
+            summary=summary,
+            detail=detail,
+            ack_at=now_utc(),
+        )
+        created_at = log.created_at.isoformat()
+        ack_at = log.ack_at.isoformat() if log.ack_at else None
+        with connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO endpoint_control_logs
+                  (id, request_id, config_id, node_id, action, status, requested_by, summary, detail, requested_at, ack_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    log.id,
+                    log.request_id,
+                    log.config_id,
+                    log.node_id,
+                    log.action.value,
+                    log.status.value,
+                    log.requested_by,
+                    log.summary,
+                    log.detail,
+                    log.requested_at.isoformat(),
+                    ack_at,
+                    created_at,
+                    created_at,
                 ),
             )
         return log

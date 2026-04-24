@@ -51,6 +51,7 @@
 - `src/.env`
   - 只给本地手动运行的 FastAPI 后端使用
   - 例如 `WFM_EMQX_API_BASE_URL=http://127.0.0.1:18083`
+  - 字段集合必须是 `docker/.env` 的子集
 
 这样容器网络内的回查地址、TLS listener 开关不会和本地 dev 后端的配置混在一起。
 
@@ -70,6 +71,7 @@
 
 关键环境变量：
 
+- `WFM_ENABLE_MQTT_SERVICES`
 - `WFM_EMQX_API_BASE_URL`
 - `WFM_EMQX_USERNAME`
 - `WFM_EMQX_PASSWORD`
@@ -78,6 +80,7 @@
 
 说明：
 
+- `WFM_ENABLE_MQTT_SERVICES=false` 时，后端不会启动 MQTT 入口服务，客户端绑定、远程控制和 MQTT 状态检查全部禁用。
 - `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD` 是唯一 EMQX 账号密码，同时用于 Dashboard、REST 管理 API bootstrap key 与服务端 MQTT 超级用户。
 - 客户端可见的 MQTT `host / tls` 由前端设置页维护
 - Docker 只负责 EMQX 容器层的 TLS listener 与 AuthZ 回查地址
@@ -164,6 +167,7 @@
 - 节点 bind 时创建或轮换 EMQX 账号
 - Go 客户端 bind 后保存本地 profile 并连接 MQTT
 - 服务端作为高权限 MQTT 客户端订阅上行 topic
+- MQTT 服务启停状态纳入系统检查，并可通过设置页统一启用或停用客户端相关能力
 
 配套文档：
 

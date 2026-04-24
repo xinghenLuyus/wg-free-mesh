@@ -17,15 +17,23 @@ class ConfigOverviewProjection:
     ) -> dict[str, object]:
         invalid_node_ids = set(cast(list[str], topology.get("invalid_node_ids", [])))
         runtime_by_node_id = {str(item["node_id"]): item for item in runtimes}
+        dynamic_node_ids = {node.id for node in nodes if node.node_type == NodeType.dynamic}
         return {
             "config": config,
             "stats": {
                 "total_nodes": len(nodes),
                 "dynamic_nodes": len([node for node in nodes if node.node_type == NodeType.dynamic]),
                 "static_nodes": len([node for node in nodes if node.node_type == NodeType.static]),
-                "online_nodes": len([item for item in runtimes if bool(item["online"])]),
+                "online_nodes": len(
+                    [item for item in runtimes if str(item["node_id"]) in dynamic_node_ids and bool(item["online"])]
+                ),
                 "pending_sync_nodes": len(
-                    [item for item in runtimes if str(item["config_sync_state"]) != ConfigSyncState.in_sync.value]
+                    [
+                        item
+                        for item in runtimes
+                        if str(item["node_id"]) in dynamic_node_ids
+                        and str(item["config_sync_state"]) != ConfigSyncState.in_sync.value
+                    ]
                 ),
                 "peer_links": peer_link_count,
             },
@@ -40,7 +48,7 @@ class ConfigOverviewProjection:
                     "ipv6_address": node.ipv6_address,
                     "tags": node.tags,
                     "created_at": node.created_at.isoformat(),
-                    "online": bool(runtime_by_node_id.get(node.id, {}).get("online", False)),
+                    "online": node.node_type == NodeType.dynamic and bool(runtime_by_node_id.get(node.id, {}).get("online", False)),
                     "peers_total": cast(int, runtime_by_node_id.get(node.id, {}).get("peers_total", 0) or 0),
                     "mesh_error": node.id in invalid_node_ids,
                 }

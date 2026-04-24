@@ -15,7 +15,9 @@ class SystemStatusProjection:
         topology_for: Callable[[str], dict[str, object]],
     ) -> dict[str, object]:
         enabled_config_ids = {config.id for config in configs if config.enabled}
-        enabled_node_ids = {node.id for node in nodes if node.config_id in enabled_config_ids}
+        enabled_dynamic_node_ids = {
+            node.id for node in nodes if node.config_id in enabled_config_ids and node.node_type == NodeType.dynamic
+        }
         invalid_configs: list[dict[str, object]] = []
         invalid_node_ids: set[str] = set()
         for config in configs:
@@ -39,12 +41,14 @@ class SystemStatusProjection:
                 "configs": len(configs),
                 "nodes": len(nodes),
                 "dynamic_nodes": len([node for node in nodes if node.node_type == NodeType.dynamic]),
-                "online_nodes": len([runtime for runtime in runtimes if bool(runtime["online"])]),
+                "online_nodes": len(
+                    [runtime for runtime in runtimes if str(runtime["node_id"]) in enabled_dynamic_node_ids and bool(runtime["online"])]
+                ),
                 "pending_sync_nodes": len(
                     [
                         runtime
                         for runtime in runtimes
-                        if str(runtime["node_id"]) in enabled_node_ids
+                        if str(runtime["node_id"]) in enabled_dynamic_node_ids
                         and str(runtime["config_sync_state"]) != ConfigSyncState.in_sync.value
                     ]
                 ),

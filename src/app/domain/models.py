@@ -90,6 +90,7 @@ class EndpointPortMode(StrEnum):
 
 
 class ControlAction(StrEnum):
+    event = "event"
     probe = "probe"
     start = "start"
     stop = "stop"

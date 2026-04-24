@@ -16,6 +16,7 @@ from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.errors import install_exception_handlers
 from app.infrastructure.database import init_database
+from app.repositories.sqlite import store
 from app.services.mqtt_ingress_service import mqtt_ingress_service
 from app.services.realtime_service import realtime_service
 
@@ -23,6 +24,7 @@ from app.services.realtime_service import realtime_service
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     init_database()
+    store.reconcile_runtime_integrity()
     realtime_service.startup()
     mqtt_ingress_service.startup()
     try:

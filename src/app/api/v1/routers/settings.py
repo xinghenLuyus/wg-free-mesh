@@ -15,6 +15,7 @@ router = SessionProtectedAPIRouter(prefix="/settings", tags=["settings"])
 
 
 class MqttSettingsRequest(BaseModel):
+    enabled: bool = True
     host: str = ""
     port: int = Field(default=8883, ge=1, le=65535)
     tls: bool = True
@@ -95,8 +96,12 @@ def mqtt_settings() -> ApiResponse[dict[str, Any]]:
 
 @router.put("/mqtt")
 async def update_mqtt_settings(payload: MqttSettingsRequest) -> ApiResponse[dict[str, Any]]:
+    from app.services.mqtt_ingress_service import mqtt_ingress_service
+
     result = control_plane_service.update_mqtt_settings(payload.model_dump())
+    await mqtt_ingress_service.reconcile()
     await control_plane_service.publish_mqtt_settings()
+    await control_plane_service.publish_system_status()
     return ok(result)
 
 

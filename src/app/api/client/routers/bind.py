@@ -25,6 +25,8 @@ class ClientBindRequest(BaseModel):
 
 @router.post("/bind")
 async def bind_client(payload: ClientBindRequest) -> ApiResponse[dict[str, Any]]:
+    if not control_plane_service.mqtt_service_enabled():
+        raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
     preview = control_plane_service.client_bind_preview(payload.token)
     config = cast(Config, preview["config"])
     node = cast(Node, preview["node"])

@@ -347,6 +347,13 @@ export interface EndpointStatusRead {
     last_event?: string
     last_event_at?: string | null
   }
+  mqtt_service: {
+    enabled: boolean
+    connected: boolean
+    status: string
+    last_error?: string
+    last_connected_at?: string | null
+  }
   config_state: {
     desired_version: number
     staged_version: number
@@ -369,6 +376,7 @@ export interface ClientBindCommandRead {
 }
 
 export interface MqttSettingsRead {
+  enabled: boolean
   host: string
   port: number
   tls: boolean

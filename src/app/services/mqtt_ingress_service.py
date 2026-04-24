@@ -5,6 +5,7 @@ import json
 import ssl
 from typing import Any
 from urllib.parse import urlparse
+from datetime import UTC, datetime
 
 import aiomqtt
 
@@ -15,19 +16,47 @@ from app.services.emqx_service import emqx_service
 from app.services.realtime_service import realtime_service
 
 
-def _dump(value: object) -> object:
-    if hasattr(value, "model_dump"):
-        return value.model_dump(mode="json")  # type: ignore[attr-defined]
-    return value
-
-
 class MqttIngressService:
     def __init__(self) -> None:
         self._task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._client: aiomqtt.Client | None = None
+        self._connected = False
+        self._last_error = ""
+        self._last_connected_at: str | None = None
+
+    def is_enabled(self) -> bool:
+        if not settings.enable_mqtt_services:
+            return False
+        mqtt_settings = store.read_setting_json(
+            "mqtt_client",
+            {
+                "enabled": True,
+                "host": settings.mqtt_public_host,
+                "port": settings.mqtt_bind_port,
+                "tls": settings.mqtt_tls_enabled,
+            },
+        )
+        return bool(mqtt_settings.get("enabled", True))
+
+    def status_summary(self) -> dict[str, object]:
+        if not settings.enable_mqtt_services:
+            return {"enabled": False, "connected": False, "status": "disabled", "last_error": "", "last_connected_at": None}
+        if not self.is_enabled():
+            return {"enabled": False, "connected": False, "status": "disabled", "last_error": "", "last_connected_at": None}
+        return {
+            "enabled": True,
+            "connected": self._connected,
+            "status": "connected" if self._connected else "error" if self._last_error else "connecting",
+            "last_error": self._last_error,
+            "last_connected_at": self._last_connected_at,
+        }
 
     def startup(self) -> None:
+        if not self.is_enabled():
+            self._connected = False
+            self._last_error = ""
+            return
         if self._task is None or self._task.done():
             self._stop_event = asyncio.Event()
             self._task = asyncio.create_task(self._run(), name="wfm-mqtt-ingress")
@@ -40,22 +69,41 @@ class MqttIngressService:
                 await self._task
             except asyncio.CancelledError:
                 pass
+        self._task = None
+        self._client = None
+        self._connected = False
+
+    async def reconcile(self) -> None:
+        if self.is_enabled():
+            self.startup()
+            return
+        await self.shutdown()
 
     async def _run(self) -> None:
         while not self._stop_event.is_set():
+            if not self.is_enabled():
+                self._connected = False
+                self._last_error = ""
+                return
             try:
                 try:
                     response = await asyncio.to_thread(emqx_service.upsert_server_user)
                     if response.status_code >= 400:
+                        self._connected = False
+                        self._last_error = f"Failed to sync MQTT server user ({response.status_code})"
                         await asyncio.sleep(5)
                         continue
                 except Exception:
+                    self._connected = False
+                    self._last_error = "Failed to sync MQTT server user"
                     await asyncio.sleep(5)
                     continue
                 await self._connect_once()
             except asyncio.CancelledError:
                 raise
             except Exception:
+                self._connected = False
+                self._last_error = "MQTT ingress connection loop failed"
                 await asyncio.sleep(5)
 
     async def _connect_once(self) -> None:
@@ -76,6 +124,9 @@ class MqttIngressService:
             tls_context=tls_context,
         ) as client:
             self._client = client
+            self._connected = True
+            self._last_error = ""
+            self._last_connected_at = datetime.now(UTC).isoformat()
             for topic in (
                 "wfm/+/+/heartbeat",
                 "wfm/+/+/event",
@@ -87,6 +138,7 @@ class MqttIngressService:
             async for message in client.messages:
                 await self._handle_message(str(message.topic), bytes(message.payload))
         self._client = None
+        self._connected = False
 
     async def _handle_message(self, topic: str, payload: bytes) -> None:
         parts = topic.split("/")
@@ -105,8 +157,20 @@ class MqttIngressService:
             event = str(nested.get("event") or body.get("event") or "event")
             message = str(nested.get("message") or body.get("message") or "")
             store.record_client_event(config_id, node_id, event=event, message=message, boot_id=boot_id, session_id=session_id)
+            log = store.append_client_event_log(
+                config_id,
+                node_id,
+                summary=f"Client event: {event}",
+                detail=message,
+            )
+            await realtime_service.publish(
+                "control.log.created",
+                {"config_id": config_id, "node_id": node_id, "log": log.model_dump(mode="json")},
+            )
         elif kind.endswith("/ack"):
             store.record_client_heartbeat(config_id, node_id, boot_id=boot_id, session_id=session_id)
+            if kind == "detect/ack":
+                store.record_detect_ack(config_id, node_id, boot_id=boot_id, session_id=session_id)
             if kind == "control/ack":
                 await self._handle_control_ack(config_id, node_id, body)
         await self._publish_node_state(config_id, node_id)
@@ -145,25 +209,12 @@ class MqttIngressService:
         return parsed if isinstance(parsed, dict) else {}
 
     async def _publish_node_state(self, config_id: str, node_id: str) -> None:
+        from app.services.control_plane_service import control_plane_service
+
         try:
-            status = store.get_node_endpoint_status(config_id, node_id)
+            await control_plane_service.publish_runtime_scope(config_id, node_id)
         except Exception:
             return
-        await realtime_service.publish(
-            "endpoint.status.updated",
-            {
-                "config_id": config_id,
-                "node_id": node_id,
-                "status": {
-                    "node": _dump(status["node"]),
-                    "runtime": _dump(status["runtime"]),
-                    "client_state": status["client_state"],
-                    "config_state": status["config_state"],
-                    "last_control": _dump(status["last_control"]) if status["last_control"] else None,
-                },
-            },
-        )
-        await realtime_service.publish("system.status.updated", store.system_status())
 
     async def publish_to_node(
         self,

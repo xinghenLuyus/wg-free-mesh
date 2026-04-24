@@ -11,7 +11,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.errors import AppError
-from app.domain.models import ControlStatus
+from app.domain.models import ControlStatus, NodeType
 from app.events.publish_plan import PublishPlan
 from app.events.realtime_publisher import RealtimePublisher
 from app.repositories.sqlite import store
@@ -182,6 +182,11 @@ class ControlPlaneService:
         await self.publish_node_workspace(config_id, node_id)
         await self.publish_node_apply(config_id, node_id)
 
+    async def publish_runtime_scope(self, config_id: str, node_id: str) -> None:
+        await self.publish_runtime(config_id, node_id)
+        await self.publish_config_overview(config_id)
+        await self.publish_configs()
+
     def create_config(self, payload: dict[str, object]):
         return store.create_config(payload)
 
@@ -214,7 +219,19 @@ class ControlPlaneService:
         return store.create_node(config_id, payload)
 
     def update_node(self, node_id: str, payload: dict[str, object]):
-        return store.update_node(node_id, payload)
+        previous = store.get_node(node_id)
+        result = store.update_node(node_id, payload)
+        current = store.get_node(node_id)
+        if previous.node_type != current.node_type:
+            if current.node_type == NodeType.static:
+                from app.services.emqx_service import emqx_service
+
+                try:
+                    emqx_service.delete_node_user(node_id=node_id)
+                except Exception:
+                    pass
+            store.reconcile_node_operational_state(current.config_id, current.id)
+        return result
 
     def list_tags(self, config_id: str):
         return store.list_tags(config_id)
@@ -312,11 +329,14 @@ class ControlPlaneService:
             "node": _dump_model(status["node"]),
             "runtime": _dump_model(status["runtime"]),
             "client_state": status["client_state"],
+            "mqtt_service": self.mqtt_service_status(),
             "config_state": status["config_state"],
             "last_control": _dump_model(status["last_control"]) if status["last_control"] else None,
         }
 
     def create_client_bind_command(self, config_id: str, node_id: str, server_url: str) -> dict[str, object]:
+        if not self.mqtt_service_enabled():
+            raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
         grant = store.create_client_bind_token(config_id, node_id)
         token = str(grant["token"])
         command = f'wfmctl bind --server "{server_url.rstrip("/")}" --token "{token}"'
@@ -339,6 +359,8 @@ class ControlPlaneService:
         return [item.model_dump(mode="json") for item in store.list_endpoint_logs(config_id, node_id)]
 
     async def control_action(self, config_id: str, node_id: str, action: str):
+        if not self.mqtt_service_enabled():
+            raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
         if action not in {"start", "stop"}:
             raise AppError("INVALID_ACTION", "Only start and stop are supported by MQTT control", 400)
         from app.services.mqtt_ingress_service import mqtt_ingress_service
@@ -378,11 +400,21 @@ class ControlPlaneService:
         return store.read_setting_json(
             "mqtt_client",
             {
+                "enabled": settings.enable_mqtt_services,
                 "host": settings.mqtt_public_host,
                 "port": settings.mqtt_bind_port,
                 "tls": settings.mqtt_tls_enabled,
             },
         )
+
+    def mqtt_service_enabled(self) -> bool:
+        mqtt_settings = self.mqtt_settings()
+        return settings.enable_mqtt_services and bool(mqtt_settings.get("enabled", True))
+
+    def mqtt_service_status(self) -> dict[str, object]:
+        from app.services.mqtt_ingress_service import mqtt_ingress_service
+
+        return mqtt_ingress_service.status_summary()
 
     def read_setting(self, key: str) -> str | None:
         return store.read_setting(key)
@@ -394,6 +426,7 @@ class ControlPlaneService:
         store.write_setting_json(
             "mqtt_client",
             {
+                "enabled": bool(payload.get("enabled", settings.enable_mqtt_services)),
                 "host": payload.get("host", settings.mqtt_public_host),
                 "port": payload.get("port", settings.mqtt_bind_port),
                 "tls": payload.get("tls", settings.mqtt_tls_enabled),
@@ -472,8 +505,13 @@ class ControlPlaneService:
 
     def system_status(self):
         status = store.system_status()
+        mqtt_status = self.mqtt_service_status()
         return {
             **status,
+            "services": {
+                **status["services"],
+                "mqtt": str(mqtt_status["status"]),
+            },
             "timestamp": _iso_datetime(status["timestamp"]) or "",
         }
 

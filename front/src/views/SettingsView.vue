@@ -27,6 +27,7 @@ const { t } = useI18n()
 const authStore = useAuthStore()
 const preferencesStore = usePreferencesStore()
 const mqttForm = reactive({
+  enabled: true,
   host: '',
   port: 8883,
   tls: true,
@@ -43,7 +44,20 @@ const passwordFormRef = shallowRef<FormInstance>()
 const passwordResetting = shallowRef(false)
 const snapshotImportInput = shallowRef<HTMLInputElement | null>(null)
 const mqttRules: FormRules<typeof mqttForm> = {
-  host: [requiredTextRule('fields.host')],
+  host: [{
+    trigger: ['blur', 'change'],
+    validator: (_rule, value, callback) => {
+      if (!mqttForm.enabled) {
+        callback()
+        return
+      }
+      if (typeof value !== 'string' || !value.trim()) {
+        callback(new Error(t('validation.required', { field: t('fields.host') })))
+        return
+      }
+      callback()
+    },
+  }],
 }
 
 function quietPasswordRule(validator: FormItemRule['validator']): FormItemRule {
@@ -411,11 +425,14 @@ onMounted(async () => {
 
       <el-form ref="mqttFormRef" :model="mqttForm" :rules="mqttRules" class="settings-form" label-position="top">
         <div class="form-grid">
+          <el-form-item :label="t('common.enabled')">
+            <el-switch v-model="mqttForm.enabled" />
+          </el-form-item>
           <el-form-item label="Host" prop="host" required>
-            <el-input v-model="mqttForm.host" placeholder="broker.example.com" />
+            <el-input v-model="mqttForm.host" placeholder="broker.example.com" :disabled="!mqttForm.enabled" />
           </el-form-item>
           <el-form-item label="Port">
-            <el-input-number v-model="mqttForm.port" :min="1" :max="65535" style="width: 100%" />
+            <el-input-number v-model="mqttForm.port" :min="1" :max="65535" style="width: 100%" :disabled="!mqttForm.enabled" />
           </el-form-item>
         </div>
 
@@ -424,7 +441,7 @@ onMounted(async () => {
             <strong>{{ t('settings.tlsTitle') }}</strong>
             <span>{{ t('settings.tlsDescription') }}</span>
           </div>
-          <el-switch v-model="mqttForm.tls" />
+          <el-switch v-model="mqttForm.tls" :disabled="!mqttForm.enabled" />
         </div>
 
         <div class="action-row">

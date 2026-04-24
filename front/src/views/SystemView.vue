@@ -122,7 +122,6 @@ onBeforeUnmount(() => {
       <el-descriptions-item :label="t('system.onlineNodes')">{{ status.summary.online_nodes }}</el-descriptions-item>
       <el-descriptions-item :label="t('system.pendingSyncNodes')">{{ status.summary.pending_sync_nodes }}</el-descriptions-item>
       <el-descriptions-item :label="t('system.database')">{{ status.services.database }}</el-descriptions-item>
-      <el-descriptions-item :label="t('system.mqtt')">{{ status.services.mqtt }}</el-descriptions-item>
       <el-descriptions-item :label="t('system.realtimeState')">
         {{ streamConnectionText }}
       </el-descriptions-item>

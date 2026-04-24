@@ -61,6 +61,7 @@ const tabs = computed(() => {
   const configId = String(route.params.configId)
   const nodeId = String(route.params.nodeId)
   const isStaticNode = node.value?.node_type === 'static'
+  const mqttDisabled = endpointStatus.value?.mqtt_service.enabled === false
   return [
     { label: t('nodeWorkspace.mesh'), path: `/configs/${configId}/nodes/${nodeId}/mesh`, align: 'left' as const },
     { label: t('nodeWorkspace.apply'), path: `/configs/${configId}/nodes/${nodeId}/apply`, align: 'left' as const },
@@ -68,7 +69,7 @@ const tabs = computed(() => {
       label: t('nodeWorkspace.control'),
       path: `/configs/${configId}/nodes/${nodeId}/control`,
       align: 'left' as const,
-      disabled: isStaticNode,
+      disabled: isStaticNode || mqttDisabled,
     },
     { label: t('nodeWorkspace.download'), path: `/configs/${configId}/nodes/${nodeId}/download`, align: 'right' as const },
   ]
@@ -138,7 +139,11 @@ function openSettings() {
 
 function handleTabClick(disabled: boolean) {
   if (!disabled) return
-  notify.info(t('nodeWorkspace.staticControlUnavailable'))
+  if (node.value?.node_type === 'static') {
+    notify.info(t('nodeWorkspace.staticControlUnavailable'))
+    return
+  }
+  notify.info(t('nodeWorkspace.mqttControlUnavailable'))
 }
 
 async function autofillKeys() {

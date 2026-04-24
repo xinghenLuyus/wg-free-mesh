@@ -16,7 +16,7 @@
 
 - `docker/.env`：只给 compose 和容器使用
 - `docker/.env` 在容器场景下应包含 `app` 运行所需的完整环境变量集合
-- `src/.env`：只给本地手动运行的 FastAPI 后端使用
+- `src/.env`：只给本地手动运行的 FastAPI 后端使用，且其中字段必须都能在 `docker/.env` 中找到对应项
 
 初始化时先复制：
 
@@ -25,7 +25,8 @@ cd docker
 Copy-Item .env.example .env
 ```
 
-这样像 `WFM_EMQX_AUTHZ_URL` 这类和容器网络强相关的配置，只会留在 `docker/.env`，不会污染本地 dev 后端环境。
+这样像 `WFM_EMQX_AUTHZ_URL` 这类和容器网络强相关的配置，只会留在 `docker/.env`，不会污染本地 dev 后端环境。  
+约束上，`docker/.env` 是完整注入源，`src/.env` 是它的本地 dev 运行子集。
 正式部署时，`docker/.env` 会统一注入 `app` 与 `emqx`；即使 `src/.env` 也存在，容器仍以 `docker/.env` 为准。
 
 ## 启动
@@ -107,6 +108,7 @@ docker compose up -d emqx
 建议本地 `src/.env` 至少包含：
 
 ```env
+WFM_ENABLE_MQTT_SERVICES=true
 WFM_MQTT_URL=mqtt://127.0.0.1:1883
 WFM_EMQX_API_BASE_URL=http://127.0.0.1:18083
 WFM_EMQX_USERNAME=admin

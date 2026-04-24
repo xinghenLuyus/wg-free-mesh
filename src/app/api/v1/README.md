@@ -13,6 +13,7 @@
 - 默认受后台会话保护的业务域优先使用 `routing.py` 中的 `SessionProtectedAPIRouter`，把鉴权收束在路由模块内部；只有下载等例外能力再单独声明专用 router。
 - 修改路径、请求体、响应体或错误码时，同步更新 `docs/API契约原则.md` 和 `docs/后端设计.md`。
 - `settings.py` 同时负责控制台界面偏好、MQTT 设置和密码修改，不把轻量偏好拆成独立业务域。
+- MQTT 设置既包含客户端对外可见的 Host / Port / TLS，也包含整条客户端 MQTT 能力的启停开关；关闭后相关 bind 与远程控制接口必须返回禁用状态。
 
 ## 当前文件
 

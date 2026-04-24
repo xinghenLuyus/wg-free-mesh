@@ -6,6 +6,7 @@
 
 - `sqlite.py`
   - `SQLiteStore`：当前 SQLite 主仓储，承载配置、节点、Mesh、同步态、运行态和系统设置读写，并逐步把拓扑规则与页面投影委托给 `services/` 和 `projections/`。
+  - 节点在静态/动态之间切换时，会统一重置 `node_client_state` 和 `endpoint_runtime_status`，启动时也会补做一次运行态清洗，避免旧测试数据残留在线状态。
 - `snapshot_repository.py`
   - `SnapshotRepository`：只负责 `backups` 表元数据读写，不再承担压缩包创建、恢复、导入导出。
   - `list_snapshots()` / `get_snapshot(...)`：读取快照元数据。

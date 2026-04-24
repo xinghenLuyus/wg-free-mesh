@@ -20,10 +20,6 @@ const bindingCommand = shallowRef('')
 const bindingExpiresAt = shallowRef('')
 const bindingBusy = shallowRef(false)
 
-function nodeTypeLabel(type: 'dynamic' | 'static') {
-  return type === 'static' ? t('nodeWorkspace.staticNode') : t('nodeWorkspace.dynamicNode')
-}
-
 async function reloadNode() {
   const configId = String(route.params.configId)
   const nodeId = String(route.params.nodeId)
@@ -43,6 +39,8 @@ async function sendAction(action: string) {
 const needsClientInit = computed(() => {
   return endpointStatus.value?.node.node_type === 'dynamic' && !endpointStatus.value.client_state.client_initialized
 })
+
+const mqttServiceEnabled = computed(() => endpointStatus.value?.mqtt_service.enabled !== false)
 
 function presenceLabel(state: string | undefined) {
   if (state === 'online') return t('endpointControl.presenceOnline')
@@ -146,6 +144,11 @@ onMounted(async () => {
       </div>
 
       <div v-if="endpointStatus && needsClientInit" class="endpoint-panels">
+        <div v-if="!mqttServiceEnabled" class="endpoint-card endpoint-disabled">
+          <div class="endpoint-card__title">{{ t('endpointControl.mqttDisabledTitle') }}</div>
+          <p class="endpoint-init__description">{{ t('endpointControl.mqttDisabledDescription') }}</p>
+        </div>
+        <template v-else>
         <div class="endpoint-card endpoint-init">
           <div>
             <div class="endpoint-card__title">{{ t('endpointControl.clientInitTitle') }}</div>
@@ -169,6 +172,7 @@ onMounted(async () => {
             {{ t('endpointControl.bindCommandExpiresAt', { time: formatDateTime(bindingExpiresAt) }) }}
           </div>
         </div>
+        </template>
       </div>
 
       <div v-else-if="endpointStatus" class="endpoint-panels">
@@ -176,23 +180,22 @@ onMounted(async () => {
           <div class="endpoint-card__title">{{ t('endpointControl.runtimeStatus') }}</div>
           <el-descriptions :column="2" border>
             <el-descriptions-item :label="t('endpointControl.node')">{{ endpointStatus.node.name }}</el-descriptions-item>
-            <el-descriptions-item :label="t('endpointControl.type')">{{ nodeTypeLabel(endpointStatus.node.node_type) }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.clientState')">{{ presenceLabel(endpointStatus.client_state.client_presence_state) }}</el-descriptions-item>
-            <el-descriptions-item :label="t('endpointControl.connectivity')">{{ endpointStatus.runtime.connectivity_state }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.wgState')">{{ endpointStatus.runtime.wg_runtime_state }}</el-descriptions-item>
-            <el-descriptions-item :label="t('endpointControl.peer')">{{ endpointStatus.runtime.peers_online }} / {{ endpointStatus.runtime.peers_total }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.lastSeen')">{{ formatDateTime(endpointStatus.runtime.last_seen) }}</el-descriptions-item>
-            <el-descriptions-item :label="t('endpointControl.lastHeartbeat')">{{ formatDateTime(endpointStatus.client_state.last_heartbeat_at || null) }}</el-descriptions-item>
           </el-descriptions>
         </div>
 
         <div class="endpoint-card">
           <div class="endpoint-card__title">{{ t('endpointControl.remoteControl') }}</div>
+          <div v-if="!mqttServiceEnabled" class="endpoint-disabled__message">
+            {{ t('endpointControl.mqttDisabledDescription') }}
+          </div>
           <div class="endpoint-controls">
-            <el-button :icon="VideoPlay" @click="sendAction('start')">{{ t('endpointControl.startWg') }}</el-button>
-            <el-button :icon="VideoPause" @click="sendAction('stop')">{{ t('endpointControl.stopWg') }}</el-button>
+            <el-button :icon="VideoPlay" :disabled="!mqttServiceEnabled" @click="sendAction('start')">{{ t('endpointControl.startWg') }}</el-button>
+            <el-button :icon="VideoPause" :disabled="!mqttServiceEnabled" @click="sendAction('stop')">{{ t('endpointControl.stopWg') }}</el-button>
             <el-button plain :icon="RefreshRight" @click="reloadNode">{{ t('endpointControl.refreshStatus') }}</el-button>
-            <el-button type="danger" plain :icon="SwitchButton" @click="resetClient">{{ t('endpointControl.resetClient') }}</el-button>
+            <el-button type="danger" plain :icon="SwitchButton" :disabled="!mqttServiceEnabled" @click="resetClient">{{ t('endpointControl.resetClient') }}</el-button>
           </div>
         </div>
 
@@ -225,6 +228,7 @@ onMounted(async () => {
 .endpoint-init__step { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-sunken); }
 .endpoint-init__step strong { color: var(--app-text-strong); }
 .endpoint-init__step span, .endpoint-init__expires { color: var(--app-muted); }
+.endpoint-disabled__message { color: var(--app-danger-text); line-height: 1.6; }
 .bind-command { margin: 0; padding: 14px; border: 1px solid var(--app-border-strong); border-radius: 8px; overflow-x: auto; background: var(--app-surface-sunken); color: var(--app-text-strong); white-space: pre-wrap; word-break: break-all; }
 .empty-state { display: grid; place-items: center; min-height: 120px; border: 1px dashed var(--app-border-strong); border-radius: 8px; color: var(--app-muted); }
 @media (max-width: 860px) { .template-toolbar { flex-direction: column; align-items: stretch; } }

@@ -9,6 +9,7 @@
   - `CurrentUser` / `DownloadGrant`：认证后的授权载体。
 - `control_plane_service.py`
   - `ControlPlaneService`：控制平面主服务，统一编排配置、节点、Mesh、同步态、运行态、快照、MQTT 设置，并把实时发布委托给统一发布计划。
+  - 节点类型切换时负责把“动态节点专属资源”收口到后端：回收 MQTT 凭据、重置客户端状态、把运行态归零，避免静态节点残留在线脏状态。
   - `test_mqtt_settings(...)`：对 MQTT Host、Port、TLS 发起真实 TCP / TLS 连通性测试。
 - `snapshot_service.py`
   - `SnapshotService`：负责快照压缩包创建、恢复、导入、导出、备注 manifest 同步和磁盘索引重建。
@@ -21,6 +22,9 @@
   - `MqttAuthService`：统一管理节点 MQTT 用户名、client_id、topic ACL 和 EMQX AuthZ 授权判断。
 - `mqtt_ingress_service.py`
   - `MqttIngressService`：服务端高权限 MQTT 客户端，订阅所有客户端上行 topic，处理 `heartbeat`、`event` 和 ACK，并把变化推送到 SSE。
+  - 对已经切换为静态节点的 MQTT 上行消息直接忽略，防止旧客户端把静态节点重新写回在线。
+  - `status_summary()`：统一返回 MQTT 服务是否启用、是否已连接、最近错误和最近连接时间，供系统状态页和端点能力开关复用。
+  - `reconcile()`：在设置页切换 MQTT 服务启停后，按当前配置即时启动或停止 MQTT 入口服务。
 - `config_service.py`
   - `ConfigService`：配置相关兼容入口。
 - `node_service.py`

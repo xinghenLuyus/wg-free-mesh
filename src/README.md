@@ -46,16 +46,26 @@
 WFM_DEBUG=true
 WFM_CORS_ORIGINS=["http://localhost:5173","http://localhost:8080"]
 WFM_AUTH_TOKEN_EXPIRE_MINUTES=1440
+WFM_ENABLE_MQTT_SERVICES=true
+WFM_MQTT_URL=mqtt://127.0.0.1:1883
+WFM_EMQX_API_BASE_URL=http://127.0.0.1:18083
+WFM_EMQX_USERNAME=admin
+WFM_EMQX_PASSWORD=public
+WFM_EMQX_AUTHZ_SHARED_KEY=wfm-internal-emqx-authz
 WFM_TIMEZONE=Asia/Shanghai
 WFM_ENABLE_DEV_TEST_API=false
 ```
 
 环境变量示例文件放在 [`.env.example`](D:/wenjian/stepsave/project/wg-free-mesh/src/.env.example)，实际本地配置文件应放到 `src/.env`。后端配置不会再从项目根目录读取 `.env`。
-`src/.env` 只负责后端自身配置。所有 EMQX / MQTT 相关配置统一放在 [docker/.env](D:/wenjian/stepsave/project/wg-free-mesh/docker/.env) 中；不要把这些内容继续写进 `src/.env`。在 Docker 场景下，`docker/.env` 会作为 `app` 容器的完整环境变量来源。
+`src/.env` 只负责本地 dev 后端启动所需配置；其中需要的字段必须都能在 [docker/.env](D:/wenjian/stepsave/project/wg-free-mesh/docker/.env) 中找到对应项。  
+`docker/.env` 是容器 / 生产场景的完整环境变量注入源；在 Docker 场景下，`app` 与 `emqx` 都以它为准。  
+也就是说：`src/.env` 应是 `docker/.env` 的可运行子集，而不是另一套并行配置体系。
 时间存储仍统一使用 UTC，控制台默认显示时区由 `WFM_TIMEZONE` 控制，默认值为北京时间 `Asia/Shanghai`。
 `WFM_ENABLE_DEV_TEST_API` 默认关闭；只有显式设为 `true` 时，`/api/v0` 开发测试接口才会注册。
 
-客户端对外可见的 MQTT `host` 与 `tls` 由前端设置页维护；EMQX 容器侧的连接、管理地址、AuthZ 回查和 TLS listener 开关统一由 `docker/.env` 控制。EMQX 统一账号密码为 `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD`，本地手动运行后端且修改过 Docker 默认值时，需要让本地后端读取到同一组值。
+客户端对外可见的 MQTT `host` 与 `tls` 由前端设置页维护；EMQX 容器侧的 TLS listener、证书路径、回查地址等容器专用参数由 `docker/.env` 控制。  
+EMQX 统一账号密码为 `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD`，本地手动运行后端且修改过 Docker 默认值时，需要让本地后端读取到同一组值。  
+`WFM_ENABLE_MQTT_SERVICES=false` 时，后端不会启动 MQTT 入口服务，所有客户端绑定和远程控制能力都会被禁用。
 
 ## 手动运行
 
