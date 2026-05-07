@@ -194,8 +194,11 @@ watch(
   <div class="shell">
     <aside class="sidebar">
       <div class="sidebar__brand">
-        <h2>WG Free Mesh</h2>
-        <div class="sidebar__brand-meta">{{ brandMeta }}</div>
+        <img class="sidebar__brand-logo" src="/logo.png" alt="WG Free Mesh" />
+        <div class="sidebar__brand-copy">
+          <h2>WG Free Mesh</h2>
+          <div class="sidebar__brand-meta">{{ brandMeta }}</div>
+        </div>
       </div>
 
       <nav class="sidebar__nav">
@@ -275,7 +278,9 @@ watch(
   box-shadow: var(--app-shadow-md);
   overflow: hidden;
 }
-.sidebar__brand { padding: 26px 22px 18px; border-bottom: 1px solid var(--app-border-soft); }
+.sidebar__brand { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 22px 22px 18px; border-bottom: 1px solid var(--app-border-soft); }
+.sidebar__brand-logo { flex: 0 0 auto; width: 42px; height: 42px; object-fit: contain; }
+.sidebar__brand-copy { min-width: 0; }
 .sidebar__brand h2 { margin: 0; color: var(--app-text-strong); font-size: 22px; line-height: 1.15; letter-spacing: 0; }
 .sidebar__brand-meta { margin-top: 6px; color: var(--app-muted); font-size: 12px; font-weight: 600; }
 .sidebar__nav { flex: 1 1 auto; display: flex; flex-direction: column; gap: 6px; overflow: auto; padding: 16px 14px 20px; }

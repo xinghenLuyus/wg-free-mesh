@@ -43,7 +43,15 @@ async def bind_client(payload: ClientBindRequest) -> ApiResponse[dict[str, Any]]
             {"status_code": response.status_code, "body": response.text},
         )
 
-    control_plane_service.mark_client_bound(config.id, node.id, username=username, client_id=client_id)
+    control_plane_service.mark_client_bound(
+        config.id,
+        node.id,
+        username=username,
+        client_id=client_id,
+        platform=payload.platform,
+        version=payload.client_version,
+        hostname=payload.hostname,
+    )
     await control_plane_service.publish_runtime(config.id, node.id)
     desired = control_plane_service.read_applied_conf(config.id, node.id)
     return ok(

@@ -12,6 +12,29 @@ from app.repositories.row_mappers import bool_value as _bool_value, parse_dateti
 
 
 class SQLiteClientStateMixin:
+    @staticmethod
+    def _normalize_client_text(value: str, limit: int = 64) -> str:
+        return value.strip()[:limit]
+
+    @staticmethod
+    def _client_platform_label(platform: str) -> str:
+        normalized = platform.strip().lower()
+        labels = {
+            "windows": "Windows",
+            "win32": "Windows",
+            "linux": "Linux",
+            "darwin": "macOS",
+            "macos": "macOS",
+        }
+        return labels.get(normalized, platform.strip())
+
+    def _client_version_label(self, platform: object, version: object) -> str:
+        platform_label = self._client_platform_label(str(platform or ""))
+        version_text = str(version or "").strip()
+        if platform_label and version_text:
+            return f"{platform_label} {version_text}"
+        return platform_label or version_text
+
     def _ensure_client_state(self, config_id: str, node_id: str) -> None:
         now = now_utc().isoformat()
         with connect() as connection:
@@ -38,6 +61,10 @@ class SQLiteClientStateMixin:
             }
         return {
             "client_initialized": _bool_value(row["client_initialized"]),
+            "client_platform": row["client_platform"],
+            "client_version": row["client_version"],
+            "client_hostname": row["client_hostname"],
+            "client_version_label": self._client_version_label(row["client_platform"], row["client_version"]),
             "mqtt_username": row["mqtt_username"],
             "mqtt_client_id": row["mqtt_client_id"],
             "client_presence_state": row["client_presence_state"],
@@ -73,6 +100,10 @@ class SQLiteClientStateMixin:
             node_id = str(row["node_id"])
             states[node_id] = {
                 "client_initialized": _bool_value(row["client_initialized"]),
+                "client_platform": row["client_platform"],
+                "client_version": row["client_version"],
+                "client_hostname": row["client_hostname"],
+                "client_version_label": self._client_version_label(row["client_platform"], row["client_version"]),
                 "mqtt_username": row["mqtt_username"],
                 "mqtt_client_id": row["mqtt_client_id"],
                 "client_presence_state": row["client_presence_state"],
@@ -122,6 +153,9 @@ class SQLiteClientStateMixin:
             """
             UPDATE node_client_state
             SET client_initialized = 0,
+                client_platform = '',
+                client_version = '',
+                client_hostname = '',
                 mqtt_username = '',
                 mqtt_client_id = '',
                 bind_token_hash = '',
@@ -208,14 +242,30 @@ class SQLiteClientStateMixin:
             raise AppError("CLIENT_BIND_NOT_ALLOWED", "Client bind is not allowed for this node", 403)
         return {"config": config, "node": node, "expires_at": expires_at}
 
-    def mark_client_bound(self, config_id: str, node_id: str, *, username: str, client_id: str) -> dict[str, object]:
+    def mark_client_bound(
+        self,
+        config_id: str,
+        node_id: str,
+        *,
+        username: str,
+        client_id: str,
+        platform: str = "",
+        version: str = "",
+        hostname: str = "",
+    ) -> dict[str, object]:
         now = now_utc().isoformat()
         self._ensure_client_state(config_id, node_id)
+        client_platform = self._normalize_client_text(platform)
+        client_version = self._normalize_client_text(version)
+        client_hostname = self._normalize_client_text(hostname, limit=128)
         with connect() as connection:
             connection.execute(
                 """
                 UPDATE node_client_state
                 SET client_initialized = 1,
+                    client_platform = ?,
+                    client_version = ?,
+                    client_hostname = ?,
                     mqtt_username = ?,
                     mqtt_client_id = ?,
                     bind_token_used_at = ?,
@@ -223,7 +273,7 @@ class SQLiteClientStateMixin:
                     updated_at = ?
                 WHERE config_id = ? AND node_id = ?
                 """,
-                (username, client_id, now, now, config_id, node_id),
+                (client_platform, client_version, client_hostname, username, client_id, now, now, config_id, node_id),
             )
         return self.get_client_state(config_id, node_id)
 

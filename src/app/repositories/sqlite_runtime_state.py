@@ -334,6 +334,8 @@ class SQLiteRuntimeStateMixin:
         node = self.get_node(node_id)
         runtime = self.get_runtime(config_id, node_id)
         state = self.get_node_config_state(config_id, node_id)
+        server_apply_status = self._sync_status_from_state(state)
+        wg_config_version_state = "latest" if server_apply_status == "in_sync" else "pending"
         logs = self.list_endpoint_logs(config_id, node_id, limit=1)
         return {
             "node": node,
@@ -349,7 +351,8 @@ class SQLiteRuntimeStateMixin:
                 "reported_local_sha256": state.reported_local_sha256,
                 "reported_local_version": state.reported_local_version,
                 "status": runtime.config_sync_state,
-                "server_apply_status": self._sync_status_from_state(state),
+                "server_apply_status": server_apply_status,
+                "wg_config_version_state": wg_config_version_state,
             },
             "last_control": logs[0] if logs else None,
         }

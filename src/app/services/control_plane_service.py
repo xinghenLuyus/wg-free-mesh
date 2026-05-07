@@ -483,8 +483,26 @@ class ControlPlaneService:
     def client_bind_preview(self, token: str) -> dict[str, object]:
         return store.validate_client_bind_token(token)
 
-    def mark_client_bound(self, config_id: str, node_id: str, *, username: str, client_id: str) -> dict[str, object]:
-        return store.mark_client_bound(config_id, node_id, username=username, client_id=client_id)
+    def mark_client_bound(
+        self,
+        config_id: str,
+        node_id: str,
+        *,
+        username: str,
+        client_id: str,
+        platform: str = "",
+        version: str = "",
+        hostname: str = "",
+    ) -> dict[str, object]:
+        return store.mark_client_bound(
+            config_id,
+            node_id,
+            username=username,
+            client_id=client_id,
+            platform=platform,
+            version=version,
+            hostname=hostname,
+        )
 
     def reset_client_state(self, config_id: str, node_id: str) -> dict[str, object]:
         return store.reset_client_state(config_id, node_id)

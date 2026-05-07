@@ -338,6 +338,10 @@ export interface EndpointStatusRead {
   }
   client_state: {
     client_initialized: boolean
+    client_platform?: string
+    client_version?: string
+    client_hostname?: string
+    client_version_label?: string
     mqtt_username?: string
     mqtt_client_id?: string
     client_presence_state: 'online' | 'dropped' | 'offline' | string
@@ -367,6 +371,7 @@ export interface EndpointStatusRead {
     reported_local_version: number
     status: string
     server_apply_status: string
+    wg_config_version_state: 'latest' | 'pending' | string
   }
   last_control: ControlLogRead | null
 }

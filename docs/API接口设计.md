@@ -535,6 +535,11 @@ Authorization: Bearer <access_token>
 - 返回补充：
   - `client_initialized`
   - `client_presence_state`
+  - `client_platform`
+  - `client_version`
+  - `client_hostname`
+  - `client_version_label`
+  - `config_state.wg_config_version_state`
 
 说明：
 
@@ -543,6 +548,10 @@ Authorization: Bearer <access_token>
   - `在线`
   - `掉线`
   - `离线`
+- `client_version_label` 由后端根据客户端绑定时上报的 `platform + client_version` 聚合，例如 `Windows v1.3.2` 或 `Linux v1.3.2`。
+- `config_state.wg_config_version_state` 由后端根据当前节点同步态计算，只允许：
+  - `latest`：同步态已等于系统态
+  - `pending`：同步态为空或已落后，需要同步
 
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/endpoint/logs`
 

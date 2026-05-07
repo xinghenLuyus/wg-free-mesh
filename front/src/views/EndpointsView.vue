@@ -62,6 +62,12 @@ function presenceLabel(state: string | undefined) {
   return t('endpointControl.presenceOffline')
 }
 
+function wgConfigVersionLabel(state: string | undefined) {
+  if (state === 'latest') return t('endpointControl.wgConfigLatest')
+  if (state === 'pending') return t('endpointControl.wgConfigPending')
+  return t('endpointControl.unknown')
+}
+
 async function copyText(value: string) {
   if (navigator.clipboard?.writeText) {
     await navigator.clipboard.writeText(value)
@@ -217,6 +223,10 @@ watch(
           <el-descriptions :column="2" border>
             <el-descriptions-item :label="t('endpointControl.node')">{{ endpointStatus.node.name }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.clientState')">{{ presenceLabel(endpointStatus.client_state.client_presence_state) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.clientVersion')">{{ endpointStatus.client_state.client_version_label || t('endpointControl.unknown') }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.wgConfigVersion')">
+              {{ wgConfigVersionLabel(endpointStatus.config_state.wg_config_version_state) }}
+            </el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.wgState')">{{ endpointStatus.runtime.wg_runtime_state }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.lastSeen')">{{ formatDateTime(endpointStatus.runtime.last_seen) }}</el-descriptions-item>
           </el-descriptions>

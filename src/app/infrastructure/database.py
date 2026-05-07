@@ -37,6 +37,12 @@ def _database_path() -> Path:
     return path
 
 
+def _ensure_column(connection: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    columns = {str(row["name"]) for row in connection.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        connection.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+
+
 @contextmanager
 def connect() -> Iterator[sqlite3.Connection]:
     connection = sqlite3.connect(_database_path())
@@ -177,6 +183,9 @@ def init_database() -> None:
               node_id TEXT PRIMARY KEY,
               config_id TEXT NOT NULL,
               client_initialized INTEGER NOT NULL DEFAULT 0,
+              client_platform TEXT NOT NULL DEFAULT '',
+              client_version TEXT NOT NULL DEFAULT '',
+              client_hostname TEXT NOT NULL DEFAULT '',
               mqtt_username TEXT NOT NULL DEFAULT '',
               mqtt_client_id TEXT NOT NULL DEFAULT '',
               bind_token_hash TEXT NOT NULL DEFAULT '',
@@ -241,6 +250,10 @@ def init_database() -> None:
               ON endpoint_control_logs(config_id, node_id, created_at DESC);
             """
         )
+
+        _ensure_column(connection, "node_client_state", "client_platform", "client_platform TEXT NOT NULL DEFAULT ''")
+        _ensure_column(connection, "node_client_state", "client_version", "client_version TEXT NOT NULL DEFAULT ''")
+        _ensure_column(connection, "node_client_state", "client_hostname", "client_hostname TEXT NOT NULL DEFAULT ''")
 
         now = now_utc().isoformat()
         connection.execute(
