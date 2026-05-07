@@ -96,6 +96,7 @@ class SQLiteRuntimeStateMixin:
         return {str(row["node_id"]): _state_from_row(row) for row in rows}
 
     def list_runtime_snapshot(self, config_id: str) -> list[dict[str, object]]:
+        self.reconcile_client_timeouts(config_id)
         runtime_map = self._list_runtime_rows(config_id)
         state_map = self._list_node_config_states(config_id)
         client_states = self.list_client_states(config_id)
@@ -138,6 +139,10 @@ class SQLiteRuntimeStateMixin:
                     "last_seen": runtime.last_seen,
                     "last_probe_sent_at": runtime.last_probe_sent_at,
                     "last_probe_ack_at": runtime.last_probe_ack_at,
+                    "heartbeat_client_online": runtime.heartbeat_client_online,
+                    "heartbeat_wg_online": runtime.heartbeat_wg_online,
+                    "detect_client_online": runtime.detect_client_online,
+                    "detect_wg_online": runtime.detect_wg_online,
                     "client_initialized": client_state.get("client_initialized", False),
                     "client_presence_state": client_state.get("client_presence_state", "offline"),
                 }
@@ -331,6 +336,7 @@ class SQLiteRuntimeStateMixin:
         return {"summary": summary, "runtime": self.get_runtime(config_id, node_id)}
 
     def get_node_endpoint_status(self, config_id: str, node_id: str) -> dict[str, object]:
+        self.reconcile_client_timeouts(config_id)
         node = self.get_node(node_id)
         runtime = self.get_runtime(config_id, node_id)
         state = self.get_node_config_state(config_id, node_id)

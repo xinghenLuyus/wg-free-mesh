@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { RefreshRight, SwitchButton, VideoPause, VideoPlay } from '@element-plus/icons-vue'
+import { Monitor, RefreshRight, SwitchButton, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { computed, onMounted, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
@@ -19,6 +19,7 @@ const startingWg = actions.isPending('start-wg')
 const stoppingWg = actions.isPending('stop-wg')
 const refreshingStatus = actions.isPending('refresh-status')
 const resettingClient = actions.isPending('reset-client')
+const loadingWgInfo = actions.isPending('wg-info')
 
 const endpointStatus = shallowRef<EndpointStatusRead | null>(null)
 const logs = shallowRef<ControlLogRead[]>([])
@@ -39,7 +40,7 @@ async function reloadNode() {
 }
 
 async function sendAction(action: string) {
-  const key = action === 'start' ? 'start-wg' : action === 'stop' ? 'stop-wg' : `action-${action}`
+  const key = action === 'start' ? 'start-wg' : action === 'stop' ? 'stop-wg' : action === 'wg_show' ? 'wg-info' : `action-${action}`
   await actions.run(key, async () => {
     try {
       const result = await api.controlEndpoint(String(route.params.configId), String(route.params.nodeId), action)
@@ -223,12 +224,16 @@ watch(
           <el-descriptions :column="2" border>
             <el-descriptions-item :label="t('endpointControl.node')">{{ endpointStatus.node.name }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.clientState')">{{ presenceLabel(endpointStatus.client_state.client_presence_state) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.clientOnline')">{{ endpointStatus.runtime.online ? t('endpointControl.online') : t('endpointControl.offline') }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.wgOnline')">{{ endpointStatus.runtime.wg_running ? t('endpointControl.online') : t('endpointControl.offline') }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.clientVersion')">{{ endpointStatus.client_state.client_version_label || t('endpointControl.unknown') }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.wgConfigVersion')">
               {{ wgConfigVersionLabel(endpointStatus.config_state.wg_config_version_state) }}
             </el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.wgState')">{{ endpointStatus.runtime.wg_runtime_state }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.lastSeen')">{{ formatDateTime(endpointStatus.runtime.last_seen) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.lastHeartbeat')">{{ formatDateTime(endpointStatus.client_state.last_heartbeat_at) }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.lastDetect')">{{ formatDateTime(endpointStatus.runtime.last_probe_ack_at) }}</el-descriptions-item>
           </el-descriptions>
         </div>
 
@@ -240,6 +245,7 @@ watch(
           <div class="endpoint-controls">
             <el-button :icon="VideoPlay" :loading="startingWg" :disabled="!mqttServiceEnabled" @click="sendAction('start')">{{ t('endpointControl.startWg') }}</el-button>
             <el-button :icon="VideoPause" :loading="stoppingWg" :disabled="!mqttServiceEnabled" @click="sendAction('stop')">{{ t('endpointControl.stopWg') }}</el-button>
+            <el-button :icon="Monitor" :loading="loadingWgInfo" :disabled="!mqttServiceEnabled" @click="sendAction('wg_show')">{{ t('endpointControl.wgInfo') }}</el-button>
             <el-button plain :icon="RefreshRight" :loading="refreshingStatus" @click="reloadNode">{{ t('endpointControl.refreshStatus') }}</el-button>
             <el-button type="danger" plain :icon="SwitchButton" :loading="resettingClient" :disabled="!mqttServiceEnabled" @click="resetClient">{{ t('endpointControl.resetClient') }}</el-button>
           </div>

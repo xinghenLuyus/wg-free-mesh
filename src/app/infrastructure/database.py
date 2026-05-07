@@ -169,6 +169,10 @@ def init_database() -> None:
               last_probe_sent_at TEXT,
               last_probe_ack_at TEXT,
               last_control_channel_seen_at TEXT,
+              heartbeat_client_online INTEGER NOT NULL DEFAULT 0,
+              heartbeat_wg_online INTEGER NOT NULL DEFAULT 0,
+              detect_client_online INTEGER NOT NULL DEFAULT 0,
+              detect_wg_online INTEGER NOT NULL DEFAULT 0,
               last_config_sync_error TEXT NOT NULL DEFAULT '',
               last_connectivity_reason TEXT NOT NULL DEFAULT '',
               client_downloaded INTEGER NOT NULL DEFAULT 0,
@@ -254,6 +258,10 @@ def init_database() -> None:
         _ensure_column(connection, "node_client_state", "client_platform", "client_platform TEXT NOT NULL DEFAULT ''")
         _ensure_column(connection, "node_client_state", "client_version", "client_version TEXT NOT NULL DEFAULT ''")
         _ensure_column(connection, "node_client_state", "client_hostname", "client_hostname TEXT NOT NULL DEFAULT ''")
+        _ensure_column(connection, "endpoint_runtime_status", "heartbeat_client_online", "heartbeat_client_online INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(connection, "endpoint_runtime_status", "heartbeat_wg_online", "heartbeat_wg_online INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(connection, "endpoint_runtime_status", "detect_client_online", "detect_client_online INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(connection, "endpoint_runtime_status", "detect_wg_online", "detect_wg_online INTEGER NOT NULL DEFAULT 0")
 
         now = now_utc().isoformat()
         connection.execute(

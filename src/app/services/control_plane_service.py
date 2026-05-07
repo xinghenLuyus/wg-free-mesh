@@ -513,14 +513,15 @@ class ControlPlaneService:
     async def control_action(self, config_id: str, node_id: str, action: str):
         if not self.mqtt_service_enabled():
             raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
-        if action not in {"start", "stop"}:
-            raise AppError("INVALID_ACTION", "Only start and stop are supported by MQTT control", 400)
+        if action not in {"start", "stop", "wg_show"}:
+            raise AppError("INVALID_ACTION", "Only start, stop and wg_show are supported by MQTT control", 400)
         from app.services.mqtt_ingress_service import mqtt_ingress_service
 
         log = store.create_control_log(config_id, node_id, action)
         await realtime_service.publish("control.log.created", {"config_id": config_id, "node_id": node_id, "log": log.model_dump(mode="json")})
+        kind = "info" if action == "wg_show" else "control"
         payload = {
-            "type": "control",
+            "type": kind,
             "request_id": log.request_id,
             "config_id": config_id,
             "node_id": node_id,
@@ -530,7 +531,7 @@ class ControlPlaneService:
             "payload": {"action": action},
         }
         try:
-            await mqtt_ingress_service.publish_to_node(config_id=config_id, node_id=node_id, kind="control", payload=payload)
+            await mqtt_ingress_service.publish_to_node(config_id=config_id, node_id=node_id, kind=kind, payload=payload)
         except Exception as exc:
             updated_log = store.complete_control_log(log.request_id, ControlStatus.failed, "MQTT control publish failed", str(exc))
             await realtime_service.publish("control.log.updated", {"config_id": config_id, "node_id": node_id, "log": updated_log.model_dump(mode="json")})
@@ -538,14 +539,27 @@ class ControlPlaneService:
         return {"request_id": log.request_id, "message": "Control command sent over MQTT"}
 
     async def probe_batch(self, config_id: str, node_ids: list[str]):
+        from app.services.mqtt_ingress_service import mqtt_ingress_service
+
         dispatched: list[dict[str, str]] = []
         for node in store.list_nodes(config_id):
             if node.node_type != "dynamic":
                 continue
             if node_ids and node.id not in node_ids:
                 continue
-            result = await self.control_action(config_id, node.id, "probe")
-            dispatched.append({"node_id": node.id, "request_id": str(result["request_id"])})
+            store.record_detect_sent(config_id, node.id)
+            payload = {
+                "type": "detect",
+                "request_id": f"probe-{node.id}-{datetime.now(UTC).timestamp()}",
+                "config_id": config_id,
+                "node_id": node.id,
+                "boot_id": "",
+                "session_id": "",
+                "sent_at": datetime.now(UTC).isoformat(),
+                "payload": {},
+            }
+            await mqtt_ingress_service.publish_to_node(config_id=config_id, node_id=node.id, kind="detect", payload=payload)
+            dispatched.append({"node_id": node.id, "request_id": str(payload["request_id"])})
         return {"dispatched": dispatched, "skipped": []}
 
     def mqtt_settings(self):

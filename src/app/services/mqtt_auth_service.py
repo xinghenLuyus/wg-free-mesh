@@ -24,11 +24,13 @@ class MqttAuthService:
                 f"{prefix}/config/push",
                 f"{prefix}/control",
                 f"{prefix}/detect",
+                f"{prefix}/info",
             ),
             "publish": (
                 f"{prefix}/config/push/ack",
                 f"{prefix}/control/ack",
                 f"{prefix}/detect/ack",
+                f"{prefix}/info/ack",
                 f"{prefix}/event",
                 f"{prefix}/heartbeat",
             ),

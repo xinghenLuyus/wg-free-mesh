@@ -194,6 +194,10 @@ class EndpointRuntimeStatus(BaseModel):
     last_probe_sent_at: datetime | None = None
     last_probe_ack_at: datetime | None = None
     last_control_channel_seen_at: datetime | None = None
+    heartbeat_client_online: bool = False
+    heartbeat_wg_online: bool = False
+    detect_client_online: bool = False
+    detect_wg_online: bool = False
     last_config_sync_error: str = ""
     last_connectivity_reason: str = ""
     client_downloaded: bool = False

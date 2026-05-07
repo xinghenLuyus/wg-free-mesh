@@ -297,6 +297,10 @@ export interface RuntimeSnapshotItem {
   last_seen: string | null
   last_probe_sent_at: string | null
   last_probe_ack_at: string | null
+  heartbeat_client_online: boolean
+  heartbeat_wg_online: boolean
+  detect_client_online: boolean
+  detect_wg_online: boolean
   client_initialized: boolean
   client_presence_state: 'online' | 'dropped' | 'offline' | string
 }
@@ -331,6 +335,10 @@ export interface EndpointStatusRead {
     last_probe_sent_at: string | null
     last_probe_ack_at: string | null
     last_control_channel_seen_at: string | null
+    heartbeat_client_online: boolean
+    heartbeat_wg_online: boolean
+    detect_client_online: boolean
+    detect_wg_online: boolean
     last_config_sync_error: string
     last_connectivity_reason: string
     client_downloaded: boolean

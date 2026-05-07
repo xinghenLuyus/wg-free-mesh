@@ -6,6 +6,7 @@ import ssl
 from typing import Any
 from urllib.parse import urlparse
 from datetime import UTC, datetime
+from uuid import uuid4
 
 import aiomqtt
 
@@ -13,11 +14,16 @@ from app.core.config import settings
 from app.repositories.sqlite import store
 from app.services.emqx_service import emqx_service
 from app.services.node_runtime_service import node_runtime_service
+from app.services.realtime_service import realtime_service
+
+DETECT_INTERVAL_SECONDS = 120
+DETECT_ACK_TIMEOUT_SECONDS = 10
 
 
 class MqttIngressService:
     def __init__(self) -> None:
         self._task: asyncio.Task[None] | None = None
+        self._detect_task: asyncio.Task[None] | None = None
         self._stop_event = asyncio.Event()
         self._client: aiomqtt.Client | None = None
         self._connected = False
@@ -84,6 +90,8 @@ class MqttIngressService:
         if self._task is None or self._task.done():
             self._stop_event = asyncio.Event()
             self._task = asyncio.create_task(self._run(), name="wfm-mqtt-ingress")
+        if self._detect_task is None or self._detect_task.done():
+            self._detect_task = asyncio.create_task(self._detect_loop(), name="wfm-mqtt-detect")
 
     async def shutdown(self) -> None:
         self._stop_event.set()
@@ -93,7 +101,14 @@ class MqttIngressService:
                 await self._task
             except asyncio.CancelledError:
                 pass
+        if self._detect_task is not None:
+            self._detect_task.cancel()
+            try:
+                await self._detect_task
+            except asyncio.CancelledError:
+                pass
         self._task = None
+        self._detect_task = None
         self._client = None
         await self._apply_status(connected=False)
 
@@ -152,6 +167,7 @@ class MqttIngressService:
                 "wfm/+/+/heartbeat",
                 "wfm/+/+/event",
                 "wfm/+/+/detect/ack",
+                "wfm/+/+/info/ack",
                 "wfm/+/+/config/push/ack",
                 "wfm/+/+/control/ack",
             ):
@@ -171,12 +187,15 @@ class MqttIngressService:
         boot_id = str(body.get("boot_id") or "")
         session_id = str(body.get("session_id") or "")
         if kind == "heartbeat":
-            await node_runtime_service.apply_heartbeat(config_id, node_id, boot_id=boot_id, session_id=session_id)
+            await node_runtime_service.apply_heartbeat(config_id, node_id, body, boot_id=boot_id, session_id=session_id)
         elif kind == "event":
             raw_payload = body.get("payload")
             nested = raw_payload if isinstance(raw_payload, dict) else {}
             event = str(nested.get("event") or body.get("event") or "event")
             message = str(nested.get("message") or body.get("message") or "")
+            request_id = str(nested.get("request_id") or body.get("request_id") or "")
+            action = str(nested.get("action") or body.get("action") or "")
+            output = str(nested.get("output") or body.get("output") or "")
             await node_runtime_service.apply_event(
                 config_id,
                 node_id,
@@ -184,10 +203,16 @@ class MqttIngressService:
                 message=message,
                 boot_id=boot_id,
                 session_id=session_id,
+                request_id=request_id,
+                action=action,
+                output=output,
             )
         elif kind.endswith("/ack"):
             if kind == "detect/ack":
-                await node_runtime_service.apply_detect_ack(config_id, node_id, boot_id=boot_id, session_id=session_id)
+                await node_runtime_service.apply_detect_ack(config_id, node_id, body, boot_id=boot_id, session_id=session_id)
+                return
+            if kind == "info/ack":
+                await node_runtime_service.apply_info_ack(config_id, node_id, body)
                 return
             if kind == "control/ack":
                 await node_runtime_service.apply_control_ack(config_id, node_id, body)
@@ -204,6 +229,49 @@ class MqttIngressService:
         except Exception:
             return {}
         return parsed if isinstance(parsed, dict) else {}
+
+    async def _detect_loop(self) -> None:
+        while not self._stop_event.is_set():
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=DETECT_INTERVAL_SECONDS)
+                break
+            except asyncio.TimeoutError:
+                pass
+            if not self.is_enabled() or self._client is None or realtime_service.subscriber_count <= 0:
+                continue
+            await self._probe_bound_clients()
+
+    async def _probe_bound_clients(self) -> None:
+        store.reconcile_client_timeouts()
+        targets = store.list_detect_targets()
+        if not targets:
+            return
+        await asyncio.gather(*(self._probe_target(item["config_id"], item["node_id"]) for item in targets))
+
+    async def _probe_target(self, config_id: str, node_id: str) -> None:
+        request_id = uuid4().hex
+        store.record_detect_sent(config_id, node_id)
+        payload = {
+            "type": "detect",
+            "request_id": request_id,
+            "config_id": config_id,
+            "node_id": node_id,
+            "boot_id": "",
+            "session_id": "",
+            "sent_at": datetime.now(UTC).isoformat(),
+            "payload": {},
+        }
+        try:
+            await self.publish_to_node(config_id=config_id, node_id=node_id, kind="detect", payload=payload)
+        except Exception:
+            store.record_detect_timeout(config_id, node_id)
+            await node_runtime_service._publish_runtime_scope(config_id, node_id)
+            return
+        await asyncio.sleep(DETECT_ACK_TIMEOUT_SECONDS)
+        runtime = store.get_runtime(config_id, node_id)
+        if runtime.last_probe_ack_at is None or runtime.last_probe_sent_at is None or runtime.last_probe_ack_at < runtime.last_probe_sent_at:
+            store.record_detect_timeout(config_id, node_id)
+            await node_runtime_service._publish_runtime_scope(config_id, node_id)
 
     async def publish_to_node(
         self,

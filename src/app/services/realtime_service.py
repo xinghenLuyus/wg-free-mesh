@@ -53,6 +53,10 @@ class RealtimeService:
     def shutting_down(self) -> bool:
         return self._shutting_down
 
+    @property
+    def subscriber_count(self) -> int:
+        return len(self._subscribers)
+
     def startup(self) -> None:
         self._shutting_down = False
 

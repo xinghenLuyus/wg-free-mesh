@@ -12,6 +12,8 @@ from app.repositories.row_mappers import bool_value as _bool_value, parse_dateti
 
 
 class SQLiteClientStateMixin:
+    HEARTBEAT_TIMEOUT = timedelta(minutes=45)
+
     @staticmethod
     def _normalize_client_text(value: str, limit: int = 64) -> str:
         return value.strip()[:limit]
@@ -135,6 +137,10 @@ class SQLiteClientStateMixin:
                 connectivity_state = ?,
                 wg_running = 0,
                 wg_runtime_state = ?,
+                heartbeat_client_online = 0,
+                heartbeat_wg_online = 0,
+                detect_client_online = 0,
+                detect_wg_online = 0,
                 last_seen = NULL,
                 last_probe_sent_at = NULL,
                 last_probe_ack_at = NULL,
@@ -284,7 +290,86 @@ class SQLiteClientStateMixin:
             self._reset_runtime_row(connection, config_id, node_id, reason="client-reset", clear_downloaded=True)
         return self.get_client_state(config_id, node_id)
 
-    def record_client_heartbeat(self, config_id: str, node_id: str, *, boot_id: str = "", session_id: str = "") -> dict[str, object]:
+    def reconcile_client_timeouts(self, config_id: str | None = None) -> None:
+        cutoff = (now_utc() - self.HEARTBEAT_TIMEOUT).isoformat()
+        params: tuple[object, ...]
+        config_filter = ""
+        if config_id:
+            config_filter = "AND config_id = ?"
+            params = (cutoff, config_id)
+        else:
+            params = (cutoff,)
+        now = now_utc().isoformat()
+        with connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT config_id, node_id
+                FROM node_client_state
+                WHERE client_initialized = 1
+                  AND last_heartbeat_at IS NOT NULL
+                  AND last_heartbeat_at < ?
+                  {config_filter}
+                """,
+                params,
+            ).fetchall()
+            for row in rows:
+                connection.execute(
+                    """
+                    UPDATE node_client_state
+                    SET client_presence_state = 'offline', updated_at = ?
+                    WHERE config_id = ? AND node_id = ?
+                    """,
+                    (now, row["config_id"], row["node_id"]),
+                )
+                connection.execute(
+                    """
+                    UPDATE endpoint_runtime_status
+                    SET online = 0,
+                        connectivity_state = ?,
+                        wg_running = 0,
+                        wg_runtime_state = ?,
+                        heartbeat_client_online = 0,
+                        heartbeat_wg_online = 0,
+                        last_connectivity_reason = ?,
+                        updated_at = ?
+                    WHERE config_id = ? AND node_id = ?
+                    """,
+                    (
+                        ConnectivityState.offline.value,
+                        WgRuntimeState.stopped.value,
+                        "heartbeat-timeout",
+                        now,
+                        row["config_id"],
+                        row["node_id"],
+                    ),
+                )
+
+    def list_detect_targets(self) -> list[dict[str, str]]:
+        with connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT n.config_id, n.id AS node_id
+                FROM nodes n
+                JOIN configs c ON c.id = n.config_id
+                JOIN node_client_state s ON s.config_id = n.config_id AND s.node_id = n.id
+                WHERE c.enabled = 1
+                  AND n.node_type = ?
+                  AND s.client_initialized = 1
+                """,
+                (NodeType.dynamic.value,),
+            ).fetchall()
+        return [{"config_id": str(row["config_id"]), "node_id": str(row["node_id"])} for row in rows]
+
+    def record_client_heartbeat(
+        self,
+        config_id: str,
+        node_id: str,
+        *,
+        boot_id: str = "",
+        session_id: str = "",
+        client_online: bool = True,
+        wg_online: bool = False,
+    ) -> dict[str, object]:
         node = self.get_node(node_id)
         if node.node_type != NodeType.dynamic:
             return self.get_client_state(config_id, node_id)
@@ -306,14 +391,30 @@ class SQLiteClientStateMixin:
             connection.execute(
                 """
                 UPDATE endpoint_runtime_status
-                SET online = 1,
+                SET online = ?,
                     connectivity_state = ?,
+                    wg_running = ?,
+                    wg_runtime_state = ?,
+                    heartbeat_client_online = ?,
+                    heartbeat_wg_online = ?,
                     last_seen = ?,
                     last_connectivity_reason = ?,
                     updated_at = ?
                 WHERE config_id = ? AND node_id = ?
                 """,
-                (ConnectivityState.online.value, now, "client-heartbeat", now, config_id, node_id),
+                (
+                    int(client_online),
+                    ConnectivityState.online.value if client_online else ConnectivityState.offline.value,
+                    int(wg_online),
+                    WgRuntimeState.running.value if wg_online else WgRuntimeState.stopped.value,
+                    int(client_online),
+                    int(wg_online),
+                    now if client_online else None,
+                    "client-heartbeat",
+                    now,
+                    config_id,
+                    node_id,
+                ),
             )
         return self.get_client_state(config_id, node_id)
 
@@ -375,7 +476,51 @@ class SQLiteClientStateMixin:
                 )
         return self.get_client_state(config_id, node_id)
 
-    def record_detect_ack(self, config_id: str, node_id: str, *, boot_id: str = "", session_id: str = "") -> dict[str, object]:
+    def record_detect_sent(self, config_id: str, node_id: str) -> None:
+        now = now_utc().isoformat()
+        self._ensure_client_state(config_id, node_id)
+        with connect() as connection:
+            connection.execute(
+                """
+                UPDATE endpoint_runtime_status
+                SET connectivity_state = ?,
+                    last_probe_sent_at = ?,
+                    last_connectivity_reason = ?,
+                    updated_at = ?
+                WHERE config_id = ? AND node_id = ?
+                """,
+                (ConnectivityState.probing.value, now, "detect-sent", now, config_id, node_id),
+            )
+
+    def record_detect_timeout(self, config_id: str, node_id: str) -> None:
+        now = now_utc().isoformat()
+        with connect() as connection:
+            connection.execute(
+                """
+                UPDATE endpoint_runtime_status
+                SET online = 0,
+                    connectivity_state = ?,
+                    wg_running = 0,
+                    wg_runtime_state = ?,
+                    detect_client_online = 0,
+                    detect_wg_online = 0,
+                    last_connectivity_reason = ?,
+                    updated_at = ?
+                WHERE config_id = ? AND node_id = ?
+                """,
+                (ConnectivityState.offline.value, WgRuntimeState.stopped.value, "detect-timeout", now, config_id, node_id),
+            )
+
+    def record_detect_ack(
+        self,
+        config_id: str,
+        node_id: str,
+        *,
+        boot_id: str = "",
+        session_id: str = "",
+        client_online: bool = True,
+        wg_online: bool = False,
+    ) -> dict[str, object]:
         node = self.get_node(node_id)
         if node.node_type != NodeType.dynamic:
             return self.get_client_state(config_id, node_id)
@@ -397,14 +542,31 @@ class SQLiteClientStateMixin:
             connection.execute(
                 """
                 UPDATE endpoint_runtime_status
-                SET online = 1,
+                SET online = ?,
                     connectivity_state = ?,
+                    wg_running = ?,
+                    wg_runtime_state = ?,
+                    detect_client_online = ?,
+                    detect_wg_online = ?,
                     last_seen = ?,
                     last_probe_ack_at = ?,
                     last_connectivity_reason = ?,
                     updated_at = ?
                 WHERE config_id = ? AND node_id = ?
                 """,
-                (ConnectivityState.online.value, now, now, "detect-ack", now, config_id, node_id),
+                (
+                    int(client_online),
+                    ConnectivityState.online.value if client_online else ConnectivityState.offline.value,
+                    int(wg_online),
+                    WgRuntimeState.running.value if wg_online else WgRuntimeState.stopped.value,
+                    int(client_online),
+                    int(wg_online),
+                    now if client_online else None,
+                    now,
+                    "detect-ack",
+                    now,
+                    config_id,
+                    node_id,
+                ),
             )
         return self.get_client_state(config_id, node_id)

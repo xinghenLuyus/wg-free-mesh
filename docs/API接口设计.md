@@ -540,6 +540,10 @@ Authorization: Bearer <access_token>
   - `client_hostname`
   - `client_version_label`
   - `config_state.wg_config_version_state`
+  - `runtime.heartbeat_client_online`
+  - `runtime.heartbeat_wg_online`
+  - `runtime.detect_client_online`
+  - `runtime.detect_wg_online`
 
 说明：
 
@@ -561,12 +565,15 @@ Authorization: Bearer <access_token>
 
 - 用途：发送控制命令
 - `action`：
-  - `probe`
   - `start`
   - `stop`
-  - `restart`
   - `wg_show`
-  - `sync`
+
+说明：
+
+- `start` / `stop` 通过 `control` topic 下发。
+- `wg_show` 通过 `info` topic 下发。
+- `wg_show` 的 ACK 只表示命令完成；具体 `wg show` 输出由客户端发布到 `event` topic，服务端写入命令行回显日志。
 
 ### `POST /api/v1/configs/{config_id}/endpoint/probe-batch`
 

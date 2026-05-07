@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os/exec"
 	"runtime"
+	"strconv"
+	"strings"
 	"time"
 
 	pahomqtt "github.com/eclipse/paho.golang/paho"
@@ -26,10 +29,10 @@ type Envelope struct {
 }
 
 type Session struct {
-	profile  profile.Profile
-	bootID   string
+	profile   profile.Profile
+	bootID    string
 	sessionID string
-	client   *pahomqtt.Client
+	client    *pahomqtt.Client
 }
 
 func NewSession(p profile.Profile) *Session {
@@ -101,7 +104,7 @@ func (s *Session) Run(ctx context.Context) error {
 }
 
 func (s *Session) dial() (net.Conn, error) {
-	addr := fmt.Sprintf("%s:%d", s.profile.MQTT.Host, s.profile.MQTT.Port)
+	addr := net.JoinHostPort(s.profile.MQTT.Host, strconv.Itoa(s.profile.MQTT.Port))
 	if s.profile.MQTT.TLS {
 		return tls.Dial("tcp", addr, &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true})
 	}
@@ -114,6 +117,7 @@ func (s *Session) subscribe(ctx context.Context) error {
 			{Topic: s.topic("config/push"), QoS: 1},
 			{Topic: s.topic("control"), QoS: 1},
 			{Topic: s.topic("detect"), QoS: 1},
+			{Topic: s.topic("info"), QoS: 1},
 		},
 	})
 	return err
@@ -124,14 +128,42 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 	_ = json.Unmarshal(m.Payload, &env)
 	switch m.Topic {
 	case s.topic("detect"):
+		wgOnline, _ := inspectWireGuard()
 		_ = s.publishEvent("detect", "Server detect command received.")
 		_ = s.publish("detect/ack", s.envelope("detect/ack", env.RequestID, map[string]any{
-			"status":          "applied",
-			"agent_state":     "running",
-			"mqtt_state":      "connected",
-			"wireguard_state": "unknown",
-			"platform":        runtime.GOOS,
-			"last_error":      "",
+			"status":        "applied",
+			"client_online": true,
+			"wg_online":     wgOnline,
+			"platform":      runtime.GOOS,
+			"message":       "Detect completed.",
+		}))
+	case s.topic("info"):
+		action := fmt.Sprint(env.Payload["action"])
+		if action == "" || action == "<nil>" {
+			action = "wg_show"
+		}
+		output, err := runWGShow()
+		level := "info"
+		message := "wg show completed."
+		status := "applied"
+		if err != nil {
+			level = "error"
+			message = err.Error()
+			status = "failed"
+		}
+		_ = s.publish("event", s.envelope("event", "", map[string]any{
+			"level":      level,
+			"event":      "command_output",
+			"request_id": env.RequestID,
+			"action":     action,
+			"stream":     "stdout",
+			"message":    message,
+			"output":     output,
+		}))
+		_ = s.publish("info/ack", s.envelope("info/ack", env.RequestID, map[string]any{
+			"status":  status,
+			"action":  action,
+			"message": message,
 		}))
 	case s.topic("control"):
 		action := fmt.Sprint(env.Payload["action"])
@@ -154,7 +186,11 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 }
 
 func (s *Session) publishHeartbeat() error {
-	return s.publish("heartbeat", s.envelope("heartbeat", "", map[string]any{}))
+	wgOnline, _ := inspectWireGuard()
+	return s.publish("heartbeat", s.envelope("heartbeat", "", map[string]any{
+		"client_online": true,
+		"wg_online":     wgOnline,
+	}))
 }
 
 func (s *Session) publishEvent(event, message string) error {
@@ -163,6 +199,32 @@ func (s *Session) publishEvent(event, message string) error {
 		"event":   event,
 		"message": message,
 	}))
+}
+
+func inspectWireGuard() (bool, string) {
+	output, err := runWGShow()
+	if err != nil {
+		return false, err.Error()
+	}
+	return strings.TrimSpace(output) != "", ""
+}
+
+func runWGShow() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "wg", "show")
+	output, err := cmd.CombinedOutput()
+	text := string(output)
+	if ctx.Err() != nil {
+		return text, ctx.Err()
+	}
+	if err != nil {
+		return text, err
+	}
+	if strings.TrimSpace(text) == "" {
+		return text, fmt.Errorf("wg show returned no interfaces")
+	}
+	return text, nil
 }
 
 func (s *Session) publish(kind string, env Envelope) error {

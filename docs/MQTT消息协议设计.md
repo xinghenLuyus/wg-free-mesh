@@ -32,12 +32,14 @@
 - `wfm/{config_id}/{node_id}/config/push`
 - `wfm/{config_id}/{node_id}/control`
 - `wfm/{config_id}/{node_id}/detect`
+- `wfm/{config_id}/{node_id}/info`
 
 上行 topic：
 
 - `wfm/{config_id}/{node_id}/config/push/ack`
 - `wfm/{config_id}/{node_id}/control/ack`
 - `wfm/{config_id}/{node_id}/detect/ack`
+- `wfm/{config_id}/{node_id}/info/ack`
 - `wfm/{config_id}/{node_id}/event`
 - `wfm/{config_id}/{node_id}/heartbeat`
 
@@ -47,6 +49,7 @@
 - 客户端只能发布自身节点的上行 topic。
 - 服务端作为高权限 MQTT 客户端，订阅所有上行 topic。
 - 不允许引入跨节点共享通配 topic 作为客户端主通道。
+- EMQX HTTP AuthZ 必须按具体节点精确 topic 判断，不给客户端授权 `wfm/#`、`wfm/+` 等通配 topic。
 
 ## 统一消息 envelope
 
@@ -137,10 +140,31 @@
 说明：
 
 - `detect` 只在前端页面有活跃用户连接时触发。
-- 建议由服务端每分钟触发一次。
+- 建议由服务端每 2 分钟触发一次。
 - 没有用户查看时，不做主动探测。
 
-### 4. `event`
+### 4. `info`
+
+用途：
+
+- 服务端按用户主动操作向客户端请求诊断信息。
+- 当前用于执行 `wg show` 并通过 `event` 返回命令行回显。
+
+下行 topic：
+
+- `wfm/{config_id}/{node_id}/info`
+
+对应 ACK：
+
+- `wfm/{config_id}/{node_id}/info/ack`
+
+说明：
+
+- `info/ack` 只表达命令是否完成。
+- 具体 stdout/stderr、命令行回显、诊断文本统一通过 `event` 上报。
+- `wg show` 不限定接口，客户端应返回主机上所有 WireGuard 接口信息。
+
+### 5. `event`
 
 用途：
 
@@ -160,12 +184,27 @@
 }
 ```
 
+命令行回显 payload：
+
+```json
+{
+  "level": "info",
+  "event": "command_output",
+  "request_id": "req_xxx",
+  "action": "wg_show",
+  "stream": "stdout",
+  "message": "wg show completed.",
+  "output": "interface: wg0\n..."
+}
+```
+
 语义：
 
 - `event` 不需要 ACK。
 - 服务端负责存储、展示和必要清理。
+- 所有命令行输出只能放在 `event`，不能放在任何 `ack`。
 
-### 5. `config/push ack`
+### 6. `config/push ack`
 
 用途：
 
@@ -180,8 +219,7 @@
 ```json
 {
   "status": "accepted",
-  "message": "",
-  "config_version": 12
+  "message": "Config received"
 }
 ```
 
@@ -191,7 +229,7 @@
 - `applied`
 - `failed`
 
-### 6. `control ack`
+### 7. `control ack`
 
 用途：
 
@@ -217,7 +255,7 @@
 - `applied`
 - `failed`
 
-### 7. `detect ack`
+### 8. `detect ack`
 
 用途：
 
@@ -232,19 +270,44 @@
 ```json
 {
   "status": "applied",
-  "agent_state": "running",
-  "mqtt_state": "connected",
-  "wireguard_state": "running",
-  "last_error": ""
+  "client_online": true,
+  "wg_online": true,
+  "message": "Detect completed"
 }
 ```
 
 说明：
 
-- `detect ack` 是前端实时页面的主要综合状态来源。
+- `detect ack` 是前端实时页面的主动探测状态来源。
 - 服务端发出 `detect` 后，10 秒内未收到 `detect/ack`，视为探测失败。
+- `detect ack` 不允许携带命令行输出。
 
-### 8. `heartbeat`
+### 9. `info ack`
+
+用途：
+
+- 对 `info` 命令的完成反馈。
+
+发布 topic：
+
+- `wfm/{config_id}/{node_id}/info/ack`
+
+建议 payload：
+
+```json
+{
+  "status": "applied",
+  "action": "wg_show",
+  "message": "Command completed"
+}
+```
+
+说明：
+
+- `info ack` 只更新控制日志状态。
+- `wg show` 输出由 `event` 承载。
+
+### 10. `heartbeat`
 
 用途：
 
@@ -258,7 +321,10 @@
 建议 payload：
 
 ```json
-{}
+{
+  "client_online": true,
+  "wg_online": true
+}
 ```
 
 语义：
@@ -266,6 +332,7 @@
 - `heartbeat` 不需要 ACK。
 - 客户端固定每 30 分钟发送一次。
 - 服务端超过 45 分钟未收到 heartbeat，视为心跳超时。
+- heartbeat 是客户端单向状态上报，用于被动判断客户端在线和 WireGuard 在线。
 
 ## ACK 规则
 
@@ -274,6 +341,7 @@
 - `config/push`
 - `control`
 - `detect`
+- `info`
 
 不需要 ACK：
 
@@ -284,6 +352,8 @@
 
 - 服务端向 broker 发布成功，不算真正成功。
 - 只有收到客户端对应 `request_id` 的 ACK，才算这次动作闭环完成。
+- ACK 只表达对应命令的接收、执行完成、失败或超时。
+- 命令行输出、stdout/stderr、诊断文本全部通过 `event` 上报。
 
 ## retained / LWT 规则
 
@@ -334,8 +404,8 @@ LWT payload 直接表达“正常离线”事件，例如：
 判定规则：
 
 - `在线`
-  - 最近 heartbeat 未超时
-  - 且最近一次 detect 成功
+  - 最近 heartbeat 未超时且上报 `client_online=true`
+  - 或最近一次 detect 成功且上报 `client_online=true`
 - `掉线`
   - heartbeat 超时
   - 或 detect 失败
@@ -351,6 +421,7 @@ LWT payload 直接表达“正常离线”事件，例如：
 
 - “异常掉线”不是第四种页面状态，只是 `掉线` 的内部原因。
 - 遗言是唯一正常掉线方式。
+- WireGuard 只保留 `wg_online=true/false`，由 heartbeat 和 detect 分别上报，最终投影由服务端计算。
 
 ## 服务端高权限 MQTT 客户端职责
 
@@ -362,6 +433,7 @@ LWT payload 直接表达“正常离线”事件，例如：
 - 解析 `config/push/ack`
 - 解析 `control/ack`
 - 解析 `detect/ack`
+- 解析 `info/ack`
 - 将结果写回数据库运行态
 - 将变化推送到控制台 SSE
 
@@ -375,6 +447,9 @@ LWT payload 直接表达“正常离线”事件，例如：
 - 收到 `event` 后写入客户端事件。
 - `offline` event 会投影为 `离线`。
 - 收到 `control/ack` 后更新控制日志。
+- 收到 `info/ack` 后只更新控制日志状态。
+- 收到带 `command_output` 的 `event` 后写入控制台命令行回显。
+- 前端存在 SSE 订阅时，服务端每 2 分钟向启用配置中已绑定客户端的动态节点发送 `detect`。
 - 通过 SSE 推送 `endpoint.status.updated` 和 `system.status.updated`。
 
 ## 第一阶段协议验收标准
