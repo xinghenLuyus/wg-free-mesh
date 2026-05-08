@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 )
 
 type MQTTConfig struct {
@@ -34,11 +35,18 @@ type Profile struct {
 }
 
 func RootDir() (string, error) {
-	base, err := os.UserConfigDir()
-	if err != nil {
-		return "", err
+	switch runtime.GOOS {
+	case "windows":
+		base := os.Getenv("ProgramData")
+		if base == "" {
+			base = `C:\ProgramData`
+		}
+		return filepath.Join(base, "wg-free-mesh", "profiles"), nil
+	case "darwin":
+		return filepath.Join(string(filepath.Separator), "Library", "Application Support", "WG Free Mesh", "profiles"), nil
+	default:
+		return filepath.Join(string(filepath.Separator), "etc", "wg-free-mesh", "profiles"), nil
 	}
-	return filepath.Join(base, "wfm", "profiles"), nil
 }
 
 func Save(p Profile, desiredConf string) error {
@@ -88,4 +96,3 @@ func LoadAll() ([]Profile, error) {
 	}
 	return profiles, nil
 }
-

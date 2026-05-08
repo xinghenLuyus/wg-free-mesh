@@ -150,7 +150,7 @@ class SQLiteClientStateMixin:
                 {downloaded_sql}
             WHERE config_id = ? AND node_id = ?
             """,
-            (ConnectivityState.offline.value, WgRuntimeState.stopped.value, reason, now, config_id, node_id),
+            (ConnectivityState.offline.value, WgRuntimeState.unknown.value, reason, now, config_id, node_id),
         )
 
     def _reset_client_state_row(self, connection: object, config_id: str, node_id: str) -> None:
@@ -336,7 +336,7 @@ class SQLiteClientStateMixin:
                     """,
                     (
                         ConnectivityState.offline.value,
-                        WgRuntimeState.stopped.value,
+                        WgRuntimeState.unknown.value,
                         "heartbeat-timeout",
                         now,
                         row["config_id"],
@@ -406,7 +406,7 @@ class SQLiteClientStateMixin:
                     int(client_online),
                     ConnectivityState.online.value if client_online else ConnectivityState.offline.value,
                     int(wg_online),
-                    WgRuntimeState.running.value if wg_online else WgRuntimeState.stopped.value,
+                    WgRuntimeState.running.value if wg_online else WgRuntimeState.unknown.value,
                     int(client_online),
                     int(wg_online),
                     now if client_online else None,
@@ -508,7 +508,7 @@ class SQLiteClientStateMixin:
                     updated_at = ?
                 WHERE config_id = ? AND node_id = ?
                 """,
-                (ConnectivityState.offline.value, WgRuntimeState.stopped.value, "detect-timeout", now, config_id, node_id),
+                (ConnectivityState.offline.value, WgRuntimeState.unknown.value, "detect-timeout", now, config_id, node_id),
             )
 
     def record_detect_ack(
@@ -558,7 +558,7 @@ class SQLiteClientStateMixin:
                     int(client_online),
                     ConnectivityState.online.value if client_online else ConnectivityState.offline.value,
                     int(wg_online),
-                    WgRuntimeState.running.value if wg_online else WgRuntimeState.stopped.value,
+                    WgRuntimeState.running.value if wg_online else WgRuntimeState.unknown.value,
                     int(client_online),
                     int(wg_online),
                     now if client_online else None,

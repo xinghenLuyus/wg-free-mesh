@@ -6,6 +6,17 @@
 
 - `wfmctl bind --server <url> --token <token>`
 - `wfmctl list`
+- `wfmctl service install`
+- `wfmctl service uninstall`
+- `wfmctl service start`
+- `wfmctl service stop`
+- `wfmctl service restart`
+- `wfmctl service status`
+
+`bind` 写入机器级 profile 目录，因此生产环境需要管理员权限：
+
+- Windows：管理员 PowerShell
+- Linux/macOS：`sudo`
 
 ## 构建
 

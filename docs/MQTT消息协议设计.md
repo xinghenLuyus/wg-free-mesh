@@ -452,6 +452,16 @@ LWT payload 直接表达“正常离线”事件，例如：
 - 前端存在 SSE 订阅时，服务端每 2 分钟向启用配置中已绑定客户端的动态节点发送 `detect`。
 - 通过 SSE 推送 `endpoint.status.updated` 和 `system.status.updated`。
 
+## 客户端权限模型
+
+控制面板下发的 `info`、`control` 命令不在服务端提权。客户端必须在本机以系统服务身份运行：
+
+- Windows：`WfmAgent` Windows Service，账号 `LocalSystem`
+- Linux：`wfm-agent.service` systemd service，第一阶段账号 `root`
+- macOS：`mesh.wg-free.wfm-agent` LaunchDaemon，账号 `root`
+
+如果客户端不是系统服务或权限不足，客户端必须通过 `event` 返回清晰错误，随后通过对应 ACK 返回 `failed`。服务端只展示真实结果，不伪造成功状态。
+
 ## 第一阶段协议验收标准
 
 打通链路后，至少满足：
