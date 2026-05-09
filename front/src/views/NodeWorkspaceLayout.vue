@@ -104,6 +104,12 @@ function nodeTypeLabel(type: NodeRead['node_type']) {
   return type === 'static' ? t('nodeWorkspace.staticNode') : t('nodeWorkspace.dynamicNode')
 }
 
+function wgRuntimeLabel(state: string | undefined) {
+  if (state === 'running') return t('nodeWorkspace.wgRunning')
+  if (state === 'stopped') return t('nodeWorkspace.wgStopped')
+  return t('nodeWorkspace.unknown')
+}
+
 async function load() {
   const ticket = ++loadTicket
   loading.value = true
@@ -324,7 +330,7 @@ onMounted(async () => {
         </div>
         <div class="node-prop-item">
           <span class="node-prop-label">{{ t('nodeWorkspace.wgState') }}</span>
-          <span class="node-prop-value">{{ endpointStatus?.runtime.wg_runtime_state || 'unknown' }}</span>
+          <span class="node-prop-value">{{ wgRuntimeLabel(endpointStatus?.runtime.wg_runtime_state) }}</span>
         </div>
       </div>
 

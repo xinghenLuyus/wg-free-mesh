@@ -5,7 +5,7 @@ import json
 from collections.abc import Sequence
 
 from app.core.errors import AppError
-from app.domain.models import Config, ConfigSyncState, Node, PeerLink, derive_public_key, generate_key_pair, generate_private_key, now_utc, sha256_text
+from app.domain.models import Config, ConfigSyncState, ControlStatus, Node, PeerLink, derive_public_key, generate_key_pair, generate_private_key, now_utc, sha256_text
 from app.infrastructure.database import connect
 from app.projections.config_overview_projection import config_overview_projection
 from app.projections.system_status_projection import system_status_projection
@@ -260,6 +260,41 @@ class SQLiteSyncSettingsMixin:
             self.sync_node(config_id, node.id, requested_by="sync-all")
             synced.append(node.id)
         return {"message": "All node configs synced", "synced_count": len(synced), "failed_count": 0, "synced": synced, "failed": []}
+
+    def confirm_config_push(self, request_id: str, status_text: str, message: str = ""):
+        with connect() as connection:
+            row = connection.execute("SELECT * FROM endpoint_control_logs WHERE request_id = ?", (request_id,)).fetchone()
+        if row is None:
+            raise AppError("CONTROL_LOG_NOT_FOUND", "Control log not found", 404)
+        config_id = str(row["config_id"])
+        node_id = str(row["node_id"])
+        state = self.get_node_config_state(config_id, node_id)
+        normalized_status = status_text.strip().lower()
+        if normalized_status == "applied":
+            now = now_utc().isoformat()
+            with connect() as connection:
+                connection.execute(
+                    """
+                    UPDATE node_config_state
+                    SET confirmed_text = ?, confirmed_sha256 = ?, confirmed_version = ?,
+                        reported_local_sha256 = ?, reported_local_version = ?,
+                        confirmed_updated_at = ?, updated_at = ?
+                    WHERE config_id = ? AND node_id = ?
+                    """,
+                    (
+                        state.staged_text,
+                        state.staged_sha256,
+                        state.staged_version,
+                        state.staged_sha256,
+                        state.staged_version,
+                        now,
+                        now,
+                        config_id,
+                        node_id,
+                    ),
+                )
+            return self.complete_control_log(request_id, ControlStatus.acked, message or "Config applied by client")
+        return self.complete_control_log(request_id, ControlStatus.failed, message or status_text or "Config push failed")
 
     def read_setting_json(self, key: str, default: dict[str, object]) -> dict[str, object]:
         with connect() as connection:

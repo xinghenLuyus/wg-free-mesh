@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.core.errors import AppError
 from app.core.responses import ApiResponse, ok
 from app.domain.models import Config, Node
+from app.repositories.naming import node_config_interface_name
 from app.services.control_plane_service import control_plane_service
 from app.services.emqx_service import emqx_service
 from app.services.mqtt_auth_service import mqtt_auth_service
@@ -63,6 +64,7 @@ async def bind_client(payload: ClientBindRequest) -> ApiResponse[dict[str, Any]]
                 "config_name": config.name,
                 "node_id": node.id,
                 "node_name": node.name,
+                "interface_name": node_config_interface_name(config.name, node.name),
                 "hostname": payload.hostname,
                 "platform": payload.platform,
                 "client_version": payload.client_version,

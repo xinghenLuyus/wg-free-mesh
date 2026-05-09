@@ -6,7 +6,7 @@
 
 - `wfmctl bind` 通过 HTTPS 一次性 token 绑定动态节点。
 - `wfmctl unbind` 移除本机绑定文件和本地凭据。
-- `wfmctl service ...` 管理系统级 `wfm-agent` 服务。
+- `wfmctl install / uninstall / start / stop / restart` 管理系统级后台服务。
 - `wfmctl` 不提供本地 profile 级控制；所有具体 WireGuard 控制动作都由服务端通过 MQTT 下发。
 - `wfm-agent` 读取机器级 profile，连接 EMQX。
 - `wfm-agent` 会发布 `heartbeat`，并上报 `client_online` / `wg_online`。
@@ -22,6 +22,7 @@
 - Windows 托盘只是后续可选附加项
 - 绑定通过 `wfmctl + HTTPS 临时 token` 完成
 - 移除绑定通过 `wfmctl unbind <profile_id>` 完成，只影响本机文件
+- `wfmctl install` 会把当前 `wfmctl` 所在目录加入全局命令路径，让后续可以直接执行 `wfmctl`
 - 本地只维护系统级 `wfm-agent` 服务，服务启动时统一加载所有 profile
 - 运行期通信全部走 MQTT
 - MQTT 凭据按节点隔离，topic ACL 按节点收口
@@ -67,6 +68,8 @@ sudo ./wfmctl bind --server https://example.com --token <token>
 
 移除本机绑定：
 
+Windows 生产环境建议继续使用管理员 PowerShell。Linux / macOS 生产环境建议使用 `sudo`。
+
 ```powershell
 wfmctl unbind <profile_id>
 wfmctl unbind --all
@@ -76,29 +79,31 @@ wfmctl unbind --all
 
 如果 `wfm-agent` 服务正在运行，`unbind` 需要重启整个服务，让已加载的 MQTT session 立即退出并重新扫描剩余 profile。
 
-### 3. 安装并启动系统服务
+### 3. 安装并启动客户端
 
-`service install` 在三端语义一致：安装系统服务、设置开机自启并立即启动服务。`service start` 仍然保留，用于服务已安装但当前未运行时手动启动。
+`install` 在三端语义一致：安装系统服务、设置开机自启、立即启动服务，并把当前 `wfmctl` 所在目录加入全局命令路径。`start` 仍然保留，用于服务已安装但当前未运行时手动启动。
+
+如果安装后移动了 `wfmctl` 所在目录，全局命令路径会失效。此时在新目录重新执行 `wfmctl install` 即可修复。
 
 Windows：
 
 ```powershell
-.\bin\wfmctl.exe service install
-.\bin\wfmctl.exe service status
+.\bin\wfmctl.exe install
+wfmctl status
 ```
 
 Linux：
 
 ```bash
-sudo ./wfmctl service install
-sudo ./wfmctl service status
+sudo ./wfmctl install
+wfmctl status
 ```
 
 macOS：
 
 ```bash
-sudo ./wfmctl service install
-sudo ./wfmctl service status
+sudo ./wfmctl install
+wfmctl status
 ```
 
 服务运行账号：
@@ -113,12 +118,16 @@ sudo ./wfmctl service status
 wfmctl list
 wfmctl unbind <profile_id>
 wfmctl status
-wfmctl service status
-wfmctl service logs
-wfmctl service start
-wfmctl service stop
-wfmctl service restart
-wfmctl service uninstall
+wfmctl logs
+wfmctl logs --lines 200
+wfmctl start
+wfmctl stop
+wfmctl restart
+wfmctl version
+wfmctl --version
+wfmctl -v
+wfmctl uninstall
+wfmctl uninstall --purge
 ```
 
 命令语义：
@@ -127,12 +136,13 @@ wfmctl service uninstall
 - `wfmctl unbind <profile_id>`：移除本机某个绑定，并在服务运行时重启系统服务使变更生效。
 - `wfmctl unbind --all`：移除本机全部绑定；这是高风险操作，必须显式传入 `--all`。
 - `wfmctl status`：展示本机服务状态、profile 数量和绑定文件完整性。
-- `wfmctl service status`：展示统一服务状态，并包含本机 bind/profile 摘要。
-- `wfmctl service logs`：查看系统服务日志。
-- `wfmctl service start`：启动已安装服务。
-- `wfmctl service stop`：停止系统服务，但保留服务定义、开机自启、profile 和日志。
-- `wfmctl service restart`：重启系统服务，让 agent 重新扫描本机 profile。
-- `wfmctl service uninstall`：停止服务、取消开机自启并删除服务定义，不删除本机 profile。
+- `wfmctl logs`：查看系统服务日志。
+- `wfmctl start`：启动已安装服务。
+- `wfmctl stop`：停止系统服务，但保留服务定义、开机自启、profile 和日志。
+- `wfmctl restart`：重启系统服务，让 agent 重新扫描本机 profile。
+- `wfmctl version` / `wfmctl --version` / `wfmctl -v`：显示客户端版本。
+- `wfmctl uninstall`：停止服务、取消开机自启、删除服务定义并移除全局命令路径，不删除本机 profile。
+- `wfmctl uninstall --purge`：在 `uninstall` 基础上删除本机 profile、runtime 和日志目录。
 
 本地不提供单个 profile 的启动、停止、重启或日志命令。`unbind` 只是删除本机绑定文件，不是运行控制。要控制 WireGuard 启停、下发配置、查看 `wg show`，应在服务端控制台操作，由服务端通过 MQTT 向 `wfm-agent` 下发命令。
 
@@ -182,7 +192,7 @@ Remove-Item Env:GOARCH
 ## 设计原则
 
 - 三个平台都要能无感知安装、开机启动、后台稳定运行
-- 三端用户命令语义保持一致：`service install` 即安装、自启和启动
+- 三端用户命令语义保持一致：`install` 即安装、自启、启动并配置全局命令路径
 - 本地 profile 必须隔离
 - MQTT 一次设计到位，不再把连接状态误当成真实运行状态
 - 客户端主交互统一走 `wfmctl`

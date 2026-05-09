@@ -405,10 +405,10 @@ class SQLiteClientStateMixin:
                 (
                     int(client_online),
                     ConnectivityState.online.value if client_online else ConnectivityState.offline.value,
-                    int(wg_online),
-                    WgRuntimeState.running.value if wg_online else WgRuntimeState.unknown.value,
+                    int(client_online and wg_online),
+                    WgRuntimeState.running.value if wg_online else WgRuntimeState.stopped.value if client_online else WgRuntimeState.unknown.value,
                     int(client_online),
-                    int(wg_online),
+                    int(client_online and wg_online),
                     now if client_online else None,
                     "client-heartbeat",
                     now,
@@ -455,11 +455,15 @@ class SQLiteClientStateMixin:
                     UPDATE endpoint_runtime_status
                     SET online = 0,
                         connectivity_state = ?,
+                        wg_running = 0,
+                        wg_runtime_state = ?,
+                        heartbeat_wg_online = 0,
+                        detect_wg_online = 0,
                         last_connectivity_reason = ?,
                         updated_at = ?
                     WHERE config_id = ? AND node_id = ?
                     """,
-                    (ConnectivityState.offline.value, "client-will-message", now, config_id, node_id),
+                    (ConnectivityState.offline.value, WgRuntimeState.unknown.value, "client-will-message", now, config_id, node_id),
                 )
             else:
                 connection.execute(
@@ -557,10 +561,10 @@ class SQLiteClientStateMixin:
                 (
                     int(client_online),
                     ConnectivityState.online.value if client_online else ConnectivityState.offline.value,
-                    int(wg_online),
-                    WgRuntimeState.running.value if wg_online else WgRuntimeState.unknown.value,
+                    int(client_online and wg_online),
+                    WgRuntimeState.running.value if wg_online else WgRuntimeState.stopped.value if client_online else WgRuntimeState.unknown.value,
                     int(client_online),
-                    int(wg_online),
+                    int(client_online and wg_online),
                     now if client_online else None,
                     now,
                     "detect-ack",

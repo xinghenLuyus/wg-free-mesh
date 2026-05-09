@@ -378,7 +378,7 @@ class SQLiteConfigMeshMixin:
                     0,
                     ConnectivityState.offline,
                     0,
-                    WgRuntimeState.stopped,
+                    WgRuntimeState.unknown,
                     ConfigSyncState.pending,
                     0,
                     0,

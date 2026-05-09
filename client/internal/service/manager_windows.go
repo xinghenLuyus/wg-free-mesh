@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -52,20 +54,45 @@ var activeCancel context.CancelFunc
 var activeStatusHandle uintptr
 
 func Install() error {
+	if err := requireAdministrator(); err != nil {
+		return err
+	}
+	if err := ensureDirs(); err != nil {
+		return err
+	}
+	if err := installPath(); err != nil {
+		return err
+	}
 	agentPath, err := agentPath()
 	if err != nil {
 		return err
 	}
 	binPath := fmt.Sprintf(`"%s" %s`, agentPath, serviceArg)
-	if err := run("install", "sc.exe", "create", Name, "binPath=", binPath, "DisplayName=", DisplayName, "start=", "auto"); err != nil {
+	if err := run("install", "sc.exe", "create", Name, "binPath=", binPath, "DisplayName=", DisplayName, "start=", "auto", "obj=", "LocalSystem"); err != nil {
+		if strings.Contains(err.Error(), "already installed") {
+			fmt.Printf("Service %s already installed.\n", Name)
+			if err := run("configure", "sc.exe", "config", Name, "binPath=", binPath, "DisplayName=", DisplayName, "start=", "auto", "obj=", "LocalSystem"); err != nil {
+				return err
+			}
+			return Restart()
+		}
 		return err
 	}
 	fmt.Printf("Service %s installed.\n", Name)
-	return nil
+	return Start()
 }
 
 func Uninstall() error {
+	if err := requireAdministrator(); err != nil {
+		return err
+	}
+	_ = Stop()
+	_ = uninstallPath()
 	if err := run("uninstall", "sc.exe", "delete", Name); err != nil {
+		if strings.Contains(err.Error(), "not installed") {
+			fmt.Printf("Service %s is not installed.\n", Name)
+			return nil
+		}
 		return err
 	}
 	fmt.Printf("Service %s uninstalled.\n", Name)
@@ -73,6 +100,9 @@ func Uninstall() error {
 }
 
 func Start() error {
+	if err := requireAdministrator(); err != nil {
+		return err
+	}
 	if err := run("start", "sc.exe", "start", Name); err != nil {
 		return err
 	}
@@ -81,6 +111,9 @@ func Start() error {
 }
 
 func Stop() error {
+	if err := requireAdministrator(); err != nil {
+		return err
+	}
 	if err := run("stop", "sc.exe", "stop", Name); err != nil {
 		return err
 	}
@@ -88,18 +121,46 @@ func Stop() error {
 	return nil
 }
 
-func Status() error {
-	output, err := commandOutput("status", "sc.exe", "query", Name)
+func Restart() error {
+	if err := requireAdministrator(); err != nil {
+		return err
+	}
+	_ = Stop()
+	return Start()
+}
+
+func platformStatus() (StatusInfo, error) {
+	output, err := exec.Command("sc.exe", "query", Name).CombinedOutput()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1060 {
+			return StatusInfo{Installed: false, State: "not-installed"}, nil
+		}
+		return StatusInfo{}, fmt.Errorf("status failed: %w\n%s", err, strings.TrimSpace(string(output)))
+	}
+	state := strings.ToLower(parseServiceState(string(output)))
+	config, _ := exec.Command("sc.exe", "qc", Name).CombinedOutput()
+	return StatusInfo{
+		Installed: true,
+		Autostart: strings.Contains(strings.ToUpper(string(config)), "AUTO_START"),
+		Running:   state == "running",
+		State:     state,
+		Binary:    parseBinaryPath(string(config)),
+	}, nil
+}
+
+func platformLogs(lines int) error {
+	path := filepath.Join(logDir(), "wfm-agent.log")
+	body, err := os.ReadFile(path)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Service %s status: %s\n", Name, parseServiceState(output))
+	printLastLines(string(body), lines)
 	return nil
 }
 
-func Restart() error {
-	_ = Stop()
-	return Start()
+func platformPurgeData() error {
+	root := filepath.Join(programData(), "wg-free-mesh")
+	return os.RemoveAll(root)
 }
 
 func RunAgentService(runner Runner) error {
@@ -131,9 +192,10 @@ func serviceMain(argc uint32, argv **uint16) uintptr {
 	ctx, cancel := context.WithCancel(context.Background())
 	activeCancel = cancel
 	setStatus(serviceRunning, serviceAcceptStop|serviceAcceptShutdown)
-	err := activeRunner(ctx, os.Stderr)
+	stderr := serviceLogWriter()
+	err := activeRunner(ctx, stderr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "agent failed: %v\n", err)
+		fmt.Fprintf(stderr, "agent failed: %v\n", err)
 	}
 	setStatus(serviceStopped, 0)
 	return 0
@@ -172,10 +234,91 @@ func agentPath() (string, error) {
 	return "", fmt.Errorf("wfm-agent.exe not found next to %s", exe)
 }
 
+func ensureDirs() error {
+	for _, dir := range []string{
+		filepath.Join(programData(), "wg-free-mesh", "profiles"),
+		filepath.Join(programData(), "wg-free-mesh", "runtime"),
+		logDir(),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func programData() string {
+	base := os.Getenv("ProgramData")
+	if base == "" {
+		return `C:\ProgramData`
+	}
+	return base
+}
+
+func logDir() string {
+	return filepath.Join(programData(), "wg-free-mesh", "logs")
+}
+
+func serviceLogWriter() io.Writer {
+	if err := os.MkdirAll(logDir(), 0o755); err != nil {
+		return os.Stderr
+	}
+	file, err := os.OpenFile(filepath.Join(logDir(), "wfm-agent.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return os.Stderr
+	}
+	return io.MultiWriter(os.Stderr, file)
+}
+
+func requireAdministrator() error {
+	cmd := exec.Command("net", "session")
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("administrator privileges required; run PowerShell as Administrator")
+	}
+	return nil
+}
+
+func installPath() error {
+	dir := executableDir()
+	quotedDir := psQuote(dir)
+	script := fmt.Sprintf(`$dir = %s; $paths = [Environment]::GetEnvironmentVariable('Path', 'Machine') -split ';' | Where-Object { $_ -and $_ -ine $dir }; [Environment]::SetEnvironmentVariable('Path', (($paths + $dir) -join ';'), 'Machine')`, quotedDir)
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("install PATH failed: %w\n%s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func uninstallPath() error {
+	dir := executableDir()
+	quotedDir := psQuote(dir)
+	script := fmt.Sprintf(`$dir = %s; $paths = [Environment]::GetEnvironmentVariable('Path', 'Machine') -split ';' | Where-Object { $_ -and $_ -ine $dir }; [Environment]::SetEnvironmentVariable('Path', ($paths -join ';'), 'Machine')`, quotedDir)
+	cmd := exec.Command("powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("uninstall PATH failed: %w\n%s", err, strings.TrimSpace(string(output)))
+	}
+	return nil
+}
+
+func executableDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(exe)
+}
+
+func psQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}
+
 func run(action string, name string, args ...string) error {
 	cmd := exec.Command(name, args...)
-	if err := cmd.Run(); err != nil {
-		return friendlyCommandError(action, err)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return friendlyCommandError(action, err, strings.TrimSpace(string(output)))
 	}
 	return nil
 }
@@ -184,7 +327,7 @@ func commandOutput(action string, name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", friendlyCommandError(action, err)
+		return "", friendlyCommandError(action, err, strings.TrimSpace(string(output)))
 	}
 	return string(output), nil
 }
@@ -197,24 +340,38 @@ func parseServiceState(output string) string {
 	return "UNKNOWN"
 }
 
-func friendlyCommandError(action string, err error) error {
+func parseBinaryPath(output string) string {
+	matches := regexp.MustCompile(`BINARY_PATH_NAME\s+:\s+(.+)`).FindStringSubmatch(output)
+	if len(matches) == 2 {
+		return strings.TrimSpace(matches[1])
+	}
+	return ""
+}
+
+func friendlyCommandError(action string, err error, detail string) error {
+	withDetail := func(base error) error {
+		if detail == "" {
+			return base
+		}
+		return fmt.Errorf("%v\n%s", base, detail)
+	}
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		switch exitErr.ExitCode() {
 		case 5:
-			return fmt.Errorf("%s requires administrator privileges; run PowerShell as Administrator", action)
+			return withDetail(fmt.Errorf("%s requires administrator privileges; run PowerShell as Administrator", action))
 		case 1060:
-			return fmt.Errorf("service %s is not installed; run `wfmctl service install` first", Name)
+			return withDetail(fmt.Errorf("service %s is not installed; run `wfmctl install` first", Name))
 		case 1072:
-			return fmt.Errorf("service %s is marked for deletion; close Services consoles and retry later", Name)
+			return withDetail(fmt.Errorf("service %s is marked for deletion; close Services consoles and retry later", Name))
 		case 1073:
-			return fmt.Errorf("service %s is already installed", Name)
+			return withDetail(fmt.Errorf("service %s is already installed", Name))
 		case 1056:
-			return fmt.Errorf("service %s is already running", Name)
+			return withDetail(fmt.Errorf("service %s is already running", Name))
 		case 1062:
-			return fmt.Errorf("service %s is not running", Name)
+			return withDetail(fmt.Errorf("service %s is not running", Name))
 		default:
-			return fmt.Errorf("%s failed with Windows service exit code %d", action, exitErr.ExitCode())
+			return withDetail(fmt.Errorf("%s failed with Windows service exit code %d", action, exitErr.ExitCode()))
 		}
 	}
-	return err
+	return withDetail(err)
 }

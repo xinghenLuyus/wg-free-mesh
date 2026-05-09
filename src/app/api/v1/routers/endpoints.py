@@ -23,7 +23,7 @@ class AppliedConfRequest(BaseModel):
 
 
 class ControlRequest(BaseModel):
-    action: str = Field(pattern="^(start|stop|wg_show)$")
+    action: str = Field(pattern="^(start|stop|push_config|wg_show)$")
 
 
 class ProbeBatchRequest(BaseModel):

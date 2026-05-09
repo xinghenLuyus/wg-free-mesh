@@ -284,6 +284,16 @@ def init_database() -> None:
                     now,
                 ),
             )
+        connection.execute(
+            """
+            UPDATE endpoint_runtime_status
+            SET wg_running = 0, wg_runtime_state = ?, updated_at = ?
+            WHERE online = 0
+               OR node_id IN (SELECT id FROM nodes WHERE node_type = 'static')
+               OR node_id IN (SELECT node_id FROM node_client_state WHERE client_initialized = 0)
+            """,
+            (WgRuntimeState.unknown.value, now),
+        )
 
         existing = connection.execute("SELECT COUNT(*) AS count FROM configs").fetchone()
         if existing is not None and existing["count"] > 0:
@@ -436,7 +446,7 @@ def init_database() -> None:
                     1 if node_id == hub_id else 0,
                     ConnectivityState.online if node_id == hub_id else ConnectivityState.offline,
                     1 if node_id == hub_id else 0,
-                    WgRuntimeState.running if node_id == hub_id else WgRuntimeState.stopped,
+                    WgRuntimeState.running if node_id == hub_id else WgRuntimeState.unknown,
                     ConfigSyncState.pending,
                     1 if node_id == hub_id else 0,
                     1,

@@ -97,6 +97,7 @@ class ControlAction(StrEnum):
     restart = "restart"
     wg_show = "wg_show"
     sync = "sync"
+    push_config = "push_config"
 
 
 class Config(BaseModel):

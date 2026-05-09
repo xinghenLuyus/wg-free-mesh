@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -128,7 +129,7 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 	_ = json.Unmarshal(m.Payload, &env)
 	switch m.Topic {
 	case s.topic("detect"):
-		wgOnline, _ := inspectWireGuard()
+		wgOnline, _ := inspectWireGuard(profile.InterfaceName(s.profile))
 		_ = s.publishEvent("detect", "Server detect command received.")
 		_ = s.publish("detect/ack", s.envelope("detect/ack", env.RequestID, map[string]any{
 			"status":        "applied",
@@ -170,23 +171,39 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 		if action == "" || action == "<nil>" {
 			action = "unknown"
 		}
-		_ = s.publishEvent("control", fmt.Sprintf("Received control command: %s", action))
+		status := "applied"
+		message := "Command applied."
+		if err := s.applyControl(action); err != nil {
+			status = "failed"
+			message = err.Error()
+			_ = s.publishEvent("control", fmt.Sprintf("Control command failed: %s: %v", action, err))
+		} else {
+			_ = s.publishEvent("control", fmt.Sprintf("Control command applied: %s", action))
+		}
 		_ = s.publish("control/ack", s.envelope("control/ack", env.RequestID, map[string]any{
-			"status":  "applied",
+			"status":  status,
 			"action":  action,
-			"message": "Command acknowledged by minimal Go client.",
+			"message": message,
 		}))
 	case s.topic("config/push"):
-		_ = s.publishEvent("config_push", "Received config push command.")
+		status := "applied"
+		message := "Config applied."
+		if err := s.applyConfigPush(env.Payload); err != nil {
+			status = "failed"
+			message = err.Error()
+			_ = s.publishEvent("config_push", fmt.Sprintf("Config push failed: %v", err))
+		} else {
+			_ = s.publishEvent("config_push", "Config push applied.")
+		}
 		_ = s.publish("config/push/ack", s.envelope("config/push/ack", env.RequestID, map[string]any{
-			"status":  "accepted",
-			"message": "Config received by minimal Go client.",
+			"status":  status,
+			"message": message,
 		}))
 	}
 }
 
 func (s *Session) publishHeartbeat() error {
-	wgOnline, _ := inspectWireGuard()
+	wgOnline, _ := inspectWireGuard(profile.InterfaceName(s.profile))
 	return s.publish("heartbeat", s.envelope("heartbeat", "", map[string]any{
 		"client_online": true,
 		"wg_online":     wgOnline,
@@ -201,12 +218,64 @@ func (s *Session) publishEvent(event, message string) error {
 	}))
 }
 
-func inspectWireGuard() (bool, string) {
-	output, err := runWGShow()
+func (s *Session) applyControl(action string) error {
+	iface := profile.InterfaceName(s.profile)
+	if iface == "" {
+		return fmt.Errorf("interface_name is required")
+	}
+	switch action {
+	case "start":
+		configPath, err := profile.ConfigPath(s.profile)
+		if err != nil {
+			return err
+		}
+		return startWireGuard(iface, configPath)
+	case "stop":
+		return stopWireGuard(iface)
+	default:
+		return fmt.Errorf("unsupported control action: %s", action)
+	}
+}
+
+func (s *Session) applyConfigPush(payload map[string]any) error {
+	configText := fmt.Sprint(payload["config_text"])
+	if configText == "" || configText == "<nil>" {
+		return fmt.Errorf("config_text is required")
+	}
+	interfaceName := fmt.Sprint(payload["interface_name"])
+	if interfaceName != "" && interfaceName != "<nil>" {
+		s.profile.Profile.InterfaceName = interfaceName
+	}
+	return profile.Save(s.profile, configText)
+}
+
+func inspectWireGuard(interfaceName string) (bool, string) {
+	output, err := runWGShowInterface(interfaceName)
 	if err != nil {
 		return false, err.Error()
 	}
 	return strings.TrimSpace(output) != "", ""
+}
+
+func runWGShowInterface(interfaceName string) (string, error) {
+	if strings.TrimSpace(interfaceName) == "" {
+		return "", fmt.Errorf("interface_name is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "wg", "show", interfaceName)
+	output, err := cmd.CombinedOutput()
+	text := string(output)
+	if ctx.Err() != nil {
+		return text, ctx.Err()
+	}
+	if err != nil {
+		return text, err
+	}
+	if strings.TrimSpace(text) == "" {
+		return text, fmt.Errorf("wg show returned no interface %s", interfaceName)
+	}
+	return text, nil
 }
 
 func runWGShow() (string, error) {
@@ -225,6 +294,41 @@ func runWGShow() (string, error) {
 		return text, fmt.Errorf("wg show returned no interfaces")
 	}
 	return text, nil
+}
+
+func startWireGuard(interfaceName string, configPath string) error {
+	if _, err := os.Stat(configPath); err != nil {
+		return err
+	}
+	if runtime.GOOS == "windows" {
+		return runCommand("wireguard.exe", "/installtunnelservice", configPath)
+	}
+	return runCommand("wg-quick", "up", configPath)
+}
+
+func stopWireGuard(interfaceName string) error {
+	if runtime.GOOS == "windows" {
+		return runCommand("wireguard.exe", "/uninstalltunnelservice", interfaceName)
+	}
+	return runCommand("wg-quick", "down", interfaceName)
+}
+
+func runCommand(name string, args ...string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	if err != nil {
+		text := strings.TrimSpace(string(output))
+		if text != "" {
+			return fmt.Errorf("%s %s failed: %w\n%s", name, strings.Join(args, " "), err, text)
+		}
+		return fmt.Errorf("%s %s failed: %w", name, strings.Join(args, " "), err)
+	}
+	return nil
 }
 
 func (s *Session) publish(kind string, env Envelope) error {

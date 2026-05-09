@@ -15,6 +15,7 @@ from app.core.errors import AppError
 from app.domain.models import ControlStatus, NodeType
 from app.events.publish_plan import PublishPlan
 from app.events.realtime_publisher import RealtimePublisher
+from app.repositories.naming import node_config_interface_name
 from app.repositories.sqlite import store
 from app.services.config_projection_service import ConfigProjectionSnapshot, config_projection_service
 from app.services.realtime_service import realtime_service
@@ -513,13 +514,30 @@ class ControlPlaneService:
     async def control_action(self, config_id: str, node_id: str, action: str):
         if not self.mqtt_service_enabled():
             raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
-        if action not in {"start", "stop", "wg_show"}:
-            raise AppError("INVALID_ACTION", "Only start, stop and wg_show are supported by MQTT control", 400)
+        if action not in {"start", "stop", "push_config", "wg_show"}:
+            raise AppError("INVALID_ACTION", "Only start, stop, push_config and wg_show are supported by MQTT control", 400)
         from app.services.mqtt_ingress_service import mqtt_ingress_service
 
         log = store.create_control_log(config_id, node_id, action)
         await realtime_service.publish("control.log.created", {"config_id": config_id, "node_id": node_id, "log": log.model_dump(mode="json")})
-        kind = "info" if action == "wg_show" else "control"
+        kind = "info" if action == "wg_show" else "config/push" if action == "push_config" else "control"
+        payload_body: dict[str, object] = {"action": action}
+        if action == "push_config":
+            config = store.get_config(config_id)
+            node = store.get_node(node_id)
+            state = store.get_node_config_state(config_id, node_id)
+            if not state.staged_text or not state.staged_sha256:
+                updated_log = store.complete_control_log(log.request_id, ControlStatus.failed, "No staged config to push")
+                await realtime_service.publish("control.log.updated", {"config_id": config_id, "node_id": node_id, "log": updated_log.model_dump(mode="json")})
+                raise AppError("NO_STAGED_CONFIG", "No staged config to push", 409)
+            payload_body.update(
+                {
+                    "interface_name": node_config_interface_name(config.name, node.name),
+                    "config_version": state.staged_version,
+                    "config_sha256": state.staged_sha256,
+                    "config_text": state.staged_text,
+                }
+            )
         payload = {
             "type": kind,
             "request_id": log.request_id,
@@ -528,7 +546,7 @@ class ControlPlaneService:
             "boot_id": "",
             "session_id": "",
             "sent_at": datetime.now(UTC).isoformat(),
-            "payload": {"action": action},
+            "payload": payload_body,
         }
         try:
             await mqtt_ingress_service.publish_to_node(config_id=config_id, node_id=node_id, kind=kind, payload=payload)
@@ -547,19 +565,9 @@ class ControlPlaneService:
                 continue
             if node_ids and node.id not in node_ids:
                 continue
-            store.record_detect_sent(config_id, node.id)
-            payload = {
-                "type": "detect",
-                "request_id": f"probe-{node.id}-{datetime.now(UTC).timestamp()}",
-                "config_id": config_id,
-                "node_id": node.id,
-                "boot_id": "",
-                "session_id": "",
-                "sent_at": datetime.now(UTC).isoformat(),
-                "payload": {},
-            }
-            await mqtt_ingress_service.publish_to_node(config_id=config_id, node_id=node.id, kind="detect", payload=payload)
-            dispatched.append({"node_id": node.id, "request_id": str(payload["request_id"])})
+            request_id = f"probe-{node.id}-{datetime.now(UTC).timestamp()}"
+            asyncio.create_task(mqtt_ingress_service._probe_target(config_id, node.id), name=f"wfm-manual-detect-{node.id}")
+            dispatched.append({"node_id": node.id, "request_id": request_id})
         return {"dispatched": dispatched, "skipped": []}
 
     def mqtt_settings(self):

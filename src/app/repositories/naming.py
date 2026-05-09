@@ -59,3 +59,7 @@ def node_config_artifact_stem(config_name: str, node_name: str) -> str:
         f"{config_artifact_name_segment(config_name, 'wireguard')}"
         f"-{config_artifact_name_segment(node_name, 'node')}"
     )
+
+
+def node_config_interface_name(config_name: str, node_name: str) -> str:
+    return node_config_artifact_stem(config_name, node_name)

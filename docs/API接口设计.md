@@ -553,9 +553,14 @@ Authorization: Bearer <access_token>
   - `掉线`
   - `离线`
 - `client_version_label` 由后端根据客户端绑定时上报的 `platform + client_version` 聚合，例如 `Windows v1.3.2` 或 `Linux v1.3.2`。
-- `config_state.wg_config_version_state` 由后端根据当前节点同步态计算，只允许：
-  - `latest`：同步态已等于系统态
-  - `pending`：同步态为空或已落后，需要同步
+- `config_state.wg_config_version_state` 由后端根据当前节点下发态计算，只允许：
+  - `latest`：客户端 confirmed 下发态已等于服务端 staged 同步态
+  - `pending`：尚未下发，或客户端 confirmed 下发态已落后
+- `runtime.wg_runtime_state` 是 WG 运行态展示真相：
+  - `unknown`：未知。静态节点、未初始化动态节点、客户端离线或掉线时必须返回该值。
+  - `running`：客户端明确上报当前配置对应接口正在运行。
+  - `stopped`：客户端在线且明确上报当前配置对应接口未运行。
+- 前端不得用 `runtime.wg_running=false` 直接显示“离线”；`wg_running` 只作为兼容布尔字段。
 
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/endpoint/logs`
 
@@ -567,11 +572,13 @@ Authorization: Bearer <access_token>
 - `action`：
   - `start`
   - `stop`
+  - `push_config`
   - `wg_show`
 
 说明：
 
-- `start` / `stop` 通过 `control` topic 下发。
+- `start` / `stop` 通过 `control` topic 下发，只作用于当前节点 profile 对应的 WireGuard 接口。
+- `push_config` 通过 `config/push` topic 下发当前节点同步态配置。客户端 ACK 为 `applied` 后，后端更新 confirmed 下发态。
 - `wg_show` 通过 `info` topic 下发。
 - `wg_show` 的 ACK 只表示命令完成；具体 `wg show` 输出由客户端发布到 `event` topic，服务端写入命令行回显日志。
 

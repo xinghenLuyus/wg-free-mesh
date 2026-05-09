@@ -20,6 +20,7 @@ const stoppingWg = actions.isPending('stop-wg')
 const refreshingStatus = actions.isPending('refresh-status')
 const resettingClient = actions.isPending('reset-client')
 const loadingWgInfo = actions.isPending('wg-info')
+const pushingConfig = actions.isPending('push-config')
 
 const endpointStatus = shallowRef<EndpointStatusRead | null>(null)
 const logs = shallowRef<ControlLogRead[]>([])
@@ -31,16 +32,23 @@ let lastRealtimeVersion = 0
 const outputLogs = computed(() => logs.value.filter((log) => log.action === 'event').slice(0, 20))
 
 async function reloadNode() {
+  const configId = String(route.params.configId)
+  const nodeId = String(route.params.nodeId)
+  endpointStatus.value = await api.endpointStatus(configId, nodeId)
+  logs.value = await api.endpointLogs(configId, nodeId)
+}
+
+async function refreshStatus() {
   await actions.run('refresh-status', async () => {
     const configId = String(route.params.configId)
     const nodeId = String(route.params.nodeId)
-    endpointStatus.value = await api.endpointStatus(configId, nodeId)
-    logs.value = await api.endpointLogs(configId, nodeId)
+    await api.probeBatch(configId, [nodeId])
+    await reloadNode()
   })
 }
 
 async function sendAction(action: string) {
-  const key = action === 'start' ? 'start-wg' : action === 'stop' ? 'stop-wg' : action === 'wg_show' ? 'wg-info' : `action-${action}`
+  const key = action === 'start' ? 'start-wg' : action === 'stop' ? 'stop-wg' : action === 'wg_show' ? 'wg-info' : action === 'push_config' ? 'push-config' : `action-${action}`
   await actions.run(key, async () => {
     try {
       const result = await api.controlEndpoint(String(route.params.configId), String(route.params.nodeId), action)
@@ -66,6 +74,12 @@ function presenceLabel(state: string | undefined) {
 function wgConfigVersionLabel(state: string | undefined) {
   if (state === 'latest') return t('endpointControl.wgConfigLatest')
   if (state === 'pending') return t('endpointControl.wgConfigPending')
+  return t('endpointControl.unknown')
+}
+
+function wgRuntimeLabel(state: string | undefined) {
+  if (state === 'running') return t('endpointControl.wgRunning')
+  if (state === 'stopped') return t('endpointControl.wgStopped')
   return t('endpointControl.unknown')
 }
 
@@ -225,12 +239,11 @@ watch(
             <el-descriptions-item :label="t('endpointControl.node')">{{ endpointStatus.node.name }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.clientState')">{{ presenceLabel(endpointStatus.client_state.client_presence_state) }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.clientOnline')">{{ endpointStatus.runtime.online ? t('endpointControl.online') : t('endpointControl.offline') }}</el-descriptions-item>
-            <el-descriptions-item :label="t('endpointControl.wgOnline')">{{ endpointStatus.runtime.wg_running ? t('endpointControl.online') : t('endpointControl.offline') }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.clientVersion')">{{ endpointStatus.client_state.client_version_label || t('endpointControl.unknown') }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.wgConfigVersion')">
               {{ wgConfigVersionLabel(endpointStatus.config_state.wg_config_version_state) }}
             </el-descriptions-item>
-            <el-descriptions-item :label="t('endpointControl.wgState')">{{ endpointStatus.runtime.wg_runtime_state }}</el-descriptions-item>
+            <el-descriptions-item :label="t('endpointControl.wgState')">{{ wgRuntimeLabel(endpointStatus.runtime.wg_runtime_state) }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.lastSeen')">{{ formatDateTime(endpointStatus.runtime.last_seen) }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.lastHeartbeat')">{{ formatDateTime(endpointStatus.client_state.last_heartbeat_at) }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.lastDetect')">{{ formatDateTime(endpointStatus.runtime.last_probe_ack_at) }}</el-descriptions-item>
@@ -245,8 +258,9 @@ watch(
           <div class="endpoint-controls">
             <el-button :icon="VideoPlay" :loading="startingWg" :disabled="!mqttServiceEnabled" @click="sendAction('start')">{{ t('endpointControl.startWg') }}</el-button>
             <el-button :icon="VideoPause" :loading="stoppingWg" :disabled="!mqttServiceEnabled" @click="sendAction('stop')">{{ t('endpointControl.stopWg') }}</el-button>
+            <el-button :icon="RefreshRight" :loading="pushingConfig" :disabled="!mqttServiceEnabled" @click="sendAction('push_config')">{{ t('endpointControl.syncConfig') }}</el-button>
             <el-button :icon="Monitor" :loading="loadingWgInfo" :disabled="!mqttServiceEnabled" @click="sendAction('wg_show')">{{ t('endpointControl.wgInfo') }}</el-button>
-            <el-button plain :icon="RefreshRight" :loading="refreshingStatus" @click="reloadNode">{{ t('endpointControl.refreshStatus') }}</el-button>
+            <el-button plain :icon="RefreshRight" :loading="refreshingStatus" @click="refreshStatus">{{ t('endpointControl.refreshStatus') }}</el-button>
             <el-button type="danger" plain :icon="SwitchButton" :loading="resettingClient" :disabled="!mqttServiceEnabled" @click="resetClient">{{ t('endpointControl.resetClient') }}</el-button>
           </div>
         </div>

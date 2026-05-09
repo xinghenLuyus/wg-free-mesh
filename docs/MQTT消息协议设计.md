@@ -94,7 +94,8 @@
 
 用途：
 
-- 服务端向客户端推送最新配置
+- 服务端向客户端推送当前节点同步态配置
+- 这是“同步态 -> 客户端下发态”的唯一确认链路
 
 下行 topic：
 
@@ -103,6 +104,18 @@
 对应 ACK：
 
 - `wfm/{config_id}/{node_id}/config/push/ack`
+
+下行 payload 至少包含：
+
+```json
+{
+  "action": "push_config",
+  "interface_name": "config-node",
+  "config_version": 3,
+  "config_sha256": "abc...",
+  "config_text": "[Interface]\n..."
+}
+```
 
 ### 2. `control`
 
@@ -118,6 +131,11 @@
 
 - `start`
 - `stop`
+
+说明：
+
+- `start` / `stop` 只作用于当前 profile 对应的 `interface_name`。
+- 客户端不得因为主机上存在其它 WireGuard 接口而把当前 profile 判定为 running。
 
 对应 ACK：
 
@@ -281,6 +299,7 @@
 - `detect ack` 是前端实时页面的主动探测状态来源。
 - 服务端发出 `detect` 后，10 秒内未收到 `detect/ack`，视为探测失败。
 - `detect ack` 不允许携带命令行输出。
+- `wg_online` 只表示当前 profile 对应 `interface_name` 的运行状态，不表示主机上任意 WireGuard 接口状态。
 
 ### 9. `info ack`
 
@@ -333,6 +352,7 @@
 - 客户端固定每 30 分钟发送一次。
 - 服务端超过 45 分钟未收到 heartbeat，视为心跳超时。
 - heartbeat 是客户端单向状态上报，用于被动判断客户端在线和 WireGuard 在线。
+- `wg_online` 只表示当前 profile 对应 `interface_name` 的运行状态。
 
 ## ACK 规则
 
@@ -421,7 +441,12 @@ LWT payload 直接表达“正常离线”事件，例如：
 
 - “异常掉线”不是第四种页面状态，只是 `掉线` 的内部原因。
 - 遗言是唯一正常掉线方式。
-- WireGuard 只保留 `wg_online=true/false`，由 heartbeat 和 detect 分别上报，最终投影由服务端计算。
+- WireGuard 展示态以 `wg_runtime_state` 为准，而不是单纯布尔值：
+  - `unknown`：静态节点、未初始化动态节点、客户端离线或掉线、探测超时。
+  - `running`：客户端在线并明确上报当前 profile 接口运行中。
+  - `stopped`：客户端在线并明确上报当前 profile 接口未运行。
+- 静态节点的 WG 状态永远是 `unknown`，不能显示“离线”。
+- `wg show` 属于诊断信息，允许返回主机上所有 WireGuard 接口；它不参与当前 profile 的 WG 状态投影。
 
 ## 服务端高权限 MQTT 客户端职责
 

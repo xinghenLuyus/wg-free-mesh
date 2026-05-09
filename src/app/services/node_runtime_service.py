@@ -78,6 +78,24 @@ class NodeRuntimeService:
     async def apply_control_ack(self, config_id: str, node_id: str, body: dict[str, Any]) -> None:
         await self._apply_ack(config_id, node_id, body, default_action="")
 
+    async def apply_config_push_ack(self, config_id: str, node_id: str, body: dict[str, Any]) -> None:
+        request_id = str(body.get("request_id") or "")
+        if not request_id:
+            await self._publish_runtime_scope(config_id, node_id)
+            return
+        payload = _payload(body)
+        status_text = str(payload.get("status") or "failed")
+        message = str(payload.get("message") or status_text)
+        try:
+            row = store.confirm_config_push(request_id, status_text, message)
+            await realtime_service.publish(
+                "control.log.updated",
+                {"config_id": config_id, "node_id": node_id, "log": row.model_dump(mode="json")},
+            )
+        except Exception:
+            pass
+        await self._publish_runtime_scope(config_id, node_id)
+
     async def _apply_ack(self, config_id: str, node_id: str, body: dict[str, Any], *, default_action: str) -> None:
         request_id = str(body.get("request_id") or "")
         if not request_id:

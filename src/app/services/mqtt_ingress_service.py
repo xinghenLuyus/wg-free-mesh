@@ -217,6 +217,9 @@ class MqttIngressService:
             if kind == "control/ack":
                 await node_runtime_service.apply_control_ack(config_id, node_id, body)
                 return
+            if kind == "config/push/ack":
+                await node_runtime_service.apply_config_push_ack(config_id, node_id, body)
+                return
             await node_runtime_service.apply_generic_ack(config_id, node_id, boot_id=boot_id, session_id=session_id)
             return
 

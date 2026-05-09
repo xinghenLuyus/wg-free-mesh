@@ -289,9 +289,10 @@ class SQLiteRuntimeStateMixin:
         elif action == ControlAction.stop:
             updates["wg_running"] = 0
             updates["wg_runtime_state"] = WgRuntimeState.stopped.value
-            updates["online"] = 0
-            updates["connectivity_state"] = ConnectivityState.offline.value
-            updates["last_connectivity_reason"] = "manual-stop"
+            updates["online"] = 1
+            updates["connectivity_state"] = ConnectivityState.online.value
+            updates["last_seen"] = now.isoformat()
+            updates["last_connectivity_reason"] = "manual-stop-wg"
             summary = "WireGuard marked as stopped"
         elif action == ControlAction.restart:
             updates["wg_running"] = 1
@@ -306,6 +307,8 @@ class SQLiteRuntimeStateMixin:
             summary = "Node config synced to staged state"
         elif action == ControlAction.wg_show:
             summary = "wg_show request recorded, deferred to client phase"
+        elif action == ControlAction.push_config:
+            summary = "Config push request recorded, deferred to client ACK"
         else:
             raise AppError("INVALID_ACTION", "Unsupported control action", 400)
         with connect() as connection:
@@ -341,7 +344,7 @@ class SQLiteRuntimeStateMixin:
         runtime = self.get_runtime(config_id, node_id)
         state = self.get_node_config_state(config_id, node_id)
         server_apply_status = self._sync_status_from_state(state)
-        wg_config_version_state = "latest" if server_apply_status == "in_sync" else "pending"
+        wg_config_version_state = "latest" if state.confirmed_sha256 and state.confirmed_sha256 == state.staged_sha256 else "pending"
         logs = self.list_endpoint_logs(config_id, node_id, limit=1)
         return {
             "node": node,
