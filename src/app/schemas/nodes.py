@@ -14,6 +14,7 @@ class NodeCreate(BaseModel):
     mtu: int | None = Field(default=None, ge=576, le=65535)
     dns: str | None = None
     auto_sync: bool = True
+    enabled: bool = True
     node_type: NodeType = NodeType.dynamic
     public_key: str | None = None
     private_key: str | None = None
@@ -31,6 +32,7 @@ class NodeRead(BaseModel):
     mtu: int | None
     dns: str | None
     auto_sync: bool
+    enabled: bool
     node_type: NodeType
     public_key: str
     private_key: str

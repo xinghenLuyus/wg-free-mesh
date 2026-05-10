@@ -54,7 +54,8 @@ class SQLiteConfigMeshMixin:
                 SELECT
                   configs.*,
                   COUNT(nodes.id) AS node_count,
-                  SUM(CASE WHEN nodes.node_type = 'dynamic' THEN 1 ELSE 0 END) AS dynamic_node_count
+                  SUM(CASE WHEN nodes.node_type = 'dynamic' AND nodes.enabled = 1 THEN 1 ELSE 0 END) AS dynamic_node_count,
+                  SUM(CASE WHEN nodes.enabled = 0 THEN 1 ELSE 0 END) AS disabled_node_count
                 FROM configs
                 LEFT JOIN nodes ON nodes.config_id = configs.id
                 GROUP BY configs.id
@@ -131,7 +132,8 @@ class SQLiteConfigMeshMixin:
                 SELECT
                   configs.*,
                   COUNT(nodes.id) AS node_count,
-                  SUM(CASE WHEN nodes.node_type = 'dynamic' THEN 1 ELSE 0 END) AS dynamic_node_count
+                  SUM(CASE WHEN nodes.node_type = 'dynamic' AND nodes.enabled = 1 THEN 1 ELSE 0 END) AS dynamic_node_count,
+                  SUM(CASE WHEN nodes.enabled = 0 THEN 1 ELSE 0 END) AS disabled_node_count
                 FROM configs
                 LEFT JOIN nodes ON nodes.config_id = configs.id
                 WHERE configs.id = ?
@@ -328,6 +330,7 @@ class SQLiteConfigMeshMixin:
             mtu=int_or_none(payload.get("mtu")),
             dns=str(payload.get("dns") or "") or None,
             auto_sync=config.auto_sync if payload.get("auto_sync") is None else bool(payload.get("auto_sync")),
+            enabled=True if payload.get("enabled") is None else bool(payload.get("enabled")),
             node_type=node_type_value(payload.get("node_type", NodeType.dynamic)),
             public_key=public_key,
             private_key=private_key,
@@ -341,8 +344,8 @@ class SQLiteConfigMeshMixin:
             connection.execute(
                 """
                 INSERT INTO nodes
-                  (id, config_id, name, ipv4_address, ipv6_address, listen_port, virtual_ip, mtu, dns, auto_sync, node_type, public_key, private_key, tags_json, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                  (id, config_id, name, ipv4_address, ipv6_address, listen_port, virtual_ip, mtu, dns, auto_sync, enabled, node_type, public_key, private_key, tags_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     node.id,
@@ -355,6 +358,7 @@ class SQLiteConfigMeshMixin:
                     node.mtu,
                     node.dns,
                     int(node.auto_sync),
+                    int(node.enabled),
                     node.node_type.value,
                     node.public_key,
                     node.private_key,
@@ -408,6 +412,7 @@ class SQLiteConfigMeshMixin:
                 "mtu": int_or_none(payload.get("mtu")) if "mtu" in payload else current.mtu,
                 "dns": str_or_none(payload.get("dns")) if "dns" in payload else current.dns,
                 "auto_sync": payload.get("auto_sync", current.auto_sync),
+                "enabled": payload.get("enabled", current.enabled),
                 "node_type": node_type_value(payload.get("node_type", current.node_type)),
                 "private_key": str(payload.get("private_key") or current.private_key),
                 "public_key": str(payload.get("public_key") or current.public_key),
@@ -428,7 +433,7 @@ class SQLiteConfigMeshMixin:
                 """
                 UPDATE nodes
                 SET name = ?, ipv4_address = ?, ipv6_address = ?, listen_port = ?, virtual_ip = ?, mtu = ?, dns = ?,
-                    auto_sync = ?, node_type = ?, public_key = ?, private_key = ?, tags_json = ?, updated_at = ?
+                    auto_sync = ?, enabled = ?, node_type = ?, public_key = ?, private_key = ?, tags_json = ?, updated_at = ?
                 WHERE id = ?
                 """,
                 (
@@ -440,6 +445,7 @@ class SQLiteConfigMeshMixin:
                     updated.mtu,
                     updated.dns,
                     int(updated.auto_sync),
+                    int(updated.enabled),
                     updated.node_type.value,
                     updated.public_key,
                     updated.private_key,
@@ -454,6 +460,43 @@ class SQLiteConfigMeshMixin:
                 connection.execute(
                     f"UPDATE peer_links SET persistent_keepalive = NULL, updated_at = ? WHERE id IN ({placeholders})",
                     (updated.updated_at.isoformat(), *keepalive_clear_ids),
+                )
+            if current.enabled and not updated.enabled:
+                connection.execute(
+                    """
+                    UPDATE peer_links
+                    SET enabled = 0, updated_at = ?
+                    WHERE config_id = ? AND (local_node_id = ? OR peer_node_id = ?)
+                    """,
+                    (updated.updated_at.isoformat(), current.config_id, node_id, node_id),
+                )
+                connection.execute(
+                    """
+                    UPDATE endpoint_runtime_status
+                    SET online = 0, connectivity_state = ?, wg_running = 0, wg_runtime_state = ?,
+                        config_sync_state = ?, peers_online = 0, peers_total = 0,
+                        heartbeat_client_online = 0, heartbeat_wg_online = 0,
+                        detect_client_online = 0, detect_wg_online = 0,
+                        last_connectivity_reason = ?, updated_at = ?
+                    WHERE node_id = ?
+                    """,
+                    (
+                        ConnectivityState.unknown.value,
+                        WgRuntimeState.unknown.value,
+                        ConfigSyncState.unknown.value,
+                        "Node disabled",
+                        updated.updated_at.isoformat(),
+                        node_id,
+                    ),
+                )
+                connection.execute(
+                    """
+                    UPDATE node_client_state
+                    SET client_presence_state = 'offline', bind_token_hash = '', bind_token_expires_at = NULL,
+                        bind_token_used_at = NULL, updated_at = ?
+                    WHERE node_id = ?
+                    """,
+                    (updated.updated_at.isoformat(), node_id),
                 )
         node = self.get_node(node_id)
         return {
@@ -593,6 +636,8 @@ class SQLiteConfigMeshMixin:
         peer_node = self.get_node(peer_node_id)
         if local_node.config_id != config_id or peer_node.config_id != config_id:
             raise AppError("NODE_CONFIG_MISMATCH", "Link node does not belong to this config", 400)
+        if not local_node.enabled or not peer_node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint cannot create Mesh links", 400)
         if local_node.id == peer_node.id:
             raise AppError("INVALID_PEER_LINK", "A node cannot link to itself", 400)
 
@@ -636,7 +681,9 @@ class SQLiteConfigMeshMixin:
             if link.local_node_id != node_id:
                 continue
             reverse = reverse_by_group.get(link.link_group_id)
-            peer_node = nodes_by_id[link.peer_node_id]
+            peer_node = nodes_by_id.get(link.peer_node_id)
+            if peer_node is None:
+                continue
             integrity = self._connection_integrity(config, node, peer_node, link, reverse)
             connections.append(
                 {
@@ -653,9 +700,16 @@ class SQLiteConfigMeshMixin:
                     "integrity_message": integrity["message"],
                     "duplicate_enabled_pair": link.link_group_id in duplicate_messages,
                     "duplicate_message": duplicate_messages.get(link.link_group_id, ""),
+                    "readonly": not node.enabled,
+                    "peer_disabled": not peer_node.enabled,
                 }
             )
-        return {"node": node.model_dump(mode="json"), "connections": connections, "validation": self._validate_mesh_payload(config_id)}
+        return {
+            "node": node.model_dump(mode="json"),
+            "connections": connections,
+            "readonly": not node.enabled,
+            "validation": self._validate_mesh_payload(config_id),
+        }
 
     def create_peer_link_group(self, config_id: str, payload: dict[str, object]) -> list[PeerLink]:
         config = self.get_config(config_id)
@@ -665,6 +719,8 @@ class SQLiteConfigMeshMixin:
         peer_node = self.get_node(str(forward["peer_node_id"]))
         if local_node.config_id != config_id or peer_node.config_id != config_id:
             raise AppError("NODE_CONFIG_MISMATCH", "Link node does not belong to this config", 400)
+        if not local_node.enabled or not peer_node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint cannot create Mesh links", 400)
         if str(reverse["local_node_id"]) != peer_node.id or str(reverse["peer_node_id"]) != local_node.id:
             raise AppError("INVALID_PEER_LINK", "Bidirectional link node direction mismatch", 400)
         self._validate_link_endpoint_settings(forward)

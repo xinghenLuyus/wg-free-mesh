@@ -89,6 +89,7 @@ def init_database() -> None:
               mtu INTEGER,
               dns TEXT,
               auto_sync INTEGER NOT NULL DEFAULT 1,
+              enabled INTEGER NOT NULL DEFAULT 1,
               node_type TEXT NOT NULL,
               public_key TEXT NOT NULL,
               private_key TEXT NOT NULL,
@@ -262,6 +263,7 @@ def init_database() -> None:
         _ensure_column(connection, "endpoint_runtime_status", "heartbeat_wg_online", "heartbeat_wg_online INTEGER NOT NULL DEFAULT 0")
         _ensure_column(connection, "endpoint_runtime_status", "detect_client_online", "detect_client_online INTEGER NOT NULL DEFAULT 0")
         _ensure_column(connection, "endpoint_runtime_status", "detect_wg_online", "detect_wg_online INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(connection, "nodes", "enabled", "enabled INTEGER NOT NULL DEFAULT 1")
 
         now = now_utc().isoformat()
         connection.execute(
@@ -368,10 +370,48 @@ def init_database() -> None:
         connection.executemany(
             """
             INSERT INTO nodes
-              (id, config_id, name, ipv4_address, ipv6_address, listen_port, virtual_ip, mtu, dns, auto_sync, node_type, public_key, private_key, tags_json, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              (id, config_id, name, ipv4_address, ipv6_address, listen_port, virtual_ip, mtu, dns, auto_sync, enabled, node_type, public_key, private_key, tags_json, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            nodes,
+            [
+                (
+                    node_id,
+                    config_id,
+                    name,
+                    ipv4_address,
+                    ipv6_address,
+                    listen_port,
+                    virtual_ip,
+                    mtu,
+                    dns,
+                    auto_sync,
+                    1,
+                    node_type,
+                    public_key,
+                    private_key,
+                    tags_json,
+                    created_at,
+                    updated_at,
+                )
+                for (
+                    node_id,
+                    config_id,
+                    name,
+                    ipv4_address,
+                    ipv6_address,
+                    listen_port,
+                    virtual_ip,
+                    mtu,
+                    dns,
+                    auto_sync,
+                    node_type,
+                    public_key,
+                    private_key,
+                    tags_json,
+                    created_at,
+                    updated_at,
+                ) in nodes
+            ],
         )
 
         connection.executemany(

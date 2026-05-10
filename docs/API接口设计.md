@@ -174,6 +174,7 @@ Authorization: Bearer <access_token>
   - `topology_error_count`
   - `online_node_count`
   - `offline_node_count`
+  - `disabled_node_count`
   - `pending_sync_node_count`
   - `latest_config_node_count`
 
@@ -181,7 +182,8 @@ Authorization: Bearer <access_token>
 
 - 首页配置卡片和左侧配置列表直接使用这里返回的拓扑异常标记。
 - 如果配置已停用，列表层不再上浮其拓扑异常，前端只显示停用状态。
-- 首页网格 / 列表视图直接使用这里返回的节点数量、在线数量、动态节点数量和下发态数量。
+- 首页网格 / 列表视图直接使用这里返回的节点数量、在线数量、动态节点数量、禁用节点数量和下发态数量。
+- `node_count` 包含已禁用端点；`dynamic_node_count`、`online_node_count`、`offline_node_count` 只统计启用动态端点。
 - 前端不得自行遍历 Mesh 连接、运行态快照或同步状态去推断配置是否异常、在线节点数或待下发节点数。
 
 ### `POST /api/v1/configs`
@@ -236,6 +238,9 @@ Authorization: Bearer <access_token>
 
 - 配置概览页的节点卡片所需在线状态、Peer 数等聚合字段由后端返回。
 - 节点卡片额外返回 `mesh_error`，用于标记当前节点是否处于会触发拓扑失败的 Mesh 异常中。
+- 节点卡片额外返回 `enabled`。`node_cards` 只包含启用端点，`disabled_node_cards` 只包含已禁用端点。
+- `stats.total_nodes` 包含已禁用端点；`stats.dynamic_nodes`、`stats.static_nodes`、`stats.online_nodes` 只统计启用端点。
+- 标签筛选可以同时作用于启用端点区和已禁用端点区；前端不得把禁用端点混入启用端点列表。
 - 配置概览额外返回 `topology`，用于驱动配置头部异常态展示。
 - 前端可以做本页临时筛选和排序，但不得自己拼接业务视图模型。
 
@@ -250,6 +255,7 @@ Authorization: Bearer <access_token>
 - 用途：创建节点
 - 请求：
   - `name`
+  - `enabled`
   - `node_type`
   - `ipv4_address`
   - `ipv6_address`
@@ -267,6 +273,7 @@ Authorization: Bearer <access_token>
 - `ipv4_address` 表示公网 IPv4 入口，可填写 IP 或域名。
 - `ipv6_address` 表示公网 IPv6 入口，可填写 IP 或域名。
 - 前端不得把二者合并成单个“公网端点”字段。
+- `enabled=false` 表示端点进入可恢复软删除态。禁用端点仍保留数据，仍计入节点总数，但不参与动态/静态/在线统计、配置生成、同步、下载、远程控制和 MQTT 授权。
 
 ### `GET /api/v1/nodes/{node_id}`
 
@@ -283,6 +290,8 @@ Authorization: Bearer <access_token>
 
 - 节点更新会经过后端依赖钩子，扫描受影响的 Mesh 连接。
 - 节点设置中的基础字段和 `tags` 应通过同一次 `PUT /api/v1/nodes/{node_id}` 保存，避免前端拆成多次请求造成部分成功、部分失败。
+- 节点设置中的 `enabled` 通过同一次 `PUT /api/v1/nodes/{node_id}` 保存。端点从启用切换为禁用时，后端必须停用该端点相关的所有 Mesh 对。
+- 禁用端点重新启用时，后端不自动恢复历史 Mesh 对，用户可以在启用端点侧手动启用或删除。
 - 当公网入口或监听端口变化导致相关 auto Endpoint 重算时，后端会同步清空已失效的 `persistent_keepalive`。
 - 当 `virtual_ip` 变更时，后端不会自动改写 `allowed_ips`，只会返回提示，由用户手工确认。
 
@@ -356,11 +365,14 @@ Authorization: Bearer <access_token>
 - 每个连接额外返回：
   - `integrity_status`：`healthy | broken`
   - `integrity_message`
+  - `readonly`：当前节点禁用时为 `true`，前端只允许查看，不允许新建、编辑、启停或删除
+  - `peer_disabled`：对端节点禁用时为 `true`
 - 前端不得自行从两条 peer link 拼接 Mesh 连接卡片。
 
 说明补充：
 
 - 当一组 Mesh 双向连接在需要 Endpoint 的情况下两侧都无法解析公网入口时，后端会把该连接标记为 `broken`。
+- 当当前启用端点的已启用 Mesh 连接指向禁用对端时，后端同样把当前连接卡片标记为 `broken`，用于给具体链路显示错误。
 - `broken` 连接不自动删除，而是保留参数、前端显示红色标签，并由拓扑校验报错。
 
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/peer-link-draft`
@@ -382,6 +394,7 @@ Authorization: Bearer <access_token>
 - 该接口负责生成正反向默认 `allowed_ips`、Endpoint 自动摘要和缺失项警告。
 - 前端不得自行推导新建连接的业务默认值。
 - 该接口后续可被外部 API 和 MCP 聚合器复用。
+- 当前节点或对端节点已禁用时，后端返回 `NODE_DISABLED`。
 
 ### `POST /api/v1/configs/{config_id}/peer-links`
 
@@ -415,6 +428,7 @@ Authorization: Bearer <access_token>
 - `endpoint_mode=none` 表示强制不写 Endpoint。
 - `endpoint_mode=manual` 表示手动填写对向 Host 和 Port，不推荐常规场景使用。
 - 后端只在 `manual` 模式下强制校验 Host 和 Port。
+- 创建连接时当前节点和对端节点都必须启用；否则返回 `NODE_DISABLED`。
 
 前端展示时必须使用中文模式名称：
 
@@ -432,6 +446,9 @@ Authorization: Bearer <access_token>
 ### `PUT /api/v1/peer-links/{link_group_id}`
 
 - 用途：按 link group 更新双向链路公共属性
+- 说明：
+  - 如果当前操作发生在禁用端点的 Mesh 页面，前端不得调用该接口。
+  - 后端不因为对端禁用而阻止启用已有 Mesh 对；这种情况由拓扑校验报告“启用的 Mesh 连接引用不存在或已禁用端点”。
 
 ### `DELETE /api/v1/peer-links/{link_group_id}`
 
@@ -458,8 +475,10 @@ Authorization: Bearer <access_token>
 - `warnings` 表示提示型信息，不会单独让拓扑失败。
 - 当前拓扑校验只保留正常业务流里真正有意义的结果：
   - Mesh 连接断裂会进入 `errors`
+  - 启用的 Mesh 连接引用不存在或已禁用端点会进入 `errors`
   - 配置存在节点但还没有任何 Peer 连接会进入 `warnings`
 - 那些已经在正常写入链路中被后端业务函数拦住的情况，不再重复由拓扑校验兜底。
+- 启用连接引用禁用端点时，`invalid_node_ids` 只返回仍启用且需要用户处理的端点；禁用端点本身不显示 Mesh 异常标签。
 
 同步约束：
 
@@ -468,6 +487,7 @@ Authorization: Bearer <access_token>
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/wg-preview`
 
 - 用途：预览节点 WireGuard 配置
+- 约束：节点已禁用时返回 `NODE_DISABLED`。
 
 ## 配置生成与应用
 
@@ -486,19 +506,23 @@ Authorization: Bearer <access_token>
 
 - 当 `topology_valid=false` 时，前端必须禁用“自动同步”和“立即同步”入口。
 - `topology_messages` 用于直接展示当前阻塞同步的拓扑问题。
+- 已禁用端点不参与配置同步状态计算，单节点同步状态接口对禁用端点返回 `NODE_DISABLED`。
 
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/applied-conf`
 
 - 用途：获取服务端已应用配置
+- 约束：节点已禁用时返回 `NODE_DISABLED`。
 
 ### `PUT /api/v1/configs/{config_id}/nodes/{node_id}/applied-conf`
 
 - 用途：保存服务端已应用配置
+- 约束：节点已禁用时返回 `NODE_DISABLED`。
 
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/download-package`
 
 - 用途：获取下载配置页所需聚合数据
 - 返回内容：文件名、同步态配置文本、下载路径
+- 约束：节点已禁用时返回 `NODE_DISABLED`。
 
 ### `POST /api/v1/configs/{config_id}/nodes/{node_id}/download-token`
 
@@ -510,18 +534,21 @@ Authorization: Bearer <access_token>
   - `expires_at`
   - `download_path`
   - `filename`
+- 约束：节点已禁用时返回 `NODE_DISABLED`。
 
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/download-conf?download_token=...`
 
 - 用途：直接下载当前节点 `.conf` 文件
 - 鉴权：只接受下载专用令牌
 - 约束：下载令牌必须匹配当前 `config_id` 和 `node_id`
+- 约束：节点已禁用时返回 `NODE_DISABLED`。
 - 响应：`text/plain`，附带 `Content-Disposition`
 
 ### `POST /api/v1/configs/{config_id}/nodes/{node_id}/sync`
 
 - 用途：同步单个节点配置
 - 约束：当拓扑校验失败时，后端必须拒绝执行并返回 `TOPOLOGY_INVALID`
+- 约束：节点已禁用时返回 `NODE_DISABLED`
 
 ### `POST /api/v1/configs/{config_id}/sync-all`
 
@@ -566,6 +593,7 @@ Authorization: Bearer <access_token>
   - `running`：客户端明确上报当前配置对应接口正在运行。
   - `stopped`：客户端在线且明确上报当前配置对应接口未运行。
 - 前端不得用 `runtime.wg_running=false` 直接显示“离线”；`wg_running` 只作为兼容布尔字段。
+- 节点已禁用时返回 `NODE_DISABLED`。禁用端点不得进入端点控制页。
 
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/endpoint/logs`
 
@@ -588,6 +616,7 @@ Authorization: Bearer <access_token>
 - 客户端收到 `config/push` 时，如果当前 profile 的 WG 接口正在运行，必须执行 stop -> 写配置 -> start；如果未运行，只写配置。
 - `wg_show` 通过 `info` topic 下发。
 - `wg_show` 的 ACK 只表示命令完成；具体 `wg show` 输出由客户端发布到 `event` topic，服务端写入命令行回显日志。
+- 节点已禁用时返回 `NODE_DISABLED`。
 
 ### `POST /api/v1/configs/{config_id}/endpoint/probe-batch`
 
@@ -599,6 +628,7 @@ Authorization: Bearer <access_token>
 - 鉴权：必须携带后台会话 Bearer Token
 - 约束：
   - 仅动态节点可生成
+  - 禁用节点不可生成
   - 默认有效期 5 分钟
   - 只能成功使用一次
   - 节点转为静态节点后必须立即失效
@@ -616,6 +646,7 @@ Authorization: Bearer <access_token>
   - 清空客户端运行态
   - 将 `client_initialized` 重置为 `false`
   - 控制台端点页面重新回到初始化页
+- 约束：节点已禁用时返回 `NODE_DISABLED`。
 
 ## 设置
 
@@ -715,6 +746,7 @@ Authorization: Bearer <access_token>
 - 用途：恢复快照
 - 说明：
   - 恢复后后端会重新扫描快照目录并重建 `backups` 表索引。
+  - 恢复旧版本快照后，后端必须重新执行数据库初始化/兼容迁移，补齐当前版本新增表和字段，再发布全量实时状态。
 
 ### `DELETE /api/v1/backups/{snapshot_id}`
 

@@ -26,6 +26,9 @@ export function translateMeshText(message: string, t: TranslateFn) {
   match = value.match(/^Mesh link between (.+) and (.+) is broken because both sides have no public endpoint\.$/)
   if (match) return t('meshMessages.brokenLink', { left: match[1], right: match[2] })
 
+  match = value.match(/^Mesh link from (.+) references disabled endpoint (.+)\.$/)
+  if (match) return t('meshMessages.disabledPeerLink', { local: match[1], peer: match[2] })
+
   match = value.match(/^Auto uses (.+)$/)
   if (match) return t('meshMessages.autoUses', { endpoint: match[1] })
 
@@ -45,6 +48,9 @@ export function translateMeshText(message: string, t: TranslateFn) {
     /^Duplicate enabled peer links found between (.+) and (.+)\. Only one enabled link group is allowed for the same node pair\.$/,
   )
   if (match) return t('meshMessages.duplicateEnabledPeerLinks', { left: match[1], right: match[2] })
+
+  match = value.match(/^Enabled Mesh link group (.+) references missing or disabled endpoint: (.+)\.$/)
+  if (match) return t('meshMessages.missingOrDisabledEndpoint', { group: match[1], endpoints: match[2] })
 
   if (value === 'Manual mode requires Host and Port') return t('meshMessages.manualNeedHostPort')
   if (value === 'Missing reverse link') return t('meshMessages.missingReverseLink')

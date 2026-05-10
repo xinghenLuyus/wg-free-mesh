@@ -69,13 +69,14 @@ const realtime = useRealtime((event: RealtimeEvent) => {
     const payload = event.payload as { config_id?: string; items?: RuntimeSnapshotItem[] }
     if (payload.config_id !== String(route.params.configId) || !Array.isArray(payload.items)) return
     const runtimeByNodeId = new Map(payload.items.map((item) => [item.node_id, item]))
+    const activeDynamicIds = new Set(overview.value.node_cards.filter((card) => card.node_type === 'dynamic').map((card) => card.id))
     overview.value = {
       ...overview.value,
       stats: {
         ...overview.value.stats,
-        online_nodes: payload.items.filter((item) => item.node_type === 'dynamic' && item.online).length,
+        online_nodes: payload.items.filter((item) => activeDynamicIds.has(item.node_id) && item.online).length,
         pending_sync_nodes: payload.items.filter(
-          (item) => item.node_type === 'dynamic' && item.config_sync_state !== 'in_sync',
+          (item) => activeDynamicIds.has(item.node_id) && item.config_sync_state !== 'in_sync',
         ).length,
       },
       runtime_snapshot: payload.items,
@@ -88,6 +89,7 @@ const realtime = useRealtime((event: RealtimeEvent) => {
           peers_total: runtime.peers_total,
         }
       }),
+      disabled_node_cards: (overview.value.disabled_node_cards ?? []).map((card) => ({ ...card, online: false, peers_total: 0 })),
     }
   }
 })
@@ -129,6 +131,7 @@ const createRules: FormRules<typeof createForm> = {
 }
 
 const nodeCards = computed(() => overview.value?.node_cards ?? [])
+const disabledNodeCards = computed(() => overview.value?.disabled_node_cards ?? [])
 
 const tagUsages = computed(() => tags.value)
 
@@ -140,11 +143,8 @@ const visibleTagUsages = computed(() => {
   return tagUsages.value.filter((tag) => tag.name.toLowerCase().includes(keyword))
 })
 
-const visibleNodes = computed(() => {
-  const filtered = tagFilter.value
-    ? nodeCards.value.filter((node) => node.tags.includes(tagFilter.value))
-    : nodeCards.value
-
+function sortedNodeCards(cards: ConfigOverviewNodeCardRead[]) {
+  const filtered = tagFilter.value ? cards.filter((node) => node.tags.includes(tagFilter.value)) : cards
   const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' })
   const compareText = (left: string | null | undefined, right: string | null | undefined) => {
     const leftValue = String(left || '').trim()
@@ -173,7 +173,10 @@ const visibleNodes = computed(() => {
     }
     return compareText(left.name, right.name)
   })
-})
+}
+
+const visibleNodes = computed(() => sortedNodeCards(nodeCards.value))
+const visibleDisabledNodes = computed(() => sortedNodeCards(disabledNodeCards.value))
 
 const topologyInvalid = computed(() => overview.value?.topology.valid === false)
 
@@ -438,6 +441,7 @@ async function createNode() {
         mtu: createForm.mtu,
         dns: createForm.dns,
         auto_sync: createForm.auto_sync,
+        enabled: true,
         node_type: createForm.node_type,
         public_key: createForm.public_key,
         private_key: createForm.private_key,
@@ -617,7 +621,52 @@ watch(
         </button>
       </div>
 
-      <div v-else class="node-strip-grid">
+      <div v-if="viewMode === 'grid' && visibleDisabledNodes.length" class="disabled-node-section">
+        <div class="disabled-node-section__head">
+          <span>{{ t('configOverview.disabledEndpoints') }}</span>
+          <el-tag type="info" size="small">{{ visibleDisabledNodes.length }}</el-tag>
+        </div>
+        <div class="node-grid">
+          <button
+            v-for="node in visibleDisabledNodes"
+            :key="node.id"
+            class="node-card node-card--disabled"
+            @click="openNode(node.id)"
+          >
+            <div class="node-card__head">
+              <h3>{{ node.name }}</h3>
+              <div class="node-card__status-tags">
+                <el-tag type="info">{{ t('nodeWorkspace.disabledEndpoint') }}</el-tag>
+                <el-tag v-if="node.mesh_error" type="danger">{{ t('configOverview.meshError') }}</el-tag>
+              </div>
+            </div>
+            <dl class="node-card__meta">
+              <div>
+                <dt>{{ t('configOverview.type') }}</dt>
+                <dd>{{ nodeTypeLabel(node.node_type) }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('nodeWorkspace.virtualIp') }}</dt>
+                <dd>{{ node.virtual_ip || t('nodeWorkspace.unset') }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('nodeWorkspace.publicIpv4') }}</dt>
+                <dd>{{ node.ipv4_address || t('nodeWorkspace.unset') }}</dd>
+              </div>
+              <div>
+                <dt>{{ t('nodeWorkspace.publicIpv6') }}</dt>
+                <dd>{{ node.ipv6_address || t('nodeWorkspace.unset') }}</dd>
+              </div>
+            </dl>
+            <div class="node-card__tags">
+              <el-tag v-for="tag in node.tags" :key="tag" type="info" size="small">{{ tag }}</el-tag>
+              <span v-if="!node.tags.length" class="node-card__empty">{{ t('configOverview.noTags') }}</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div v-if="viewMode === 'list'" class="node-strip-grid">
         <button
           v-for="node in visibleNodes"
           :key="node.id"
@@ -655,6 +704,51 @@ watch(
             </div>
           </div>
         </button>
+      </div>
+      <div v-if="viewMode === 'list' && visibleDisabledNodes.length" class="disabled-node-section">
+        <div class="disabled-node-section__head">
+          <span>{{ t('configOverview.disabledEndpoints') }}</span>
+          <el-tag type="info" size="small">{{ visibleDisabledNodes.length }}</el-tag>
+        </div>
+        <div class="node-strip-grid">
+          <button
+            v-for="node in visibleDisabledNodes"
+            :key="node.id"
+            class="node-strip-card node-strip-card--disabled"
+            @click="openNode(node.id)"
+          >
+            <div class="node-strip-card__main">
+              <div class="node-strip-card__title">
+                <div class="node-strip-card__title-copy">
+                  <h3>{{ node.name }}</h3>
+                  <p>{{ nodeTypeLabel(node.node_type) }}</p>
+                </div>
+                <div class="node-strip-card__status-tags">
+                  <el-tag type="info" size="small">{{ t('nodeWorkspace.disabledEndpoint') }}</el-tag>
+                  <el-tag v-if="node.mesh_error" type="danger" size="small">{{ t('configOverview.meshError') }}</el-tag>
+                </div>
+              </div>
+              <div class="node-strip-card__tags">
+                <el-tag v-for="tag in node.tags" :key="tag" type="info" size="small">{{ tag }}</el-tag>
+                <span v-if="!node.tags.length" class="node-card__empty">{{ t('configOverview.noTags') }}</span>
+              </div>
+            </div>
+            <div class="node-strip-card__facts">
+              <div class="node-strip-card__fact">
+                <span class="node-strip-card__fact-label">{{ t('nodeWorkspace.virtualIp') }}</span>
+                <span class="node-strip-card__fact-value">{{ node.virtual_ip || t('configOverview.unsetVirtualIp') }}</span>
+              </div>
+              <div class="node-strip-card__fact">
+                <span class="node-strip-card__fact-label">{{ t('nodeWorkspace.publicIpv4') }}</span>
+                <span class="node-strip-card__fact-value">{{ node.ipv4_address || t('nodeWorkspace.unset') }}</span>
+              </div>
+              <div class="node-strip-card__fact">
+                <span class="node-strip-card__fact-label">{{ t('nodeWorkspace.publicIpv6') }}</span>
+                <span class="node-strip-card__fact-value">{{ node.ipv6_address || t('nodeWorkspace.unset') }}</span>
+              </div>
+            </div>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -851,6 +945,12 @@ watch(
 .node-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
 .node-card { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-elevated); text-align: left; cursor: pointer; box-shadow: var(--app-shadow-sm); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
 .node-card:hover, .node-strip-card:hover { transform: translateY(-2px); border-color: var(--app-border-accent); box-shadow: var(--app-shadow-md); }
+.node-card--disabled,
+.node-strip-card--disabled { border-color: var(--app-border-soft); background: color-mix(in srgb, var(--app-surface-sunken) 88%, var(--app-surface)); filter: grayscale(0.22); }
+.node-card--disabled h3,
+.node-strip-card--disabled h3,
+.node-card--disabled dd,
+.node-strip-card--disabled .node-strip-card__fact-value { color: var(--app-muted); }
 .node-card:focus-visible, .node-strip-card:focus-visible, .tag-card:focus-visible { outline: 0; box-shadow: var(--app-focus), var(--app-shadow-md); }
 .node-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .node-card__status-tags, .node-strip-card__status-tags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
@@ -871,6 +971,8 @@ watch(
 .node-strip-card__fact { display: grid; gap: 6px; min-width: 0; padding: 12px 13px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: color-mix(in srgb, var(--app-surface-sunken) 88%, transparent); box-shadow: inset 0 1px 0 color-mix(in srgb, white 10%, transparent); }
 .node-strip-card__fact-label { color: var(--app-faint); font-size: 11px; font-weight: 700; letter-spacing: 0; }
 .node-strip-card__fact-value { color: var(--app-text-strong); font-size: 14px; font-weight: 700; line-height: 1.35; word-break: break-word; }
+.disabled-node-section { display: grid; gap: 12px; margin-top: 12px; padding-top: 16px; border-top: 1px dashed var(--app-border-strong); }
+.disabled-node-section__head { display: flex; align-items: center; gap: 8px; color: var(--app-muted); font-weight: 750; }
 .tag-manager { display: grid; gap: 16px; }
 .tag-manager__hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-sunken); }
 .tag-manager__hero h3 { margin: 0; color: var(--app-text-strong); }

@@ -59,6 +59,7 @@ export interface ConfigRead {
   dynamic_node_count: number
   online_node_count: number
   offline_node_count: number
+  disabled_node_count: number
   pending_sync_node_count: number
   latest_config_node_count: number
   topology_invalid: boolean
@@ -83,6 +84,7 @@ export interface ConfigOverviewNodeCardRead {
   id: string
   name: string
   node_type: 'dynamic' | 'static'
+  enabled: boolean
   virtual_ip: string | null
   ipv4_address: string | null
   ipv6_address: string | null
@@ -122,12 +124,14 @@ export interface ConfigOverviewRead {
     total_nodes: number
     dynamic_nodes: number
     static_nodes: number
+    disabled_nodes: number
     online_nodes: number
     pending_sync_nodes: number
     peer_links: number
   }
   nodes: NodeRead[]
   node_cards: ConfigOverviewNodeCardRead[]
+  disabled_node_cards: ConfigOverviewNodeCardRead[]
   runtime_snapshot: RuntimeSnapshotItem[]
   sync_status: SyncStatusRead[]
   topology: TopologySummaryRead
@@ -144,6 +148,7 @@ export interface NodeRead {
   mtu: number | null
   dns: string | null
   auto_sync: boolean
+  enabled: boolean
   node_type: 'dynamic' | 'static'
   public_key: string
   private_key: string
@@ -235,11 +240,14 @@ export interface MeshConnectionRead {
   integrity_message: string
   duplicate_enabled_pair: boolean
   duplicate_message: string
+  readonly: boolean
+  peer_disabled: boolean
 }
 
 export interface MeshWorkspaceRead {
   node: NodeRead
   connections: MeshConnectionRead[]
+  readonly: boolean
   validation: MeshValidationRead
 }
 
@@ -456,7 +464,7 @@ export interface SystemStatusSnapshotPayload extends SystemStatusRead {}
 export interface EndpointStatusUpdatedPayload {
   config_id: string
   node_id: string
-  status: EndpointStatusRead
+  status: EndpointStatusRead | null
 }
 
 export interface RuntimeNodeUpdatedPayload {
@@ -488,7 +496,7 @@ export interface NodeWorkspaceUpdatedPayload {
   workspace: {
     config: ConfigRead | null
     node: NodeRead
-    endpoint_status: EndpointStatusRead
+    endpoint_status: EndpointStatusRead | null
     tags: TagRead[]
   }
 }

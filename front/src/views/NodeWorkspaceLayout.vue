@@ -68,6 +68,7 @@ const settingsForm = reactive({
   mtu: null as number | null,
   dns: '',
   auto_sync: true,
+  enabled: true,
   node_type: 'dynamic' as NodeRead['node_type'],
   public_key: '',
   private_key: '',
@@ -81,22 +82,24 @@ const settingsRules: FormRules<typeof settingsForm> = {
 const tabs = computed(() => {
   const configId = String(route.params.configId)
   const nodeId = String(route.params.nodeId)
+  const isDisabledNode = node.value?.enabled === false
   const isStaticNode = node.value?.node_type === 'static'
   const mqttDisabled = endpointStatus.value?.mqtt_service.enabled === false
   return [
     { label: t('nodeWorkspace.mesh'), path: `/configs/${configId}/nodes/${nodeId}/mesh`, align: 'left' as const },
-    { label: t('nodeWorkspace.apply'), path: `/configs/${configId}/nodes/${nodeId}/apply`, align: 'left' as const },
+    { label: t('nodeWorkspace.apply'), path: `/configs/${configId}/nodes/${nodeId}/apply`, align: 'left' as const, disabled: isDisabledNode },
     {
       label: t('nodeWorkspace.control'),
       path: `/configs/${configId}/nodes/${nodeId}/control`,
       align: 'left' as const,
-      disabled: isStaticNode || mqttDisabled,
+      disabled: isDisabledNode || isStaticNode || mqttDisabled,
     },
-    { label: t('nodeWorkspace.download'), path: `/configs/${configId}/nodes/${nodeId}/download`, align: 'right' as const },
+    { label: t('nodeWorkspace.download'), path: `/configs/${configId}/nodes/${nodeId}/download`, align: 'right' as const, disabled: isDisabledNode },
   ]
 })
 const primaryTabs = computed(() => tabs.value.filter((item) => item.align === 'left'))
 const actionTabs = computed(() => tabs.value.filter((item) => item.align === 'right'))
+const disabledNode = computed(() => node.value?.enabled === false)
 
 const allTags = computed(() => configTags.value.map((item) => item.name))
 
@@ -117,17 +120,18 @@ async function load() {
   const configId = String(route.params.configId)
   const nodeId = String(route.params.nodeId)
   try {
-    const [configs, nextNode, nextStatus, nextTags] = await Promise.all([
+    const [configs, nextNode, nextTags] = await Promise.all([
       api.configs(),
       api.node(nodeId),
-      api.endpointStatus(configId, nodeId),
       api.tags(configId),
     ])
+    const nextStatus = nextNode.enabled ? await api.endpointStatus(configId, nodeId) : null
     if (ticket !== loadTicket) return
     config.value = configs.find((item) => item.id === configId) ?? null
     node.value = nextNode
     endpointStatus.value = nextStatus
     configTags.value = nextTags
+    redirectDisabledRoute()
   } catch (error) {
     if (ticket !== loadTicket) return
     loadError.value = error instanceof ApiClientError ? error.message : t('nodeWorkspace.loadFailed')
@@ -152,6 +156,7 @@ function fillSettingsForm() {
     mtu: node.value.mtu,
     dns: node.value.dns || '',
     auto_sync: node.value.auto_sync,
+    enabled: node.value.enabled,
     node_type: node.value.node_type,
     public_key: node.value.public_key,
     private_key: node.value.private_key,
@@ -164,8 +169,13 @@ function openSettings() {
   settingsVisible.value = true
 }
 
-function handleTabClick(disabled: boolean) {
+function handleTabClick(event: MouseEvent, disabled: boolean) {
   if (!disabled) return
+  event.preventDefault()
+  if (node.value?.enabled === false) {
+    notify.info(t('nodeWorkspace.disabledRouteUnavailable'))
+    return
+  }
   if (node.value?.node_type === 'static') {
     notify.info(t('nodeWorkspace.staticControlUnavailable'))
     return
@@ -202,6 +212,7 @@ async function saveNodeSettings() {
         mtu: settingsForm.mtu,
         dns: settingsForm.dns || null,
         auto_sync: settingsForm.auto_sync,
+        enabled: settingsForm.enabled,
         node_type: settingsForm.node_type,
         public_key: settingsForm.public_key,
         private_key: settingsForm.private_key,
@@ -215,6 +226,11 @@ async function saveNodeSettings() {
       notify.error(error instanceof ApiClientError ? error.message : t('nodeWorkspace.settingsSaveFailed'))
     }
   })
+}
+
+function redirectDisabledRoute() {
+  if (!node.value || node.value.enabled || !route.path.match(/\/(apply|control|download)$/)) return
+  void router.replace(`/configs/${route.params.configId}/nodes/${route.params.nodeId}/mesh`)
 }
 
 async function deleteNodeFromSettings() {
@@ -260,6 +276,13 @@ watch(
 )
 
 watch(
+  () => [node.value?.enabled, route.path],
+  () => {
+    redirectDisabledRoute()
+  },
+)
+
+watch(
   () => realtime.connectionVersion.value,
   async (nextVersion) => {
     if (nextVersion <= 0) return
@@ -289,7 +312,7 @@ onMounted(async () => {
 
 <template>
   <div class="node-workspace">
-    <div class="node-header-card">
+    <div class="node-header-card" :class="{ 'node-header-card--disabled': disabledNode }">
       <div class="node-header-card__top">
         <el-button :icon="ArrowLeft" @click="goBack">{{ t('nodeWorkspace.backToConfig') }}</el-button>
         <div class="node-header-card__actions">
@@ -303,7 +326,8 @@ onMounted(async () => {
           <h1>{{ node.name }}</h1>
           <div class="node-header-card__tags">
             <el-tag type="info">{{ nodeTypeLabel(node.node_type) }}</el-tag>
-            <el-tag v-if="node.node_type === 'dynamic'" :type="endpointStatus?.runtime.online ? 'success' : 'info'">
+            <el-tag v-if="disabledNode" type="info">{{ t('nodeWorkspace.disabledEndpoint') }}</el-tag>
+            <el-tag v-else-if="node.node_type === 'dynamic'" :type="endpointStatus?.runtime.online ? 'success' : 'info'">
               {{ endpointStatus?.runtime.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}
             </el-tag>
             <el-tag v-for="tag in node.tags" :key="tag" type="info">{{ tag }}</el-tag>
@@ -346,7 +370,7 @@ onMounted(async () => {
             'node-tab--disabled': tab.disabled,
           }"
           :aria-disabled="tab.disabled ? 'true' : 'false'"
-          @click.prevent="handleTabClick(Boolean(tab.disabled))"
+          @click="(event) => handleTabClick(event, Boolean(tab.disabled))"
         >
           {{ tab.label }}
         </RouterLink>
@@ -355,9 +379,14 @@ onMounted(async () => {
           <RouterLink
             v-for="tab in actionTabs"
             :key="tab.path"
-            :to="tab.path"
+            :to="tab.disabled ? route.fullPath : tab.path"
             class="node-tab node-tab--action"
-            :class="{ 'node-tab--active': route.path === tab.path }"
+            :class="{
+              'node-tab--active': route.path === tab.path,
+              'node-tab--disabled': tab.disabled,
+            }"
+            :aria-disabled="tab.disabled ? 'true' : 'false'"
+            @click="(event) => handleTabClick(event, Boolean(tab.disabled))"
           >
             {{ tab.label }}
           </RouterLink>
@@ -436,6 +465,13 @@ onMounted(async () => {
           </div>
           <el-switch v-model="settingsForm.auto_sync" />
         </div>
+        <div class="switch-row switch-row--warning">
+          <div>
+            <strong>{{ t('nodeWorkspace.endpointEnabled') }}</strong>
+            <span>{{ t('nodeWorkspace.endpointEnabledDescription') }}</span>
+          </div>
+          <el-switch v-model="settingsForm.enabled" />
+        </div>
         <el-form-item :label="t('nodeWorkspace.privateKey')">
           <el-input v-model="settingsForm.private_key" type="textarea" :rows="3" />
         </el-form-item>
@@ -457,6 +493,9 @@ onMounted(async () => {
 <style scoped>
 .node-workspace { display: grid; gap: 20px; }
 .node-header-card { padding: 22px; border: 1px solid var(--app-border); border-radius: 8px; background: linear-gradient(180deg, var(--app-surface) 0%, var(--app-surface-elevated) 100%); box-shadow: var(--app-shadow-md); }
+.node-header-card--disabled { border-color: var(--app-border-soft); background: color-mix(in srgb, var(--app-surface-sunken) 82%, var(--app-surface)); }
+.node-header-card--disabled .node-header-card__main h1,
+.node-header-card--disabled .node-prop-value { color: var(--app-muted); }
 .node-header-card__top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .node-header-card__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
 .node-header-card__config { color: var(--app-muted); font-weight: 650; }
@@ -488,6 +527,7 @@ onMounted(async () => {
 .dialog-form { display: grid; gap: 2px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
 .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-elevated); }
+.switch-row--warning { background: color-mix(in srgb, var(--app-warning-soft) 48%, var(--app-surface-elevated)); }
 .switch-row strong, .switch-row span { display: block; }
 .switch-row strong { color: var(--app-text); }
 .switch-row span { margin-top: 4px; color: var(--app-muted); font-size: 13px; }

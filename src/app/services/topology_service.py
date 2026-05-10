@@ -35,6 +35,27 @@ class TopologyService:
         primary = next((item for item in group_links if item.direction == "forward"), group_links[0])
         return primary.local_node_id, primary.peer_node_id
 
+    def _invalid_enabled_link_references(
+        self,
+        enabled_links: list[PeerLink],
+        nodes_by_id: dict[str, Node],
+    ) -> tuple[set[str], set[str]]:
+        invalid_reference_ids: set[str] = set()
+        affected_active_node_ids: set[str] = set()
+        for link in enabled_links:
+            for node_id, counterpart_id in (
+                (link.local_node_id, link.peer_node_id),
+                (link.peer_node_id, link.local_node_id),
+            ):
+                node = nodes_by_id.get(node_id)
+                if node is not None and node.enabled:
+                    continue
+                invalid_reference_ids.add(node_id)
+                counterpart = nodes_by_id.get(counterpart_id)
+                if counterpart is not None and counterpart.enabled:
+                    affected_active_node_ids.add(counterpart_id)
+        return invalid_reference_ids, affected_active_node_ids
+
     def duplicate_enabled_group_errors(self, nodes: list[Node], links: list[PeerLink]) -> list[DuplicateEnabledGroupError]:
         nodes_by_id = {node.id: node for node in nodes}
         enabled_groups_by_pair: dict[tuple[str, str], list[str]] = {}
@@ -44,6 +65,10 @@ class TopologyService:
                 continue
             primary_nodes = self._group_primary_nodes(group_links)
             if primary_nodes is None:
+                continue
+            left_node = nodes_by_id.get(primary_nodes[0])
+            right_node = nodes_by_id.get(primary_nodes[1])
+            if left_node is None or right_node is None or not left_node.enabled or not right_node.enabled:
                 continue
             pair_key = self._pair_key(*primary_nodes)
             enabled_groups_by_pair.setdefault(pair_key, []).append(group_id)
@@ -77,6 +102,10 @@ class TopologyService:
                 continue
             primary_nodes = self._group_primary_nodes(group_links)
             if primary_nodes is None:
+                continue
+            left_node = nodes_by_id.get(primary_nodes[0])
+            right_node = nodes_by_id.get(primary_nodes[1])
+            if left_node is None or right_node is None or not left_node.enabled or not right_node.enabled:
                 continue
             pair_key = self._pair_key(*primary_nodes)
             enabled_groups_by_pair.setdefault(pair_key, []).append(group_id)
@@ -135,6 +164,12 @@ class TopologyService:
         forward: PeerLink | None,
         reverse: PeerLink | None,
     ) -> dict[str, object]:
+        group_enabled = bool((forward and forward.enabled) or (reverse and reverse.enabled))
+        if group_enabled and local_node.enabled and not peer_node.enabled:
+            return {
+                "status": "broken",
+                "message": f"Mesh link from {local_node.name} references disabled endpoint {peer_node.name}.",
+            }
         if forward is None or reverse is None:
             return {"status": "healthy", "message": ""}
 
@@ -151,7 +186,8 @@ class TopologyService:
         errors: list[str] = []
         warnings: list[str] = []
         nodes_by_id = {node.id: node for node in nodes}
-        if len(nodes) >= 2 and not links:
+        active_nodes = [node for node in nodes if node.enabled]
+        if len(active_nodes) >= 2 and not [link for link in links if link.enabled]:
             warnings.append("Current config has no peer links.")
 
         for duplicate in self.duplicate_enabled_group_errors(nodes, links):
@@ -159,6 +195,17 @@ class TopologyService:
 
         for group_id, group_links in self.peer_link_groups(links).items():
             if not group_links:
+                continue
+            enabled_links = [link for link in group_links if link.enabled]
+            missing_or_disabled_ids, _affected_active_node_ids = self._invalid_enabled_link_references(
+                enabled_links,
+                nodes_by_id,
+            )
+            if missing_or_disabled_ids:
+                errors.append(
+                    f"Enabled Mesh link group {group_id} references missing or disabled endpoint: "
+                    f"{', '.join(sorted(missing_or_disabled_ids))}."
+                )
                 continue
             forward = next((item for item in group_links if item.direction == "forward"), group_links[0])
             reverse = next((item for item in group_links if item.direction == "reverse"), None)
@@ -190,6 +237,18 @@ class TopologyService:
 
         for group_links in self.peer_link_groups(links).values():
             if not group_links:
+                continue
+            enabled_links = [link for link in group_links if link.enabled]
+            missing_or_disabled_ids, affected_active_node_ids = self._invalid_enabled_link_references(
+                enabled_links,
+                nodes_by_id,
+            )
+            if missing_or_disabled_ids:
+                invalid_node_ids.update(affected_active_node_ids)
+                errors.append(
+                    f"Enabled Mesh link group {group_links[0].link_group_id} references missing or disabled endpoint: "
+                    f"{', '.join(sorted(missing_or_disabled_ids))}."
+                )
                 continue
             forward = next((item for item in group_links if item.direction == "forward"), group_links[0])
             reverse = next((item for item in group_links if item.direction == "reverse"), None)

@@ -2,7 +2,7 @@
 import { Check, Document, EditPen, Refresh } from '@element-plus/icons-vue'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
@@ -14,6 +14,7 @@ import { notify } from '@/utils/notify'
 import type { NodeApplyUpdatedPayload, RealtimeEvent, SyncStatusRead } from '@/types/api'
 
 const route = useRoute()
+const router = useRouter()
 const { t } = useI18n()
 const actions = useAsyncActionGroup()
 const syncingNode = actions.isPending('sync-node')
@@ -57,6 +58,12 @@ async function loadNodeState() {
   const configId = String(route.params.configId)
   const nodeId = currentNodeId.value
   try {
+    const node = await api.node(nodeId)
+    if (ticket !== loadTicket) return false
+    if (!node.enabled) {
+      await router.replace(`/configs/${configId}/nodes/${nodeId}/mesh`)
+      return false
+    }
     const [status, preview, applied] = await Promise.all([
       api.nodeSyncStatus(configId, nodeId),
       api.wgPreview(configId, nodeId),
@@ -66,6 +73,7 @@ async function loadNodeState() {
     syncStatus.value = status
     previewContent.value = preview.content
     Object.assign(appliedState, applied)
+    return true
   } catch (error) {
     if (ticket !== loadTicket) return
     loadError.value = error instanceof ApiClientError ? error.message : t('apply.loadFailed')
@@ -130,8 +138,8 @@ watch(
 
 onMounted(async () => {
   try {
-    await loadNodeState()
-    realtime.connect()
+    const loaded = await loadNodeState()
+    if (loaded) realtime.connect()
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('apply.loadFailed'))
   }

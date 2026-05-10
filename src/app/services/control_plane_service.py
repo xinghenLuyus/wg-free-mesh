@@ -173,14 +173,23 @@ class ControlPlaneService:
 
     def node_workspace(self, config_id: str, node_id: str) -> dict[str, Any]:
         config = next((item for item in self.list_configs() if item.id == config_id), None)
+        try:
+            endpoint_status = self.endpoint_status(config_id, node_id)
+        except AppError as exc:
+            if exc.code != "NODE_DISABLED":
+                raise
+            endpoint_status = None
         return {
             "config": config.model_dump(mode="json") if config else None,
             "node": self.get_node(node_id).model_dump(mode="json"),
-            "endpoint_status": self.endpoint_status(config_id, node_id),
+            "endpoint_status": endpoint_status,
             "tags": self.list_tags(config_id),
         }
 
     def node_apply(self, config_id: str, node_id: str) -> dict[str, Any]:
+        node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint has no config apply workspace", 409)
         return {
             "config_id": config_id,
             "node_id": node_id,
@@ -226,7 +235,13 @@ class ControlPlaneService:
         )
 
     async def publish_node_apply(self, config_id: str, node_id: str) -> None:
-        await realtime_service.publish("node.apply.updated", self.node_apply(config_id, node_id))
+        try:
+            payload = self.node_apply(config_id, node_id)
+        except AppError as exc:
+            if exc.code != "NODE_DISABLED":
+                raise
+            return
+        await realtime_service.publish("node.apply.updated", payload)
 
     async def publish_mesh_workspace(self, config_id: str, node_id: str) -> None:
         await realtime_service.publish(
@@ -253,7 +268,8 @@ class ControlPlaneService:
             await self.publish_config_overview(config.id)
             for node in self.list_nodes(config.id):
                 await self.publish_node_workspace(config.id, node.id)
-                await self.publish_node_apply(config.id, node.id)
+                if node.enabled:
+                    await self.publish_node_apply(config.id, node.id)
                 await self.publish_mesh_workspace(config.id, node.id)
 
     def plan_for_mesh_change(self, config_id: str, affected_node_ids: list[str] | set[str]) -> PublishPlan:
@@ -293,14 +309,13 @@ class ControlPlaneService:
         await self.publisher.publish(plan, config_snapshots=config_snapshots, system_status_payload=system_status_payload)
 
     async def publish_runtime(self, config_id: str, node_id: str) -> None:
-        await realtime_service.publish(
-            "endpoint.status.updated",
-            {
-                "config_id": config_id,
-                "node_id": node_id,
-                "status": self.endpoint_status(config_id, node_id),
-            },
-        )
+        try:
+            status = self.endpoint_status(config_id, node_id)
+        except AppError as exc:
+            if exc.code != "NODE_DISABLED":
+                raise
+            status = None
+        await realtime_service.publish("endpoint.status.updated", {"config_id": config_id, "node_id": node_id, "status": status})
         snapshot = self._build_config_projection(config_id, use_cache=False, store_cache=True)
         await realtime_service.publish("runtime.snapshot.updated", {"config_id": config_id, "items": snapshot.overview["runtime_snapshot"]})
         await realtime_service.publish("system.status.updated", self.system_status())
@@ -345,8 +360,15 @@ class ControlPlaneService:
         self.invalidate_config_projection(previous.config_id)
         result = store.update_node(node_id, payload)
         current = store.get_node(node_id)
-        if previous.node_type != current.node_type:
+        if previous.node_type != current.node_type or previous.enabled != current.enabled:
             if current.node_type == NodeType.static:
+                from app.services.emqx_service import emqx_service
+
+                try:
+                    emqx_service.delete_node_user(node_id=node_id)
+                except Exception:
+                    pass
+            if not current.enabled:
                 from app.services.emqx_service import emqx_service
 
                 try:
@@ -516,6 +538,8 @@ class ControlPlaneService:
     def _config_push_payload_body(self, config_id: str, node_id: str) -> dict[str, object]:
         config = store.get_config(config_id)
         node = store.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint cannot receive config push", 409)
         state = store.get_node_config_state(config_id, node_id)
         if not state.staged_text or not state.staged_sha256:
             raise AppError("NO_STAGED_CONFIG", "No staged config to push", 409)
@@ -563,7 +587,7 @@ class ControlPlaneService:
         for node in store.list_nodes(config_id):
             if target_node_ids and node.id not in target_node_ids:
                 continue
-            if node.node_type != NodeType.dynamic:
+            if not node.enabled or node.node_type != NodeType.dynamic:
                 continue
             client_state = store.get_client_state(config_id, node.id)
             if not client_state.get("client_initialized"):
@@ -616,7 +640,7 @@ class ControlPlaneService:
 
         dispatched: list[dict[str, str]] = []
         for node in store.list_nodes(config_id):
-            if node.node_type != "dynamic":
+            if not node.enabled or node.node_type != "dynamic":
                 continue
             if node_ids and node.id not in node_ids:
                 continue

@@ -2,7 +2,7 @@
 import { Monitor, RefreshRight, SwitchButton, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { computed, onMounted, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
@@ -13,6 +13,7 @@ import { formatDateTime } from '@/utils/dateTime'
 import { notify } from '@/utils/notify'
 
 const route = useRoute()
+const router = useRouter()
 const { t } = useI18n()
 const actions = useAsyncActionGroup()
 const startingWg = actions.isPending('start-wg')
@@ -34,8 +35,14 @@ const outputLogs = computed(() => logs.value.filter((log) => log.action === 'eve
 async function reloadNode() {
   const configId = String(route.params.configId)
   const nodeId = String(route.params.nodeId)
+  const node = await api.node(nodeId)
+  if (!node.enabled) {
+    await router.replace(`/configs/${configId}/nodes/${nodeId}/mesh`)
+    return false
+  }
   endpointStatus.value = await api.endpointStatus(configId, nodeId)
   logs.value = await api.endpointLogs(configId, nodeId)
+  return true
 }
 
 async function refreshStatus() {
@@ -161,9 +168,11 @@ watch(
 
 onMounted(async () => {
   try {
-    await reloadNode()
-    realtime.connect()
-    lastRealtimeVersion = realtime.connectionVersion.value
+    const loaded = await reloadNode()
+    if (loaded) {
+      realtime.connect()
+      lastRealtimeVersion = realtime.connectionVersion.value
+    }
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.loadFailed'))
   }

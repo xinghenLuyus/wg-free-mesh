@@ -130,6 +130,7 @@ class SQLiteClientStateMixin:
     ) -> None:
         now = now_utc().isoformat()
         downloaded_sql = ", client_downloaded = 0, client_downloaded_at = NULL" if clear_downloaded else ""
+        connectivity_state = ConnectivityState.unknown.value if reason == "node-disabled" else ConnectivityState.offline.value
         cast(Any, connection).execute(
             f"""
             UPDATE endpoint_runtime_status
@@ -150,7 +151,7 @@ class SQLiteClientStateMixin:
                 {downloaded_sql}
             WHERE config_id = ? AND node_id = ?
             """,
-            (ConnectivityState.offline.value, WgRuntimeState.unknown.value, reason, now, config_id, node_id),
+            (connectivity_state, WgRuntimeState.unknown.value, reason, now, config_id, node_id),
         )
 
     def _reset_client_state_row(self, connection: object, config_id: str, node_id: str) -> None:
@@ -185,7 +186,10 @@ class SQLiteClientStateMixin:
         node = self.get_node(node_id)
         self._ensure_client_state(config_id, node_id)
         with connect() as connection:
-            if node.node_type == NodeType.static:
+            if not node.enabled:
+                self._reset_client_state_row(connection, config_id, node_id)
+                self._reset_runtime_row(connection, config_id, node_id, reason="node-disabled", clear_downloaded=True)
+            elif node.node_type == NodeType.static:
                 self._reset_client_state_row(connection, config_id, node_id)
                 self._reset_runtime_row(connection, config_id, node_id, reason="static-node", clear_downloaded=True)
             else:
@@ -207,6 +211,8 @@ class SQLiteClientStateMixin:
         node = self.get_node(node_id)
         if node.config_id != config.id:
             raise AppError("NODE_CONFIG_MISMATCH", "Node does not belong to config", 400)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint cannot bind client", 409)
         if node.node_type != NodeType.dynamic:
             raise AppError("CLIENT_BIND_STATIC_NODE", "Static node cannot bind client", 400)
         token = secrets.token_urlsafe(32)
@@ -244,7 +250,7 @@ class SQLiteClientStateMixin:
             raise AppError("CLIENT_BIND_TOKEN_EXPIRED", "Client bind token has expired", 401)
         node = self.get_node(row["node_id"])
         config = self.get_config(row["config_id"])
-        if node.node_type != NodeType.dynamic or not config.enabled:
+        if node.node_type != NodeType.dynamic or not node.enabled or not config.enabled:
             raise AppError("CLIENT_BIND_NOT_ALLOWED", "Client bind is not allowed for this node", 403)
         return {"config": config, "node": node, "expires_at": expires_at}
 
@@ -260,6 +266,9 @@ class SQLiteClientStateMixin:
         hostname: str = "",
     ) -> dict[str, object]:
         now = now_utc().isoformat()
+        node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint cannot bind client", 409)
         self._ensure_client_state(config_id, node_id)
         client_platform = self._normalize_client_text(platform)
         client_version = self._normalize_client_text(version)
@@ -284,6 +293,9 @@ class SQLiteClientStateMixin:
         return self.get_client_state(config_id, node_id)
 
     def reset_client_state(self, config_id: str, node_id: str) -> dict[str, object]:
+        node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint cannot reset client state", 409)
         self._ensure_client_state(config_id, node_id)
         with connect() as connection:
             self._reset_client_state_row(connection, config_id, node_id)
@@ -295,7 +307,7 @@ class SQLiteClientStateMixin:
         params: tuple[object, ...]
         config_filter = ""
         if config_id:
-            config_filter = "AND config_id = ?"
+            config_filter = "AND s.config_id = ?"
             params = (cutoff, config_id)
         else:
             params = (cutoff,)
@@ -303,11 +315,13 @@ class SQLiteClientStateMixin:
         with connect() as connection:
             rows = connection.execute(
                 f"""
-                SELECT config_id, node_id
-                FROM node_client_state
-                WHERE client_initialized = 1
-                  AND last_heartbeat_at IS NOT NULL
-                  AND last_heartbeat_at < ?
+                SELECT s.config_id, s.node_id
+                FROM node_client_state s
+                JOIN nodes n ON n.id = s.node_id
+                WHERE s.client_initialized = 1
+                  AND n.enabled = 1
+                  AND s.last_heartbeat_at IS NOT NULL
+                  AND s.last_heartbeat_at < ?
                   {config_filter}
                 """,
                 params,
@@ -353,6 +367,7 @@ class SQLiteClientStateMixin:
                 JOIN configs c ON c.id = n.config_id
                 JOIN node_client_state s ON s.config_id = n.config_id AND s.node_id = n.id
                 WHERE c.enabled = 1
+                  AND n.enabled = 1
                   AND n.node_type = ?
                   AND s.client_initialized = 1
                 """,
@@ -371,7 +386,7 @@ class SQLiteClientStateMixin:
         wg_online: bool = False,
     ) -> dict[str, object]:
         node = self.get_node(node_id)
-        if node.node_type != NodeType.dynamic:
+        if not node.enabled or node.node_type != NodeType.dynamic:
             return self.get_client_state(config_id, node_id)
         now = now_utc().isoformat()
         self._ensure_client_state(config_id, node_id)
@@ -429,7 +444,7 @@ class SQLiteClientStateMixin:
         session_id: str = "",
     ) -> dict[str, object]:
         node = self.get_node(node_id)
-        if node.node_type != NodeType.dynamic:
+        if not node.enabled or node.node_type != NodeType.dynamic:
             return self.get_client_state(config_id, node_id)
         now = now_utc().isoformat()
         presence = "offline" if event == "offline" else "online"
@@ -481,6 +496,9 @@ class SQLiteClientStateMixin:
         return self.get_client_state(config_id, node_id)
 
     def record_detect_sent(self, config_id: str, node_id: str) -> None:
+        node = self.get_node(node_id)
+        if not node.enabled:
+            return
         now = now_utc().isoformat()
         self._ensure_client_state(config_id, node_id)
         with connect() as connection:
@@ -497,6 +515,9 @@ class SQLiteClientStateMixin:
             )
 
     def record_detect_timeout(self, config_id: str, node_id: str) -> None:
+        node = self.get_node(node_id)
+        if not node.enabled:
+            return
         now = now_utc().isoformat()
         with connect() as connection:
             connection.execute(
@@ -526,7 +547,7 @@ class SQLiteClientStateMixin:
         wg_online: bool = False,
     ) -> dict[str, object]:
         node = self.get_node(node_id)
-        if node.node_type != NodeType.dynamic:
+        if not node.enabled or node.node_type != NodeType.dynamic:
             return self.get_client_state(config_id, node_id)
         now = now_utc().isoformat()
         self._ensure_client_state(config_id, node_id)

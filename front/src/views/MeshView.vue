@@ -67,7 +67,8 @@ const currentNodeId = computed(() => String(route.params.nodeId))
 const currentNode = computed(() => workspace.value?.node ?? nodes.value.find((item) => item.id === currentNodeId.value) ?? null)
 const connections = computed(() => workspace.value?.connections ?? [])
 const validation = computed(() => workspace.value?.validation ?? null)
-const peerOptions = computed(() => nodes.value.filter((item) => item.id !== currentNodeId.value))
+const readonlyMesh = computed(() => workspace.value?.readonly === true || currentNode.value?.enabled === false)
+const peerOptions = computed(() => nodes.value.filter((item) => item.id !== currentNodeId.value && item.enabled))
 const selectedPeer = computed(() => nodes.value.find((item) => item.id === form.peer_node_id) ?? editingConnection.value?.peer_node ?? null)
 const draftWarnings = computed(() => draft.value?.warnings ?? [])
 const dialogTitle = computed(() => (dialogMode.value === 'create' ? t('mesh.newConnection') : t('mesh.editConnection')))
@@ -263,6 +264,10 @@ async function load() {
 }
 
 async function openCreate() {
+  if (readonlyMesh.value) {
+    notify.info(t('mesh.disabledNodeReadonly'))
+    return
+  }
   dialogMode.value = 'create'
   editingConnection.value = null
   draftRequestToken.value += 1
@@ -276,6 +281,10 @@ async function openCreate() {
 }
 
 function openEdit(connection: MeshConnectionRead) {
+  if (readonlyMesh.value || connection.readonly) {
+    notify.info(t('mesh.disabledNodeReadonly'))
+    return
+  }
   dialogMode.value = 'edit'
   editingConnection.value = connection
   draftRequestToken.value += 1
@@ -351,6 +360,10 @@ function directionPayload(direction: MeshConnectionDirectionRead) {
 }
 
 async function toggleConnection(connection: MeshConnectionRead, enabled: boolean) {
+  if (readonlyMesh.value || connection.readonly) {
+    notify.info(t('mesh.disabledNodeReadonly'))
+    return
+  }
   const reverse = connection.reverse
   if (!reverse) {
     notify.error(t('mesh.missingReverse'))
@@ -375,6 +388,10 @@ async function toggleConnection(connection: MeshConnectionRead, enabled: boolean
 }
 
 async function submit() {
+  if (readonlyMesh.value) {
+    notify.info(t('mesh.disabledNodeReadonly'))
+    return
+  }
   await actions.run('submit-connection', async () => {
     const valid = await formRef.value?.validate().catch(() => false)
     if (!valid) return
@@ -395,6 +412,10 @@ async function submit() {
 }
 
 async function deleteConnection() {
+  if (readonlyMesh.value) {
+    notify.info(t('mesh.disabledNodeReadonly'))
+    return
+  }
   if (!editingConnection.value) return
   try {
     await ElMessageBox.confirm(
@@ -456,7 +477,8 @@ onMounted(async () => {
           <p>{{ t('mesh.description') }}</p>
         </div>
         <div class="template-toolbar__actions">
-          <el-button type="primary" :icon="Plus" @click="openCreate">{{ t('mesh.newConnection') }}</el-button>
+          <el-tag v-if="readonlyMesh" type="info">{{ t('mesh.disabledNodeReadonly') }}</el-tag>
+          <el-button type="primary" :icon="Plus" :disabled="readonlyMesh" @click="openCreate">{{ t('mesh.newConnection') }}</el-button>
           <el-tag v-if="validation" :type="validation.valid ? 'success' : 'danger'">
             {{ validation.valid ? t('mesh.topologyOk') : t('mesh.topologyFailed') }}
           </el-tag>
@@ -484,6 +506,9 @@ onMounted(async () => {
                   <el-tag v-if="connection.integrity_status === 'broken'" type="danger" size="small">
                     {{ t('mesh.connectionBroken') }}
                   </el-tag>
+                  <el-tag v-if="connection.peer_disabled" type="info" size="small">
+                    {{ t('mesh.peerNodeDisabled') }}
+                  </el-tag>
                   <el-tag :type="connection.has_preshared_key ? 'success' : 'info'" size="small">
                     {{ connection.has_preshared_key ? t('mesh.pskConfigured') : t('mesh.pskMissing') }}
                   </el-tag>
@@ -502,11 +527,11 @@ onMounted(async () => {
                     size="small"
                     :model-value="connection.enabled"
                     :loading="connectionToggleLoading(connection.link_group_id)"
-                    :disabled="connectionToggleLoading(connection.link_group_id)"
+                    :disabled="readonlyMesh || connection.readonly || connectionToggleLoading(connection.link_group_id)"
                     @change="(value: boolean | string | number) => toggleConnection(connection, Boolean(value))"
                   />
                 </div>
-                <el-button :icon="EditPen" plain size="small" @click="openEdit(connection)">{{ t('mesh.editParams') }}</el-button>
+                <el-button :icon="EditPen" plain size="small" :disabled="readonlyMesh || connection.readonly" @click="openEdit(connection)">{{ t('mesh.editParams') }}</el-button>
               </div>
             </div>
             <dl>
@@ -665,12 +690,13 @@ onMounted(async () => {
           plain
           :icon="Delete"
           :loading="deletingConnection"
+          :disabled="readonlyMesh"
           @click="deleteConnection"
         >
           {{ t('common.delete') }}
         </el-button>
         <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="creatingConnection" @click="submit">{{ submitText }}</el-button>
+        <el-button type="primary" :loading="creatingConnection" :disabled="readonlyMesh" @click="submit">{{ submitText }}</el-button>
       </template>
     </el-dialog>
   </section>

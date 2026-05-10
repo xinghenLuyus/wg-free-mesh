@@ -16,7 +16,7 @@ class SystemStatusProjection:
     ) -> dict[str, object]:
         enabled_config_ids = {config.id for config in configs if config.enabled}
         enabled_dynamic_node_ids = {
-            node.id for node in nodes if node.config_id in enabled_config_ids and node.node_type == NodeType.dynamic
+            node.id for node in nodes if node.config_id in enabled_config_ids and node.enabled and node.node_type == NodeType.dynamic
         }
         invalid_configs: list[dict[str, object]] = []
         invalid_node_ids: set[str] = set()
@@ -40,7 +40,7 @@ class SystemStatusProjection:
             "summary": {
                 "configs": len(configs),
                 "nodes": len(nodes),
-                "dynamic_nodes": len([node for node in nodes if node.node_type == NodeType.dynamic]),
+                "dynamic_nodes": len([node for node in nodes if node.enabled and node.node_type == NodeType.dynamic]),
                 "online_nodes": len(
                     [runtime for runtime in runtimes if str(runtime["node_id"]) in enabled_dynamic_node_ids and bool(runtime["online"])]
                 ),

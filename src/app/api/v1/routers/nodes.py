@@ -22,6 +22,7 @@ class NodeRequest(BaseModel):
     mtu: int | None = Field(default=None, ge=576, le=65535)
     dns: str | None = None
     auto_sync: bool | None = None
+    enabled: bool | None = None
     node_type: str = "dynamic"
     public_key: str | None = None
     private_key: str | None = None

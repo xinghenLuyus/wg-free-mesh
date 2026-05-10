@@ -8,6 +8,7 @@ from fastapi.responses import PlainTextResponse
 
 from app.api.v1.deps import CurrentUserDep, DownloadGrantDep
 from app.api.v1.routing import SessionProtectedAPIRouter
+from app.core.errors import AppError
 from app.core.responses import ApiResponse, ok
 from app.schemas.auth import DownloadTokenRead
 from app.services.control_plane_service import control_plane_service
@@ -96,7 +97,8 @@ async def sync_all(config_id: str) -> ApiResponse[dict[str, Any]]:
     result = control_plane_service.sync_all(config_id)
     await control_plane_service.publish_pending_config_pushes(config_id, requested_by="manual-sync")
     for node in control_plane_service.list_nodes(config_id):
-        await control_plane_service.publish_node_apply(config_id, node.id)
+        if node.enabled:
+            await control_plane_service.publish_node_apply(config_id, node.id)
         await control_plane_service.publish_node_workspace(config_id, node.id)
     await control_plane_service.publish_config_overview(config_id)
     await control_plane_service.publish_system_status()
@@ -121,6 +123,11 @@ def create_bind_command(config_id: str, node_id: str, payload: BindCommandReques
 
 @router.post("/configs/{config_id}/nodes/{node_id}/reset-client")
 async def reset_client(config_id: str, node_id: str) -> ApiResponse[dict[str, object]]:
+    node = control_plane_service.get_node(node_id)
+    if node.config_id != config_id:
+        raise AppError("NODE_CONFIG_MISMATCH", "Node does not belong to this config", 400)
+    if not node.enabled:
+        raise AppError("NODE_DISABLED", "Disabled endpoint cannot reset client state", 409)
     try:
         emqx_service.delete_node_user(node_id=node_id)
     except Exception:

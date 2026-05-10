@@ -114,6 +114,7 @@ class Config(BaseModel):
     dynamic_node_count: int = 0
     online_node_count: int = 0
     offline_node_count: int = 0
+    disabled_node_count: int = 0
     pending_sync_node_count: int = 0
     latest_config_node_count: int = 0
     topology_invalid: bool = False
@@ -133,6 +134,7 @@ class Node(BaseModel):
     mtu: int | None = None
     dns: str | None = None
     auto_sync: bool = True
+    enabled: bool = True
     node_type: NodeType = NodeType.dynamic
     public_key: str
     private_key: str

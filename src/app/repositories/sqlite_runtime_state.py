@@ -51,6 +51,25 @@ class SQLiteRuntimeStateMixin:
         if row is None:
             raise AppError("RUNTIME_NOT_FOUND", "Node runtime state not found", 404)
         runtime = _runtime_from_row(row)
+        if not node.enabled:
+            return runtime.model_copy(
+                update={
+                    "online": False,
+                    "connectivity_state": ConnectivityState.unknown,
+                    "wg_running": False,
+                    "wg_runtime_state": WgRuntimeState.unknown,
+                    "config_sync_state": ConfigSyncState.unknown,
+                    "peers_online": 0,
+                    "peers_total": 0,
+                    "last_seen": None,
+                    "last_probe_sent_at": None,
+                    "last_probe_ack_at": None,
+                    "last_control_channel_seen_at": None,
+                    "last_connectivity_reason": "node-disabled",
+                    "client_downloaded": False,
+                    "client_downloaded_at": None,
+                }
+            )
         if node.node_type == NodeType.static:
             return runtime.model_copy(
                 update={
@@ -121,6 +140,25 @@ class SQLiteRuntimeStateMixin:
             runtime = runtime_map.get(node.id)
             if runtime is None:
                 runtime = self.get_runtime(config_id, node.id)
+            elif not node.enabled:
+                runtime = runtime.model_copy(
+                    update={
+                        "online": False,
+                        "connectivity_state": ConnectivityState.unknown,
+                        "wg_running": False,
+                        "wg_runtime_state": WgRuntimeState.unknown,
+                        "config_sync_state": ConfigSyncState.unknown,
+                        "peers_online": 0,
+                        "peers_total": 0,
+                        "last_seen": None,
+                        "last_probe_sent_at": None,
+                        "last_probe_ack_at": None,
+                        "last_control_channel_seen_at": None,
+                        "last_connectivity_reason": "node-disabled",
+                        "client_downloaded": False,
+                        "client_downloaded_at": None,
+                    }
+                )
             elif node.node_type == NodeType.static:
                 runtime = runtime.model_copy(
                     update={
@@ -179,7 +217,9 @@ class SQLiteRuntimeStateMixin:
         return [_log_from_row(row) for row in rows]
 
     def create_control_log(self, config_id: str, node_id: str, action: str, requested_by: str = "admin") -> EndpointControlLog:
-        self.get_node(node_id)
+        node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint cannot receive control commands", 409)
         log = EndpointControlLog(
             config_id=config_id,
             node_id=node_id,
@@ -215,7 +255,9 @@ class SQLiteRuntimeStateMixin:
         return log
 
     def append_client_event_log(self, config_id: str, node_id: str, *, summary: str, detail: str = "", requested_by: str = "client") -> EndpointControlLog:
-        self.get_node(node_id)
+        node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint cannot record client events", 409)
         log = EndpointControlLog(
             config_id=config_id,
             node_id=node_id,
@@ -273,6 +315,9 @@ class SQLiteRuntimeStateMixin:
         return _log_from_row(final_row)
 
     def apply_control_action(self, config_id: str, node_id: str, action: str) -> dict[str, object]:
+        node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint cannot receive control commands", 409)
         runtime = self.get_runtime(config_id, node_id)
         now = now_utc()
         updates: dict[str, object] = {
@@ -357,6 +402,8 @@ class SQLiteRuntimeStateMixin:
     def get_node_endpoint_status(self, config_id: str, node_id: str) -> dict[str, object]:
         self.reconcile_client_timeouts(config_id)
         node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint has no runtime control status", 409)
         runtime = self.get_runtime(config_id, node_id)
         state = self.get_node_config_state(config_id, node_id)
         server_apply_status = self._sync_status_from_state(state)

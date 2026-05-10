@@ -22,7 +22,8 @@ class ConfigListProjection:
         for config in configs:
             topology = topology_for(config.id)
             config_nodes = nodes_by_config.get(config.id, [])
-            dynamic_nodes = [node for node in config_nodes if node.node_type == NodeType.dynamic]
+            disabled_nodes = [node for node in config_nodes if not node.enabled]
+            dynamic_nodes = [node for node in config_nodes if node.enabled and node.node_type == NodeType.dynamic]
             runtime_map = runtimes_by_config.get(config.id, {})
             state_map = states_by_config.get(config.id, {})
             online_node_count = len(
@@ -47,6 +48,7 @@ class ConfigListProjection:
                     update={
                         "online_node_count": online_node_count,
                         "offline_node_count": max(len(dynamic_nodes) - online_node_count, 0),
+                        "disabled_node_count": len(disabled_nodes),
                         "pending_sync_node_count": pending_sync_node_count,
                         "latest_config_node_count": max(len(dynamic_nodes) - pending_sync_node_count, 0),
                         "topology_invalid": bool(config.enabled) and not bool(topology["valid"]),

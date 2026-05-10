@@ -11,6 +11,7 @@ export function toNodeUpdatePayload(node: NodeRead, overrides: Partial<NodeRead>
     mtu: next.mtu,
     dns: next.dns,
     auto_sync: next.auto_sync,
+    enabled: next.enabled,
     node_type: next.node_type,
     public_key: next.public_key,
     private_key: next.private_key,

@@ -34,7 +34,9 @@ class SQLiteSyncSettingsMixin:
         if effective_mtu:
             lines.append(f"MTU = {effective_mtu}")
         for link in links:
-            peer_node = nodes_by_id[link.peer_node_id]
+            peer_node = nodes_by_id.get(link.peer_node_id)
+            if peer_node is None or not peer_node.enabled:
+                continue
             lines.extend(["", f"# Peer: {peer_node.name}", "[Peer]", f"PublicKey = {peer_node.public_key}", f"AllowedIPs = {link.allowed_ips}"])
             if link.preshared_key:
                 lines.append(f"PresharedKey = {link.preshared_key}")
@@ -81,11 +83,15 @@ class SQLiteSyncSettingsMixin:
     def build_wg_preview(self, config_id: str, node_id: str) -> dict[str, object]:
         config = self.get_config(config_id)
         node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint has no WireGuard preview", 409)
         nodes = self.list_nodes(config_id)
         nodes_by_id = {item.id: item for item in nodes}
         peer_links_by_local: dict[str, list[PeerLink]] = {}
         for link in self.list_peer_links(config_id):
-            if link.enabled:
+            local = nodes_by_id.get(link.local_node_id)
+            peer = nodes_by_id.get(link.peer_node_id)
+            if link.enabled and local is not None and local.enabled and peer is not None and peer.enabled:
                 peer_links_by_local.setdefault(link.local_node_id, []).append(link)
         return self._build_wg_preview_for_node(config, node, nodes_by_id, peer_links_by_local)
 
@@ -96,7 +102,9 @@ class SQLiteSyncSettingsMixin:
         nodes_by_id = {node.id: node for node in nodes}
         peer_links_by_local: dict[str, list[PeerLink]] = {}
         for link in peer_links:
-            if link.enabled:
+            local = nodes_by_id.get(link.local_node_id)
+            peer = nodes_by_id.get(link.peer_node_id)
+            if link.enabled and local is not None and local.enabled and peer is not None and peer.enabled:
                 peer_links_by_local.setdefault(link.local_node_id, []).append(link)
         mesh_validation = topology_service.validate_mesh(config, nodes, peer_links)
         topology_valid = bool(mesh_validation["valid"])
@@ -105,6 +113,27 @@ class SQLiteSyncSettingsMixin:
         now = now_utc().isoformat()
         with connect() as connection:
             for node in nodes:
+                if not node.enabled:
+                    connection.execute(
+                        """
+                        UPDATE endpoint_runtime_status
+                        SET online = 0, connectivity_state = ?, wg_running = 0, wg_runtime_state = ?,
+                            config_sync_state = ?, peers_online = 0, peers_total = 0,
+                            heartbeat_client_online = 0, heartbeat_wg_online = 0,
+                            detect_client_online = 0, detect_wg_online = 0,
+                            last_connectivity_reason = ?, updated_at = ?
+                        WHERE node_id = ?
+                        """,
+                        (
+                            "unknown",
+                            "unknown",
+                            ConfigSyncState.unknown.value,
+                            "Node disabled",
+                            now,
+                            node.id,
+                        ),
+                    )
+                    continue
                 preview = self._build_wg_preview_for_node(config, node, nodes_by_id, peer_links_by_local)
                 state = state_map.get(node.id)
                 if state is None:
@@ -168,12 +197,14 @@ class SQLiteSyncSettingsMixin:
                 self._write_service_conf_if_changed(config_id, node.id, staged_text)
 
     def get_sync_status_for_config(self, config_id: str) -> list[dict[str, object]]:
-        nodes = self.list_nodes(config_id)
+        nodes = [node for node in self.list_nodes(config_id) if node.enabled]
         return self._sync_statuses_for_nodes(config_id, nodes)
 
     def get_sync_status_for_node(self, config_id: str, node_id: str) -> dict[str, object]:
         self.get_config(config_id)
         node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint has no sync status", 409)
         state = self.get_node_config_state(config_id, node_id)
         runtime = self.get_runtime(config_id, node_id)
         mesh_validation = self._validate_mesh_payload(config_id)
@@ -198,6 +229,8 @@ class SQLiteSyncSettingsMixin:
 
     def read_applied_conf(self, config_id: str, node_id: str) -> dict[str, object]:
         node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint has no applied config", 409)
         state = self.get_node_config_state(config_id, node_id)
         conf_path = self._conf_path(config_id, node_id)
         content = conf_path.read_text(encoding="utf-8") if conf_path.exists() else state.staged_text or ""
@@ -213,6 +246,8 @@ class SQLiteSyncSettingsMixin:
 
     def download_package(self, config_id: str, node_id: str) -> dict[str, object]:
         node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint cannot download config", 409)
         config = self.get_config(config_id)
         applied = self.read_applied_conf(config_id, node_id)
         file_stem = _node_config_artifact_stem(config.name, node.name)
@@ -227,7 +262,9 @@ class SQLiteSyncSettingsMixin:
         }
 
     def save_applied_conf(self, config_id: str, node_id: str, content: str) -> dict[str, object]:
-        self.get_node(node_id)
+        node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint cannot save applied config", 409)
         state = self.get_node_config_state(config_id, node_id)
         sha = sha256_text(content)
         version = max(state.staged_version, state.desired_version) + 1
@@ -243,6 +280,9 @@ class SQLiteSyncSettingsMixin:
 
     def sync_node(self, config_id: str, node_id: str, requested_by: str = "manual") -> dict[str, object]:
         del requested_by
+        node = self.get_node(node_id)
+        if not node.enabled:
+            raise AppError("NODE_DISABLED", "Disabled endpoint cannot sync config", 409)
         mesh_validation = self._validate_mesh_payload(config_id)
         if not mesh_validation["valid"]:
             raise AppError("TOPOLOGY_INVALID", "Please resolve topology validation before syncing.", 409, {"messages": mesh_validation["errors"]})
@@ -257,6 +297,8 @@ class SQLiteSyncSettingsMixin:
             raise AppError("TOPOLOGY_INVALID", "Please resolve topology validation before syncing.", 409, {"messages": mesh_validation["errors"]})
         synced: list[str] = []
         for node in self.list_nodes(config_id):
+            if not node.enabled:
+                continue
             self.sync_node(config_id, node.id, requested_by="sync-all")
             synced.append(node.id)
         return {"message": "All node configs synced", "synced_count": len(synced), "failed_count": 0, "synced": synced, "failed": []}
@@ -379,6 +421,6 @@ class SQLiteSyncSettingsMixin:
             nodes=nodes,
             runtimes=runtimes,
             peer_link_count=len(self.list_peer_links(config_id)) // 2,
-            sync_status=self._sync_statuses_for_nodes(config_id, nodes),
+            sync_status=self._sync_statuses_for_nodes(config_id, [node for node in nodes if node.enabled]),
             topology=topology,
         )

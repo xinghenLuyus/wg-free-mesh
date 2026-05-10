@@ -3,7 +3,7 @@ import { CopyDocument, Download, Link, PictureFilled } from '@element-plus/icons
 import QRCode from 'qrcode'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
@@ -13,6 +13,7 @@ import { formatDateTime } from '@/utils/dateTime'
 import { notify } from '@/utils/notify'
 
 const route = useRoute()
+const router = useRouter()
 const { t } = useI18n()
 
 const downloadPackage = shallowRef<DownloadPackageRead | null>(null)
@@ -88,12 +89,21 @@ async function loadDownloadPackage() {
   const ticket = ++loadTicket
   loading.value = true
   loadError.value = ''
+  const configId = String(route.params.configId)
+  const nodeId = String(route.params.nodeId)
   try {
-    const nextPackage = await api.downloadPackage(String(route.params.configId), String(route.params.nodeId))
+    const node = await api.node(nodeId)
+    if (ticket !== loadTicket) return false
+    if (!node.enabled) {
+      await router.replace(`/configs/${configId}/nodes/${nodeId}/mesh`)
+      return false
+    }
+    const nextPackage = await api.downloadPackage(configId, nodeId)
     if (ticket !== loadTicket) return
     downloadPackage.value = nextPackage
     resetGeneratedOutputs()
     if (!qrExpanded.value) qrCodeDataUrl.value = ''
+    return true
   } catch (error) {
     if (ticket !== loadTicket) return
     loadError.value = error instanceof ApiClientError ? error.message : t('download.loadFailed')
@@ -199,8 +209,8 @@ watch(
 
 onMounted(async () => {
   try {
-    await loadDownloadPackage()
-    realtime.connect()
+    const loaded = await loadDownloadPackage()
+    if (loaded) realtime.connect()
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('download.loadFailed'))
   }

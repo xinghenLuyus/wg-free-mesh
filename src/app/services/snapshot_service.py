@@ -9,7 +9,7 @@ from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
 from app.core.errors import AppError
 from app.domain.models import SnapshotInfo, new_id, now_utc
-from app.infrastructure.database import backups_dir, data_dir, wireguard_dir
+from app.infrastructure.database import backups_dir, data_dir, init_database, wireguard_dir
 from app.repositories.snapshot_repository import snapshot_repository
 
 SNAPSHOT_MANIFEST = "snapshot_manifest.json"
@@ -69,6 +69,8 @@ class SnapshotService:
         self._validate_archive(archive_path)
         with ZipFile(archive_path, "r") as archive:
             self._safe_extract(archive, Path.cwd())
+        self._remove_sqlite_sidecars()
+        init_database()
         self.rebuild_index_from_disk()
 
     def import_snapshot(self, uploaded_path: Path, original_name: str | None = None) -> SnapshotInfo:
@@ -126,6 +128,14 @@ class SnapshotService:
                 if file.is_file():
                     archive.write(file, arcname=str(file.relative_to(Path.cwd())))
             archive.writestr(SNAPSHOT_MANIFEST, self._manifest_text(snapshot))
+
+    def _remove_sqlite_sidecars(self) -> None:
+        database_path = data_dir() / "wg_free_mesh.db"
+        for sidecar_path in (
+            database_path.with_name(f"{database_path.name}-wal"),
+            database_path.with_name(f"{database_path.name}-shm"),
+        ):
+            sidecar_path.unlink(missing_ok=True)
 
     def _rewrite_manifest(self, archive_path: Path, note: str) -> None:
         if not archive_path.exists():
@@ -232,11 +242,12 @@ class SnapshotService:
 
     def _safe_extract(self, archive: ZipFile, destination: Path) -> None:
         root = destination.resolve()
-        for member in archive.infolist():
+        members = [member for member in archive.infolist() if member.filename != SNAPSHOT_MANIFEST]
+        for member in members:
             target_path = (root / member.filename).resolve()
             if target_path != root and root not in target_path.parents:
                 raise AppError("SNAPSHOT_INVALID_ARCHIVE", "Snapshot archive is invalid", 400)
-        archive.extractall(root)
+        archive.extractall(root, members=members)
 
 
 snapshot_service = SnapshotService()

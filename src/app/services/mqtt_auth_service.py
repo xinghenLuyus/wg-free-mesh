@@ -51,7 +51,7 @@ class MqttAuthService:
             config = store.get_config(node.config_id)
         except AppError:
             return False
-        if node.node_type != NodeType.dynamic:
+        if node.node_type != NodeType.dynamic or not node.enabled:
             return False
         if not config.enabled:
             return False

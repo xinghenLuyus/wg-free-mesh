@@ -22,6 +22,7 @@ class ConfigRead(BaseModel):
     dynamic_node_count: int = 0
     online_node_count: int = 0
     offline_node_count: int = 0
+    disabled_node_count: int = 0
     pending_sync_node_count: int = 0
     latest_config_node_count: int = 0
     topology_invalid: bool = False
