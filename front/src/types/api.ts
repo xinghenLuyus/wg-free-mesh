@@ -57,6 +57,10 @@ export interface ConfigRead {
   auto_sync: boolean
   node_count: number
   dynamic_node_count: number
+  online_node_count: number
+  offline_node_count: number
+  pending_sync_node_count: number
+  latest_config_node_count: number
   topology_invalid: boolean
   topology_error_count: number
   created_at: string

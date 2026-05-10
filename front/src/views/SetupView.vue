@@ -77,8 +77,13 @@ onMounted(() => {
   <div class="setup-page">
     <div class="setup-panel">
       <template v-if="step === 'language'">
-        <h1 class="setup-title">{{ t('auth.setupLanguageTitle') }}</h1>
-        <p class="setup-description">{{ t('auth.setupLanguageDescription') }}</p>
+        <div class="auth-brand">
+          <img class="auth-logo" src="/logo.png" alt="WG Free Mesh" />
+          <div>
+            <h1 class="setup-title">{{ t('auth.setupLanguageTitle') }}</h1>
+            <p class="setup-description">{{ t('auth.setupLanguageDescription') }}</p>
+          </div>
+        </div>
         <el-form class="setup-form" label-position="top">
           <el-form-item :label="t('locale.label')" required>
             <el-select v-model="selectedLocale" style="width: 100%" @change="updateLocale">
@@ -97,8 +102,13 @@ onMounted(() => {
       </template>
 
       <template v-else>
-        <h1 class="setup-title">{{ t('auth.setupPasswordTitle') }}</h1>
-        <p class="setup-description">{{ t('auth.setupPasswordDescription') }}</p>
+        <div class="auth-brand">
+          <img class="auth-logo" src="/logo.png" alt="WG Free Mesh" />
+          <div>
+            <h1 class="setup-title">{{ t('auth.setupPasswordTitle') }}</h1>
+            <p class="setup-description">{{ t('auth.setupPasswordDescription') }}</p>
+          </div>
+        </div>
         <el-form ref="formRef" :model="form" :rules="formRules" label-position="top" autocomplete="off" @submit.prevent="submit">
           <input
             class="credential-autocomplete-anchor"
@@ -149,32 +159,73 @@ onMounted(() => {
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 16px;
+  padding: 24px;
   background:
-    linear-gradient(135deg, rgba(15, 139, 141, 0.12), transparent 42%),
-    linear-gradient(315deg, rgba(47, 158, 68, 0.08), transparent 35%),
+    radial-gradient(circle at 26% 18%, color-mix(in srgb, var(--app-primary) 18%, transparent), transparent 30%),
+    radial-gradient(circle at 76% 78%, color-mix(in srgb, var(--el-color-success) 14%, transparent), transparent 34%),
     var(--app-bg);
 }
 
 .setup-panel {
-  width: min(440px, calc(100vw - 32px));
-  padding: 30px;
+  position: relative;
+  width: min(520px, calc(100vw - 32px));
+  padding: 34px;
+  overflow: hidden;
   border: 1px solid var(--app-border);
   border-radius: 8px;
-  background: var(--app-overlay-strong);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--app-primary) 10%, transparent), transparent 52%),
+    var(--app-overlay-strong);
   box-shadow: var(--app-shadow-lg);
   backdrop-filter: blur(10px);
 }
 
+.setup-panel::before {
+  content: "";
+  position: absolute;
+  inset: 14px;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--app-border-soft) 76%, transparent);
+  border-radius: 8px;
+}
+
+.setup-panel > * {
+  position: relative;
+  z-index: 1;
+}
+
 .setup-title {
   margin: 0;
-  font-size: 28px;
-  color: var(--app-text);
+  font-size: 32px;
+  color: var(--app-text-strong);
+  line-height: 1.12;
+}
+
+.auth-brand {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+  min-width: 0;
+  margin-bottom: 26px;
+}
+
+.auth-brand > div {
+  min-width: 0;
+}
+
+.auth-logo {
+  width: 78px;
+  height: 78px;
+  flex: 0 0 auto;
+  border-radius: 8px;
+  object-fit: contain;
+  filter: drop-shadow(0 14px 22px color-mix(in srgb, var(--app-primary) 24%, transparent));
 }
 
 .setup-description {
-  margin: 8px 0 24px;
+  margin: 10px 0 0;
   color: var(--app-muted);
+  line-height: 1.55;
 }
 
 .setup-form {
@@ -196,5 +247,20 @@ onMounted(() => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+@media (max-width: 560px) {
+  .auth-brand {
+    gap: 14px;
+  }
+
+  .auth-logo {
+    width: 58px;
+    height: 58px;
+  }
+
+  .setup-title {
+    font-size: 26px;
+  }
 }
 </style>

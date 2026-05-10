@@ -113,8 +113,16 @@ class SQLiteConfigMeshMixin:
         config_ids = [config.id for config in configs]
         nodes = self._list_nodes_for_configs(config_ids)
         links = self._list_peer_links_for_configs(config_ids)
+        runtime_rows_by_config = self._list_runtime_rows_for_configs(config_ids)
+        states_by_config = self._list_node_config_states_for_configs(config_ids)
         topology_by_config = self._topology_summaries_for_prefetched(configs, nodes, links)
-        return config_list_projection.project(configs, lambda config_id: topology_by_config.get(config_id, {"valid": True, "error_count": 0}))
+        return config_list_projection.project(
+            configs,
+            nodes,
+            runtime_rows_by_config,
+            states_by_config,
+            lambda config_id: topology_by_config.get(config_id, {"valid": True, "error_count": 0}),
+        )
 
     def get_config(self, config_id: str) -> Config:
         with connect() as connection:

@@ -172,12 +172,17 @@ Authorization: Bearer <access_token>
 - 返回补充：
   - `topology_invalid`
   - `topology_error_count`
+  - `online_node_count`
+  - `offline_node_count`
+  - `pending_sync_node_count`
+  - `latest_config_node_count`
 
 说明：
 
 - 首页配置卡片和左侧配置列表直接使用这里返回的拓扑异常标记。
 - 如果配置已停用，列表层不再上浮其拓扑异常，前端只显示停用状态。
-- 前端不得自行遍历 Mesh 连接去推断配置是否异常。
+- 首页网格 / 列表视图直接使用这里返回的节点数量、在线数量、动态节点数量和下发态数量。
+- 前端不得自行遍历 Mesh 连接、运行态快照或同步状态去推断配置是否异常、在线节点数或待下发节点数。
 
 ### `POST /api/v1/configs`
 

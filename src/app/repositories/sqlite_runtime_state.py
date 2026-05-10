@@ -95,6 +95,22 @@ class SQLiteRuntimeStateMixin:
             rows = connection.execute("SELECT * FROM node_config_state WHERE config_id = ?", (config_id,)).fetchall()
         return {str(row["node_id"]): _state_from_row(row) for row in rows}
 
+    def _list_node_config_states_for_configs(self, config_ids: list[str]):
+        ids = [config_id for config_id in config_ids if config_id]
+        if not ids:
+            return {}
+        placeholders = ",".join("?" for _ in ids)
+        with connect() as connection:
+            rows = connection.execute(
+                f"SELECT * FROM node_config_state WHERE config_id IN ({placeholders})",
+                tuple(ids),
+            ).fetchall()
+        states_by_config: dict[str, dict[str, object]] = {}
+        for row in rows:
+            config_id = str(row["config_id"])
+            states_by_config.setdefault(config_id, {})[str(row["node_id"])] = _state_from_row(row)
+        return states_by_config
+
     def list_runtime_snapshot(self, config_id: str) -> list[dict[str, object]]:
         self.reconcile_client_timeouts(config_id)
         runtime_map = self._list_runtime_rows(config_id)

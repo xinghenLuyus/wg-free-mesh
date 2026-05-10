@@ -61,8 +61,8 @@ def config_from_row(row: Row) -> Config:
         default_mtu=row["default_mtu"],
         default_dns=row["default_dns"],
         auto_sync=bool_value(row["auto_sync"]),
-        node_count=row["node_count"] if "node_count" in row.keys() else 0,
-        dynamic_node_count=row["dynamic_node_count"] if "dynamic_node_count" in row.keys() else 0,
+        node_count=int(row["node_count"] or 0) if "node_count" in row.keys() else 0,
+        dynamic_node_count=int(row["dynamic_node_count"] or 0) if "dynamic_node_count" in row.keys() else 0,
         created_at=parse_datetime(row["created_at"]) or now_utc(),
         updated_at=parse_datetime(row["updated_at"]) or now_utc(),
     )
