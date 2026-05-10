@@ -238,7 +238,6 @@ watch(
           <el-descriptions :column="2" border>
             <el-descriptions-item :label="t('endpointControl.node')">{{ endpointStatus.node.name }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.clientState')">{{ presenceLabel(endpointStatus.client_state.client_presence_state) }}</el-descriptions-item>
-            <el-descriptions-item :label="t('endpointControl.clientOnline')">{{ endpointStatus.runtime.online ? t('endpointControl.online') : t('endpointControl.offline') }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.clientVersion')">{{ endpointStatus.client_state.client_version_label || t('endpointControl.unknown') }}</el-descriptions-item>
             <el-descriptions-item :label="t('endpointControl.wgConfigVersion')">
               {{ wgConfigVersionLabel(endpointStatus.config_state.wg_config_version_state) }}

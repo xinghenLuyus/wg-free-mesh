@@ -63,7 +63,7 @@ WFM_ENABLE_DEV_TEST_API=false
 时间存储仍统一使用 UTC，控制台默认显示时区由 `WFM_TIMEZONE` 控制，默认值为北京时间 `Asia/Shanghai`。
 `WFM_ENABLE_DEV_TEST_API` 默认关闭；只有显式设为 `true` 时，`/api/v0` 开发测试接口才会注册。
 
-客户端对外可见的 MQTT `host` 与 `tls` 由前端设置页维护；EMQX 容器侧的 TLS listener、证书路径、回查地址等容器专用参数由 `docker/.env` 控制。  
+客户端对外可见的 MQTT `host`、`port` 与 `tls` 由前端设置页维护；客户端 MQTT 能力是否启用只由 `WFM_ENABLE_MQTT_SERVICES` 这个部署环境变量控制，不暴露给前端设置页。EMQX 容器侧的 TLS listener、证书路径、回查地址等容器专用参数由 `docker/.env` 控制。  
 EMQX 统一账号密码为 `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD`，本地手动运行后端且修改过 Docker 默认值时，需要让本地后端读取到同一组值。  
 `WFM_ENABLE_MQTT_SERVICES=false` 时，后端不会启动 MQTT 入口服务，所有客户端绑定和远程控制能力都会被禁用。
 

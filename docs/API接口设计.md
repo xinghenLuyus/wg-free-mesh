@@ -579,6 +579,8 @@ Authorization: Bearer <access_token>
 
 - `start` / `stop` 通过 `control` topic 下发，只作用于当前节点 profile 对应的 WireGuard 接口。
 - `push_config` 通过 `config/push` topic 下发当前节点同步态配置。客户端 ACK 为 `applied` 后，后端更新 confirmed 下发态。
+- `config/push` 是唯一的“同步态 -> 客户端下发态”通道。控制台手动下发和服务端自动同步态变更后的自动下发都必须走该通道。
+- 客户端收到 `config/push` 时，如果当前 profile 的 WG 接口正在运行，必须执行 stop -> 写配置 -> start；如果未运行，只写配置。
 - `wg_show` 通过 `info` topic 下发。
 - `wg_show` 的 ACK 只表示命令完成；具体 `wg show` 输出由客户端发布到 `event` topic，服务端写入命令行回显日志。
 

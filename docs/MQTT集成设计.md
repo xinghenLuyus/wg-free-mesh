@@ -82,7 +82,8 @@
 
 - `WFM_ENABLE_MQTT_SERVICES=false` 时，后端不会启动 MQTT 入口服务，客户端绑定、远程控制和 MQTT 状态检查全部禁用。
 - `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD` 是唯一 EMQX 账号密码，同时用于 Dashboard、REST 管理 API bootstrap key 与服务端 MQTT 超级用户。
-- 客户端可见的 MQTT `host / tls` 由前端设置页维护
+- 客户端可见的 MQTT `host / port / tls` 由前端设置页维护
+- MQTT 客户端能力是否启用只由部署环境变量 `WFM_ENABLE_MQTT_SERVICES` 控制，不暴露给前端设置页
 - Docker 只负责 EMQX 容器层的 TLS listener 与 AuthZ 回查地址
 - `docker/.env` 负责 compose 与容器之间的连接参数
 - 在 Docker 正式部署中，`docker/.env` 也负责给 `app` 注入完整运行参数
@@ -167,7 +168,7 @@
 - 节点 bind 时创建或轮换 EMQX 账号
 - Go 客户端 bind 后保存本地 profile 并连接 MQTT
 - 服务端作为高权限 MQTT 客户端订阅上行 topic
-- MQTT 服务启停状态纳入系统检查，并可通过设置页统一启用或停用客户端相关能力
+- MQTT 服务启停状态纳入系统检查，并由 `WFM_ENABLE_MQTT_SERVICES` 作为部署级开关统一控制客户端相关能力
 
 配套文档：
 

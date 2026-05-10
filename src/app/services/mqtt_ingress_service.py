@@ -56,18 +56,7 @@ class MqttIngressService:
             await self._publish_system_status_update()
 
     def is_enabled(self) -> bool:
-        if not settings.enable_mqtt_services:
-            return False
-        mqtt_settings = store.read_setting_json(
-            "mqtt_client",
-            {
-                "enabled": True,
-                "host": settings.mqtt_public_host,
-                "port": settings.mqtt_bind_port,
-                "tls": settings.mqtt_tls_enabled,
-            },
-        )
-        return bool(mqtt_settings.get("enabled", True))
+        return settings.enable_mqtt_services
 
     def status_summary(self) -> dict[str, object]:
         if not settings.enable_mqtt_services:

@@ -15,7 +15,6 @@ router = SessionProtectedAPIRouter(prefix="/settings", tags=["settings"])
 
 
 class MqttSettingsRequest(BaseModel):
-    enabled: bool = True
     host: str = ""
     port: int = Field(default=8883, ge=1, le=65535)
     tls: bool = True

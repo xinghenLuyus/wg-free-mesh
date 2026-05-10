@@ -391,7 +391,6 @@ export interface ClientBindCommandRead {
 }
 
 export interface MqttSettingsRead {
-  enabled: boolean
   host: string
   port: number
   tls: boolean

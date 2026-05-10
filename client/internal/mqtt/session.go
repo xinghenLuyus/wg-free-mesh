@@ -242,11 +242,31 @@ func (s *Session) applyConfigPush(payload map[string]any) error {
 	if configText == "" || configText == "<nil>" {
 		return fmt.Errorf("config_text is required")
 	}
+	currentInterfaceName := profile.InterfaceName(s.profile)
+	wasRunning, _ := inspectWireGuard(currentInterfaceName)
+	if wasRunning {
+		if err := stopWireGuard(currentInterfaceName); err != nil {
+			return fmt.Errorf("stop running interface before config update failed: %w", err)
+		}
+	}
 	interfaceName := fmt.Sprint(payload["interface_name"])
 	if interfaceName != "" && interfaceName != "<nil>" {
 		s.profile.Profile.InterfaceName = interfaceName
 	}
-	return profile.Save(s.profile, configText)
+	if err := profile.Save(s.profile, configText); err != nil {
+		return err
+	}
+	if wasRunning {
+		nextInterfaceName := profile.InterfaceName(s.profile)
+		configPath, err := profile.ConfigPath(s.profile)
+		if err != nil {
+			return err
+		}
+		if err := startWireGuard(nextInterfaceName, configPath); err != nil {
+			return fmt.Errorf("restart interface after config update failed: %w", err)
+		}
+	}
+	return nil
 }
 
 func inspectWireGuard(interfaceName string) (bool, string) {

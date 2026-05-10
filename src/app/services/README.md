@@ -26,8 +26,8 @@
 - `mqtt_ingress_service.py`
   - `MqttIngressService`：服务端高权限 MQTT 客户端，订阅所有客户端上行 topic，把 `heartbeat`、`event` 和 ACK 交给节点运行态服务统一处理。
   - 对已经切换为静态节点的 MQTT 上行消息直接忽略，防止旧客户端把静态节点重新写回在线。
-  - `status_summary()`：统一返回 MQTT 服务是否启用、是否已连接、最近错误和最近连接时间，供系统状态页和端点能力开关复用。
-  - `reconcile()`：在设置页切换 MQTT 服务启停后，按当前配置即时启动或停止 MQTT 入口服务。
+  - `status_summary()`：统一返回 MQTT 服务是否被环境变量启用、是否已连接、最近错误和最近连接时间，供系统状态页和端点能力开关复用。
+  - `reconcile()`：按 `WFM_ENABLE_MQTT_SERVICES` 重新协调 MQTT 入口服务；设置页只更新客户端公网连接参数，不再控制启停。
 - `node_runtime_service.py`
   - `NodeRuntimeService`：统一收口节点在线/离线、客户端事件、探测 ACK、控制 ACK 和对应的运行态实时发布。
   - MQTT 入站不再自己直接拼装多组 SSE 事件，避免“写库逻辑”和“页面刷新逻辑”继续耦合。

@@ -72,6 +72,7 @@ def create_download_token(config_id: str, node_id: str, user: CurrentUserDep) ->
 @router.put("/configs/{config_id}/nodes/{node_id}/applied-conf")
 async def save_applied_conf(config_id: str, node_id: str, payload: AppliedConfRequest) -> ApiResponse[dict[str, Any]]:
     result = control_plane_service.save_applied_conf(config_id, node_id, payload.content)
+    await control_plane_service.publish_pending_config_pushes(config_id, [node_id], requested_by="manual-sync")
     await control_plane_service.publish_node_apply(config_id, node_id)
     await control_plane_service.publish_node_workspace(config_id, node_id)
     await control_plane_service.publish_config_overview(config_id)
@@ -82,6 +83,7 @@ async def save_applied_conf(config_id: str, node_id: str, payload: AppliedConfRe
 @router.post("/configs/{config_id}/nodes/{node_id}/sync")
 async def sync_node(config_id: str, node_id: str) -> ApiResponse[dict[str, Any]]:
     result = control_plane_service.sync_node(config_id, node_id)
+    await control_plane_service.publish_pending_config_pushes(config_id, [node_id], requested_by="manual-sync")
     await control_plane_service.publish_node_apply(config_id, node_id)
     await control_plane_service.publish_node_workspace(config_id, node_id)
     await control_plane_service.publish_config_overview(config_id)
@@ -92,6 +94,7 @@ async def sync_node(config_id: str, node_id: str) -> ApiResponse[dict[str, Any]]
 @router.post("/configs/{config_id}/sync-all")
 async def sync_all(config_id: str) -> ApiResponse[dict[str, Any]]:
     result = control_plane_service.sync_all(config_id)
+    await control_plane_service.publish_pending_config_pushes(config_id, requested_by="manual-sync")
     for node in control_plane_service.list_nodes(config_id):
         await control_plane_service.publish_node_apply(config_id, node.id)
         await control_plane_service.publish_node_workspace(config_id, node.id)

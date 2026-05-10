@@ -90,6 +90,7 @@ class ControlPlaneService:
                 self._running_refresh_ids.add(config_id)
             try:
                 await asyncio.to_thread(store.refresh_config_state, config_id)
+                await self.publish_pending_config_pushes(config_id, requested_by="auto-sync")
                 snapshot = await asyncio.to_thread(config_projection_service.build, config_id)
                 self._config_projection_cache[config_id] = snapshot
                 await self.publish_plan(
@@ -113,6 +114,7 @@ class ControlPlaneService:
         self.invalidate_config_projection(config_id)
         if self._refresh_queue is None or self._refresh_task is None or self._refresh_task.done():
             await asyncio.to_thread(store.refresh_config_state, config_id)
+            await self.publish_pending_config_pushes(config_id, requested_by="auto-sync")
             snapshot = await asyncio.to_thread(config_projection_service.build, config_id)
             self._config_projection_cache[config_id] = snapshot
             await self.publish_plan(
@@ -511,6 +513,72 @@ class ControlPlaneService:
     def endpoint_logs(self, config_id: str, node_id: str):
         return [item.model_dump(mode="json") for item in store.list_endpoint_logs(config_id, node_id)]
 
+    def _config_push_payload_body(self, config_id: str, node_id: str) -> dict[str, object]:
+        config = store.get_config(config_id)
+        node = store.get_node(node_id)
+        state = store.get_node_config_state(config_id, node_id)
+        if not state.staged_text or not state.staged_sha256:
+            raise AppError("NO_STAGED_CONFIG", "No staged config to push", 409)
+        return {
+            "action": "push_config",
+            "interface_name": node_config_interface_name(config.name, node.name),
+            "config_version": state.staged_version,
+            "config_sha256": state.staged_sha256,
+            "config_text": state.staged_text,
+        }
+
+    async def publish_config_push(self, config_id: str, node_id: str, *, requested_by: str = "admin"):
+        from app.services.mqtt_ingress_service import mqtt_ingress_service
+
+        log = store.create_control_log(config_id, node_id, "push_config", requested_by=requested_by)
+        await realtime_service.publish("control.log.created", {"config_id": config_id, "node_id": node_id, "log": log.model_dump(mode="json")})
+        try:
+            payload_body = self._config_push_payload_body(config_id, node_id)
+        except AppError as exc:
+            updated_log = store.complete_control_log(log.request_id, ControlStatus.failed, exc.message)
+            await realtime_service.publish("control.log.updated", {"config_id": config_id, "node_id": node_id, "log": updated_log.model_dump(mode="json")})
+            raise
+        payload = {
+            "type": "config/push",
+            "request_id": log.request_id,
+            "config_id": config_id,
+            "node_id": node_id,
+            "boot_id": "",
+            "session_id": "",
+            "sent_at": datetime.now(UTC).isoformat(),
+            "payload": payload_body,
+        }
+        try:
+            await mqtt_ingress_service.publish_to_node(config_id=config_id, node_id=node_id, kind="config/push", payload=payload)
+        except Exception as exc:
+            updated_log = store.complete_control_log(log.request_id, ControlStatus.failed, "MQTT config push failed", str(exc))
+            await realtime_service.publish("control.log.updated", {"config_id": config_id, "node_id": node_id, "log": updated_log.model_dump(mode="json")})
+            raise AppError("MQTT_CONTROL_UNAVAILABLE", "MQTT control channel is unavailable", 503, {"detail": str(exc)}) from exc
+        return {"request_id": log.request_id, "message": "Config push sent over MQTT"}
+
+    async def publish_pending_config_pushes(self, config_id: str, node_ids: list[str] | set[str] | None = None, *, requested_by: str = "auto-sync") -> None:
+        if not self.mqtt_service_enabled():
+            return
+        target_node_ids = {str(node_id) for node_id in node_ids or []}
+        for node in store.list_nodes(config_id):
+            if target_node_ids and node.id not in target_node_ids:
+                continue
+            if node.node_type != NodeType.dynamic:
+                continue
+            client_state = store.get_client_state(config_id, node.id)
+            if not client_state.get("client_initialized"):
+                continue
+            runtime = store.get_runtime(config_id, node.id)
+            if not runtime.online:
+                continue
+            state = store.get_node_config_state(config_id, node.id)
+            if not state.staged_sha256 or state.staged_sha256 == state.confirmed_sha256:
+                continue
+            try:
+                await self.publish_config_push(config_id, node.id, requested_by=requested_by)
+            except Exception:
+                logger.exception("auto config push failed for %s/%s", config_id, node.id)
+
     async def control_action(self, config_id: str, node_id: str, action: str):
         if not self.mqtt_service_enabled():
             raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
@@ -518,26 +586,13 @@ class ControlPlaneService:
             raise AppError("INVALID_ACTION", "Only start, stop, push_config and wg_show are supported by MQTT control", 400)
         from app.services.mqtt_ingress_service import mqtt_ingress_service
 
+        if action == "push_config":
+            return await self.publish_config_push(config_id, node_id)
+
         log = store.create_control_log(config_id, node_id, action)
         await realtime_service.publish("control.log.created", {"config_id": config_id, "node_id": node_id, "log": log.model_dump(mode="json")})
         kind = "info" if action == "wg_show" else "config/push" if action == "push_config" else "control"
         payload_body: dict[str, object] = {"action": action}
-        if action == "push_config":
-            config = store.get_config(config_id)
-            node = store.get_node(node_id)
-            state = store.get_node_config_state(config_id, node_id)
-            if not state.staged_text or not state.staged_sha256:
-                updated_log = store.complete_control_log(log.request_id, ControlStatus.failed, "No staged config to push")
-                await realtime_service.publish("control.log.updated", {"config_id": config_id, "node_id": node_id, "log": updated_log.model_dump(mode="json")})
-                raise AppError("NO_STAGED_CONFIG", "No staged config to push", 409)
-            payload_body.update(
-                {
-                    "interface_name": node_config_interface_name(config.name, node.name),
-                    "config_version": state.staged_version,
-                    "config_sha256": state.staged_sha256,
-                    "config_text": state.staged_text,
-                }
-            )
         payload = {
             "type": kind,
             "request_id": log.request_id,
@@ -571,19 +626,22 @@ class ControlPlaneService:
         return {"dispatched": dispatched, "skipped": []}
 
     def mqtt_settings(self):
-        return store.read_setting_json(
+        mqtt_settings = store.read_setting_json(
             "mqtt_client",
             {
-                "enabled": settings.enable_mqtt_services,
                 "host": settings.mqtt_public_host,
                 "port": settings.mqtt_bind_port,
                 "tls": settings.mqtt_tls_enabled,
             },
         )
+        return {
+            "host": str(mqtt_settings.get("host") or settings.mqtt_public_host),
+            "port": int(str(mqtt_settings.get("port") or settings.mqtt_bind_port)),
+            "tls": bool(mqtt_settings.get("tls", settings.mqtt_tls_enabled)),
+        }
 
     def mqtt_service_enabled(self) -> bool:
-        mqtt_settings = self.mqtt_settings()
-        return settings.enable_mqtt_services and bool(mqtt_settings.get("enabled", True))
+        return settings.enable_mqtt_services
 
     def mqtt_service_status(self) -> dict[str, object]:
         from app.services.mqtt_ingress_service import mqtt_ingress_service
@@ -600,7 +658,6 @@ class ControlPlaneService:
         store.write_setting_json(
             "mqtt_client",
             {
-                "enabled": bool(payload.get("enabled", settings.enable_mqtt_services)),
                 "host": payload.get("host", settings.mqtt_public_host),
                 "port": payload.get("port", settings.mqtt_bind_port),
                 "tls": payload.get("tls", settings.mqtt_tls_enabled),
