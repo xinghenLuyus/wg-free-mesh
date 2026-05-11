@@ -360,15 +360,8 @@ class ControlPlaneService:
         self.invalidate_config_projection(previous.config_id)
         result = store.update_node(node_id, payload)
         current = store.get_node(node_id)
-        if previous.node_type != current.node_type or previous.enabled != current.enabled:
+        if previous.node_type != current.node_type:
             if current.node_type == NodeType.static:
-                from app.services.emqx_service import emqx_service
-
-                try:
-                    emqx_service.delete_node_user(node_id=node_id)
-                except Exception:
-                    pass
-            if not current.enabled:
                 from app.services.emqx_service import emqx_service
 
                 try:

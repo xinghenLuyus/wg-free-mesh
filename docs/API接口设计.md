@@ -291,7 +291,7 @@ Authorization: Bearer <access_token>
 - 节点更新会经过后端依赖钩子，扫描受影响的 Mesh 连接。
 - 节点设置中的基础字段和 `tags` 应通过同一次 `PUT /api/v1/nodes/{node_id}` 保存，避免前端拆成多次请求造成部分成功、部分失败。
 - 节点设置中的 `enabled` 通过同一次 `PUT /api/v1/nodes/{node_id}` 保存。端点从启用切换为禁用时，后端必须停用该端点相关的所有 Mesh 对。
-- 禁用端点重新启用时，后端不自动恢复历史 Mesh 对，用户可以在启用端点侧手动启用或删除。
+- 禁用端点不会重置已绑定客户端；后端必须保留 `client_initialized`、MQTT 身份和客户端基础信息。重新启用时，后端不自动恢复历史 Mesh 对，也不要求客户端重新初始化，用户可以在启用端点侧手动启用或删除 Mesh 对。
 - 当公网入口或监听端口变化导致相关 auto Endpoint 重算时，后端会同步清空已失效的 `persistent_keepalive`。
 - 当 `virtual_ip` 变更时，后端不会自动改写 `allowed_ips`，只会返回提示，由用户手工确认。
 
