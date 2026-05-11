@@ -125,6 +125,15 @@ cd src
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --timeout-graceful-shutdown 1
 ```
 
+如果本地后端从 `src/` 目录启动，并使用下载工具生成客户端或配置批量下载产物，应追加 `--reload-exclude data`，避免 `src/data/artifacts/` 写入触发开发服务重载。
+
+推荐命令：
+
+```powershell
+cd src
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-exclude data --timeout-graceful-shutdown 1
+```
+
 5. 最后起前端：
 
 ```powershell

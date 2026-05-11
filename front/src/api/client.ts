@@ -107,6 +107,7 @@ export async function request<T>(
     method?: 'GET' | 'POST' | 'PUT' | 'DELETE'
     data?: unknown
     responseType?: 'json' | 'blob'
+    timeout?: number
   },
 ): Promise<T> {
   try {
@@ -115,6 +116,7 @@ export async function request<T>(
       method: options?.method ?? 'GET',
       data: options?.data,
       responseType: options?.responseType,
+      timeout: options?.timeout,
     })
     if (options?.responseType === 'blob') {
       return response.data as T

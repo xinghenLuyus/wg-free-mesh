@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Files, House, InfoFilled, Setting, SwitchButton } from '@element-plus/icons-vue'
+import { Download, Files, House, InfoFilled, Setting, SwitchButton } from '@element-plus/icons-vue'
 import { computed, onMounted, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView, useRoute, useRouter } from 'vue-router'
@@ -98,6 +98,9 @@ const topItems = computed(() => [
   { path: '/settings', label: t('layout.settings'), icon: Setting },
   { path: '/help', label: t('layout.help'), icon: InfoFilled },
 ])
+const toolItems = computed(() => [
+  { path: '/tools/download', label: t('layout.download'), icon: Download },
+])
 
 const currentPath = computed(() => route.path)
 const systemStatusText = computed(() => {
@@ -157,6 +160,10 @@ async function loadSystemTimezone() {
 
 function isConfigActive(configId: string) {
   return currentPath.value.startsWith(`/configs/${configId}`)
+}
+
+function isToolActive(path: string) {
+  return currentPath.value === path || currentPath.value.startsWith(`${path}/`)
 }
 
 async function handleLogout() {
@@ -230,6 +237,22 @@ watch(
             <el-icon><Files /></el-icon>
             <span>{{ config.name }}</span>
             <span v-if="config.topology_invalid" class="sidebar-link__alert-dot" :title="t('configOverview.topologyFailed')"></span>
+          </RouterLink>
+        </div>
+
+        <div class="sidebar-divider"></div>
+        <div class="sidebar-section">{{ t('layout.toolList') }}</div>
+
+        <div class="sidebar-configs">
+          <RouterLink
+            v-for="item in toolItems"
+            :key="item.path"
+            :to="item.path"
+            class="sidebar-link"
+            :class="{ 'sidebar-link--active': isToolActive(item.path) }"
+          >
+            <el-icon><component :is="item.icon" /></el-icon>
+            <span>{{ item.label }}</span>
           </RouterLink>
         </div>
 

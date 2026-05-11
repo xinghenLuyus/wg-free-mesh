@@ -4,9 +4,12 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 
 const ApplyView = () => import('@/views/ApplyView.vue')
+const ClientDownloadView = () => import('@/views/ClientDownloadView.vue')
+const ConfigBulkDownloadView = () => import('@/views/ConfigBulkDownloadView.vue')
 const ConfigOverviewView = () => import('@/views/ConfigOverviewView.vue')
 const ConfigWorkspaceLayout = () => import('@/views/ConfigWorkspaceLayout.vue')
 const DownloadConfigView = () => import('@/views/DownloadConfigView.vue')
+const DownloadToolsView = () => import('@/views/DownloadToolsView.vue')
 const EndpointsView = () => import('@/views/EndpointsView.vue')
 const HelpView = () => import('@/views/HelpView.vue')
 const HomeView = () => import('@/views/HomeView.vue')
@@ -55,6 +58,9 @@ export const router = createRouter({
         { path: 'help', component: HelpView },
         { path: 'backups', redirect: '/settings' },
         { path: 'system', component: SystemView },
+        { path: 'tools/download', component: DownloadToolsView },
+        { path: 'tools/download/client', component: ClientDownloadView },
+        { path: 'tools/download/configs', component: ConfigBulkDownloadView },
       ],
     },
   ],

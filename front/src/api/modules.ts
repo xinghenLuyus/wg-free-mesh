@@ -5,6 +5,8 @@ import type {
   ConfigRead,
   ControlLogRead,
   ClientBindCommandRead,
+  ClientArtifactRead,
+  ClientDownloadOptionsRead,
   EndpointStatusRead,
   AppLocale,
   HealthRead,
@@ -27,6 +29,8 @@ import type {
   RuntimeSnapshotItem,
   WgPreviewRead,
   DownloadPackageRead,
+  ConfigBulkOptionsRead,
+  ConfigBulkPackageRead,
 } from '@/types/api'
 
 export const api = {
@@ -121,6 +125,19 @@ export const api = {
     request<DownloadPackageRead>(`/configs/${configId}/nodes/${nodeId}/download-package`),
   createDownloadToken: (configId: string, nodeId: string) =>
     request<DownloadTokenRead>(`/configs/${configId}/nodes/${nodeId}/download-token`, { method: 'POST' }),
+  clientDownloadOptions: () => request<ClientDownloadOptionsRead>('/tools/download/client-options'),
+  buildClientArtifact: (payload: { source: string; goos: string; goarch: string }) =>
+    request<ClientArtifactRead>('/tools/download/client-artifacts/build', { method: 'POST', data: payload, timeout: 360000 }),
+  downloadClientArtifact: (artifactId: string) =>
+    request<Blob>(`/tools/download/client-artifacts/${artifactId}`, { responseType: 'blob', timeout: 120000 }),
+  configBulkOptions: (configId?: string) =>
+    request<ConfigBulkOptionsRead>(
+      `/tools/download/config-bulk/options${configId ? `?config_id=${encodeURIComponent(configId)}` : ''}`,
+    ),
+  createConfigBulkPackage: (payload: { config_id: string; node_ids: string[] }) =>
+    request<ConfigBulkPackageRead>('/tools/download/config-bulk/package', { method: 'POST', data: payload }),
+  downloadConfigBulkPackage: (packageId: string) =>
+    request<Blob>(`/tools/download/config-bulk/${packageId}`, { responseType: 'blob' }),
   saveAppliedConf: (configId: string, nodeId: string, content: string) =>
     request<SyncStatusRead>(`/configs/${configId}/nodes/${nodeId}/applied-conf`, {
       method: 'PUT',

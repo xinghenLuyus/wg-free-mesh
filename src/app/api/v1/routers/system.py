@@ -7,6 +7,7 @@ from collections.abc import AsyncIterator
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.deps import CurrentUserDep, require_current_user
@@ -25,7 +26,7 @@ SSE_CLOCK_SYNC_INTERVAL_SECONDS = 15.0
 def _sse_frame(event: dict[str, object]) -> str:
     event_type = str(event.get("type", "message"))
     event_id = str(event.get("id", ""))
-    data = json.dumps(event, ensure_ascii=False, separators=(",", ":"))
+    data = json.dumps(jsonable_encoder(event), ensure_ascii=False, separators=(",", ":"))
     parts = [f"event: {event_type}"]
     if event_id:
         parts.append(f"id: {event_id}")

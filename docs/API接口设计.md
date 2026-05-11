@@ -1,13 +1,13 @@
 # API接口设计
 
-本文定义重构阶段新的前后端契约。目标不是照抄旧接口路径，而是在覆盖旧系统主要能力的前提下，统一为更稳定的 REST + SSE 结构。
+本文定义当前前后端契约。目标是在覆盖控制平面主要能力的前提下，统一为稳定的 REST + SSE 结构。
 
 ## 设计原则
 
 - 所有前后端通信统一走 `/api/v1`
 - 所有响应统一使用 `{ success, data }` 或 `{ success, error }`
-- 先固化契约，再同步修改前后端
-- 客户端不再使用 enrollment 文件或 `.wgm`；首次绑定使用 `/api/client/v1/bind`
+- 修改接口前先更新契约，再同步修改前后端
+- 客户端不再使用注册文件；首次绑定使用 `/api/client/v1/bind`
 - 强实时场景优先使用 SSE，不依赖高频轮询
 
 ## 认证与会话
@@ -544,6 +544,66 @@ Authorization: Bearer <access_token>
 - 约束：节点已禁用时返回 `NODE_DISABLED`。
 - 响应：`text/plain`，附带 `Content-Disposition`
 
+## 工具下载接口
+
+### `GET /api/v1/tools/download/client-options`
+
+- 用途：获取客户端下载页的下载源、系统、架构和默认选择
+- 鉴权：后台会话令牌
+- 说明：`github_release` 先返回为不可用源；`local_build` 表示服务端本地源码构建
+
+### `POST /api/v1/tools/download/client-artifacts/build`
+
+- 用途：按下载源、系统和架构创建或复用客户端压缩包
+- 鉴权：后台会话令牌
+- 请求字段：
+  - `source`：`github_release` 或 `local_build`
+  - `goos`：`windows`、`linux`、`darwin`
+  - `goarch`：`amd64`、`arm64`
+- 响应字段：
+  - `artifact_id`
+  - `filename`
+  - `download_path`
+  - `source`
+  - `goos`
+  - `goarch`
+  - `version`
+  - `cached`
+- 约束：`github_release` 当前返回不可用；`local_build` 只执行后端固定构建命令，命中缓存时不重复构建
+- 说明：该接口只负责生成或复用产物，不直接返回文件内容。前端只把它作为“构建并下载”流程的中间结果使用，不展示 `filename`、`download_path`、`cached` 等产物状态；如果后续文件下载失败，不能把它当成构建失败。
+
+### `GET /api/v1/tools/download/client-artifacts/{artifact_id}`
+
+- 用途：下载客户端压缩包
+- 鉴权：后台会话令牌
+
+### `GET /api/v1/tools/download/config-bulk/options?config_id=...`
+
+- 用途：获取配置批量下载页可选配置和端点
+- 鉴权：后台会话令牌
+- 说明：`config_id` 为空时只返回配置列表；传入后返回该配置下可下载端点
+
+### `POST /api/v1/tools/download/config-bulk/package`
+
+- 用途：生成配置批量下载 zip
+- 鉴权：后台会话令牌
+- 请求字段：
+  - `config_id`
+  - `node_ids`
+- 响应字段：
+  - `package_id`
+  - `filename`
+  - `download_path`
+  - `config_id`
+  - `config_name`
+  - `node_count`
+- 约束：只允许下载启用端点的同步态配置；不会自动执行同步
+
+### `GET /api/v1/tools/download/config-bulk/{package_id}`
+
+- 用途：下载配置批量 zip
+- 鉴权：后台会话令牌
+
 ### `POST /api/v1/configs/{config_id}/nodes/{node_id}/sync`
 
 - 用途：同步单个节点配置
@@ -803,19 +863,18 @@ Authorization: Bearer <access_token>
 
 说明：
 
+- SSE 事件在输出前必须经过和 REST 响应一致的 JSON 编码，确保 `datetime` 等对象被序列化为可传输值，不能因为单个 payload 不可 JSON 序列化而断开整条实时流。
 - 建立连接后后端应立即推送一次系统状态快照和一次 `system.clock.sync`
 - 连接存活期间后端低频推送 `system.clock.sync`
 - `system.clock.sync` 同时承担系统时间校时和连接活性信号，不再每秒推流
 - 无在线订阅者时，服务端不做空推送
 - 系统状态页删除手动刷新按钮，以 SSE 推送和前端本地走秒为准
 
-## 本轮不包含
+## 当前实现边界
 
-- Go 客户端实现
-- enrollment token 与 `.wgm` 下载
-- 真正的 WireGuard 服务启停
-
-以上能力会在本轮接口里预留数据结构和运行位，但不恢复客户端代码。
+- Go 客户端已提供 `wfmctl + wfm-agent` 骨架，覆盖绑定、profile、MQTT 会话、心跳、事件、命令 ACK 和跨平台服务管理接口。
+- 客户端不再使用注册文件；首次绑定使用 `/api/client/v1/bind` 和一次性绑定命令。
+- 真正的 WireGuard 服务启停和系统级配置应用仍由客户端后续接入现有服务管理接口。
 
 ## 客户端 MQTT 集成补充约束
 

@@ -16,8 +16,8 @@
 - EMQX 节点级账号与 HTTP 授权回查
 - 备份恢复
 - 系统状态聚合
-
-客户端 enrollment、`.wgm`、Go Agent 暂缓。
+- 工具下载，包含客户端本地源码构建和配置批量下载
+- 客户端绑定、MQTT 账号授权、心跳、事件、命令 ACK 和重置客户端
 
 ## 认证初始化
 
@@ -88,6 +88,14 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --timeout-g
 - 当前项目包含 SSE 长连接。
 - `fastapi dev` / `fastapi run` 不支持 `--timeout-graceful-shutdown` 参数。
 - 为避免浏览器仍然保持连接时拖住后端退出，开发启动命令统一使用 `uvicorn`，并增加 `--timeout-graceful-shutdown 1` 作为停机兜底。
+- 如果本地后端从 `src/` 目录启动，下载工具会在 `src/data/artifacts/` 写入客户端和批量配置产物；使用 `--reload` 时应追加 `--reload-exclude data`，避免产物写入触发开发服务重载。
+
+推荐开发启动命令：
+
+```powershell
+cd src
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-exclude data --timeout-graceful-shutdown 1
+```
 
 
 可访问：
@@ -135,6 +143,7 @@ python -m pytest -q
 - FastAPI 优先读取根目录 `front/dist`
 - Docker 镜像会先构建前端，再把 `dist` 复制进后端镜像
 - 生产启动命令同样带 `--timeout-graceful-shutdown 1`，避免 SSE 长连接阻塞停机
+- 下载工具生成的客户端和配置批量下载产物缓存到后端运行数据目录 `data/artifacts/`；本地开发使用 `--reload` 时应排除 `data` 目录，避免产物写入触发重载
 
 ## 目录索引
 

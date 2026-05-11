@@ -60,16 +60,21 @@
 - `GET /api/v1/configs`
 - `POST /api/v1/configs`
 - `GET /api/v1/configs/{config_id}`
-- `PATCH /api/v1/configs/{config_id}`
+- `PUT /api/v1/configs/{config_id}`
 - `DELETE /api/v1/configs/{config_id}`
+- `GET /api/v1/configs/{config_id}/overview`
 
 ### Nodes
 
 - `GET /api/v1/configs/{config_id}/nodes`
 - `POST /api/v1/configs/{config_id}/nodes`
 - `GET /api/v1/nodes/{node_id}`
-- `PATCH /api/v1/nodes/{node_id}`
+- `PUT /api/v1/nodes/{node_id}`
 - `DELETE /api/v1/nodes/{node_id}`
+- `POST /api/v1/configs/{config_id}/nodes/suggest-ip`
+- `POST /api/v1/configs/{config_id}/nodes/validate-ip`
+- `POST /api/v1/nodes/keys/generate`
+- `POST /api/v1/nodes/keys/derive-public`
 
 ### Tags
 
@@ -81,25 +86,52 @@
 - `DELETE /api/v1/nodes/{node_id}/tags/{tag_name}`
 - 标签创建、删除、批量应用和端点归属变更都由后端承担业务一致性，前端只提交用户选择。
 
-### Mesh Links
+### Mesh
 
-- `GET /api/v1/configs/{config_id}/links`
-- `POST /api/v1/configs/{config_id}/links`
-- `PATCH /api/v1/links/{link_id}`
-- `DELETE /api/v1/links/{link_id}`
+- `GET /api/v1/configs/{config_id}/peer-links`
+- `POST /api/v1/configs/{config_id}/peer-links`
+- `PUT /api/v1/peer-links/{group_id}`
+- `DELETE /api/v1/peer-links/{group_id}`
+- `GET /api/v1/configs/{config_id}/nodes/{node_id}/mesh-workspace`
+- `GET /api/v1/configs/{config_id}/nodes/{node_id}/peer-link-draft`
+- `POST /api/v1/peer-links/psk/generate`
+- `POST /api/v1/configs/{config_id}/mesh/validate`
+- `GET /api/v1/configs/{config_id}/nodes/{node_id}/wg-preview`
 
-### Apply
+### Sync
 
-- `GET /api/v1/configs/{config_id}/apply/status`
-- `POST /api/v1/configs/{config_id}/apply`
-- `POST /api/v1/configs/{config_id}/apply/sync`
+- `GET /api/v1/configs/{config_id}/sync-status`
+- `GET /api/v1/configs/{config_id}/nodes/{node_id}/sync-status`
+- `GET /api/v1/configs/{config_id}/nodes/{node_id}/applied-conf`
+- `PUT /api/v1/configs/{config_id}/nodes/{node_id}/applied-conf`
+- `POST /api/v1/configs/{config_id}/nodes/{node_id}/sync`
+- `POST /api/v1/configs/{config_id}/sync-all`
+- `POST /api/v1/configs/{config_id}/nodes/{node_id}/download-token`
+- `GET /api/v1/configs/{config_id}/nodes/{node_id}/download-package`
 
 ### Endpoints
 
-- `GET /api/v1/configs/{config_id}/endpoints`
-- `POST /api/v1/endpoints/{node_id}/control`
-- `GET /api/v1/endpoints/{node_id}/logs`
-- `POST /api/v1/endpoints/{node_id}/enrollment`
+- `GET /api/v1/configs/{config_id}/endpoint/runtime-snapshot`
+- `GET /api/v1/configs/{config_id}/nodes/{node_id}/endpoint/status`
+- `POST /api/v1/configs/{config_id}/nodes/{node_id}/bind-command`
+- `POST /api/v1/configs/{config_id}/nodes/{node_id}/reset-client`
+- `GET /api/v1/configs/{config_id}/nodes/{node_id}/endpoint/logs`
+- `POST /api/v1/configs/{config_id}/nodes/{node_id}/endpoint/control`
+- `POST /api/v1/configs/{config_id}/endpoint/probe-batch`
+
+### Tool Downloads
+
+- `GET /api/v1/tools/download/client-options`
+- `POST /api/v1/tools/download/client-artifacts/build`
+- `GET /api/v1/tools/download/client-artifacts/{artifact_id}`
+- `GET /api/v1/tools/download/config-bulk/options`
+- `POST /api/v1/tools/download/config-bulk/package`
+- `GET /api/v1/tools/download/config-bulk/{package_id}`
+
+### Client And Internal
+
+- `POST /api/client/v1/bind`
+- `POST /api/internal/emqx/authz`
 
 ## 前端调用约束
 

@@ -13,6 +13,10 @@
 - `MeshView.vue`
 - `ApplyView.vue`
 - `EndpointsView.vue`
+- `DownloadToolsView.vue`
+  - 下载工具统一入口页，展示客户端下载和配置批量下载两个大卡片。
+- `ClientDownloadView.vue`
+- `ConfigBulkDownloadView.vue`
 - `SettingsView.vue`
   - 控制台语言、主题模式、MQTT、密码和快照管理页面。
   - 快照卡片负责创建备注、修改备注、导入、导出、恢复和删除。

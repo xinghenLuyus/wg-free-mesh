@@ -43,6 +43,71 @@ export interface DownloadTokenRead {
   filename: string
 }
 
+export interface DownloadOptionRead {
+  value: string
+  label: string
+  available?: boolean
+  description?: string
+}
+
+export interface ClientDownloadOptionsRead {
+  sources: DownloadOptionRead[]
+  systems: DownloadOptionRead[]
+  architectures: DownloadOptionRead[]
+  defaults: {
+    source: 'local_build' | 'github_release'
+    goos: 'windows' | 'linux' | 'darwin'
+    goarch: 'amd64' | 'arm64'
+  }
+  version: string
+}
+
+export interface ClientArtifactRead {
+  artifact_id: string
+  filename: string
+  download_path: string
+  source: 'local_build' | 'github_release'
+  goos: 'windows' | 'linux' | 'darwin'
+  goarch: 'amd64' | 'arm64'
+  version: string
+  cached: boolean
+}
+
+export interface ConfigBulkOptionConfigRead {
+  id: string
+  name: string
+  enabled: boolean
+  node_count: number
+  dynamic_node_count: number
+  disabled_node_count: number
+}
+
+export interface ConfigBulkOptionNodeRead {
+  id: string
+  name: string
+  node_type: 'dynamic' | 'static'
+  virtual_ip: string | null
+  auto_sync: boolean
+  can_download: boolean
+  staged_version: number
+  staged_sha256: string
+  sync_status: string
+}
+
+export interface ConfigBulkOptionsRead {
+  configs: ConfigBulkOptionConfigRead[]
+  nodes: ConfigBulkOptionNodeRead[]
+}
+
+export interface ConfigBulkPackageRead {
+  package_id: string
+  filename: string
+  download_path: string
+  config_id: string
+  config_name: string
+  node_count: number
+}
+
 export type SessionRead = AuthStateRead
 
 export interface ConfigRead {
