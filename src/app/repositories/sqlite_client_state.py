@@ -13,6 +13,7 @@ from app.repositories.row_mappers import bool_value as _bool_value, parse_dateti
 
 class SQLiteClientStateMixin:
     HEARTBEAT_TIMEOUT = timedelta(minutes=45)
+    CLIENT_ONLINE_TTL = timedelta(minutes=90)
 
     @staticmethod
     def _normalize_client_text(value: str, limit: int = 64) -> str:
@@ -74,6 +75,8 @@ class SQLiteClientStateMixin:
             "session_id": row["session_id"],
             "last_heartbeat_at": row["last_heartbeat_at"],
             "last_detect_ack_at": row["last_detect_ack_at"],
+            "last_reachable_at": row["last_reachable_at"],
+            "last_offline_at": row["last_offline_at"],
             "last_will_at": row["last_will_at"],
             "last_event": row["last_event"],
             "last_event_at": row["last_event_at"],
@@ -113,6 +116,8 @@ class SQLiteClientStateMixin:
                 "session_id": row["session_id"],
                 "last_heartbeat_at": row["last_heartbeat_at"],
                 "last_detect_ack_at": row["last_detect_ack_at"],
+                "last_reachable_at": row["last_reachable_at"],
+                "last_offline_at": row["last_offline_at"],
                 "last_will_at": row["last_will_at"],
                 "last_event": row["last_event"],
                 "last_event_at": row["last_event_at"],
@@ -173,6 +178,8 @@ class SQLiteClientStateMixin:
                 session_id = '',
                 last_heartbeat_at = NULL,
                 last_detect_ack_at = NULL,
+                last_reachable_at = NULL,
+                last_offline_at = NULL,
                 last_will_at = NULL,
                 last_event = '',
                 last_event_at = NULL,
@@ -285,6 +292,15 @@ class SQLiteClientStateMixin:
                     mqtt_client_id = ?,
                     bind_token_used_at = ?,
                     client_presence_state = 'offline',
+                    boot_id = '',
+                    session_id = '',
+                    last_heartbeat_at = NULL,
+                    last_detect_ack_at = NULL,
+                    last_reachable_at = NULL,
+                    last_offline_at = NULL,
+                    last_will_at = NULL,
+                    last_event = '',
+                    last_event_at = NULL,
                     updated_at = ?
                 WHERE config_id = ? AND node_id = ?
                 """,
@@ -303,7 +319,7 @@ class SQLiteClientStateMixin:
         return self.get_client_state(config_id, node_id)
 
     def reconcile_client_timeouts(self, config_id: str | None = None) -> None:
-        cutoff = (now_utc() - self.HEARTBEAT_TIMEOUT).isoformat()
+        cutoff = (now_utc() - self.CLIENT_ONLINE_TTL).isoformat()
         params: tuple[object, ...]
         config_filter = ""
         if config_id:
@@ -320,8 +336,10 @@ class SQLiteClientStateMixin:
                 JOIN nodes n ON n.id = s.node_id
                 WHERE s.client_initialized = 1
                   AND n.enabled = 1
-                  AND s.last_heartbeat_at IS NOT NULL
-                  AND s.last_heartbeat_at < ?
+                  AND (
+                    s.last_reachable_at IS NULL
+                    OR s.last_reachable_at < ?
+                  )
                   {config_filter}
                 """,
                 params,
@@ -351,12 +369,100 @@ class SQLiteClientStateMixin:
                     (
                         ConnectivityState.offline.value,
                         WgRuntimeState.unknown.value,
-                        "heartbeat-timeout",
+                        "client-reachable-timeout",
                         now,
                         row["config_id"],
                         row["node_id"],
                     ),
                 )
+
+    def mark_client_reachable(
+        self,
+        config_id: str,
+        node_id: str,
+        *,
+        reason: str,
+        boot_id: str = "",
+        session_id: str = "",
+        seen_at: str | None = None,
+    ) -> dict[str, object]:
+        node = self.get_node(node_id)
+        if not node.enabled or node.node_type != NodeType.dynamic:
+            return self.get_client_state(config_id, node_id)
+        now = seen_at or now_utc().isoformat()
+        self._ensure_client_state(config_id, node_id)
+        with connect() as connection:
+            connection.execute(
+                """
+                UPDATE node_client_state
+                SET client_presence_state = 'online',
+                    boot_id = COALESCE(NULLIF(?, ''), boot_id),
+                    session_id = COALESCE(NULLIF(?, ''), session_id),
+                    last_reachable_at = ?,
+                    updated_at = ?
+                WHERE config_id = ? AND node_id = ?
+                """,
+                (boot_id, session_id, now, now, config_id, node_id),
+            )
+            connection.execute(
+                """
+                UPDATE endpoint_runtime_status
+                SET online = 1,
+                    connectivity_state = ?,
+                    last_seen = ?,
+                    last_control_channel_seen_at = ?,
+                    last_connectivity_reason = ?,
+                    updated_at = ?
+                WHERE config_id = ? AND node_id = ?
+                """,
+                (ConnectivityState.online.value, now, now, reason, now, config_id, node_id),
+            )
+        return self.get_client_state(config_id, node_id)
+
+    def mark_client_offline(
+        self,
+        config_id: str,
+        node_id: str,
+        *,
+        reason: str,
+        boot_id: str = "",
+        session_id: str = "",
+        seen_at: str | None = None,
+    ) -> dict[str, object]:
+        node = self.get_node(node_id)
+        if not node.enabled or node.node_type != NodeType.dynamic:
+            return self.get_client_state(config_id, node_id)
+        now = seen_at or now_utc().isoformat()
+        self._ensure_client_state(config_id, node_id)
+        with connect() as connection:
+            connection.execute(
+                """
+                UPDATE node_client_state
+                SET client_presence_state = 'offline',
+                    boot_id = COALESCE(NULLIF(?, ''), boot_id),
+                    session_id = COALESCE(NULLIF(?, ''), session_id),
+                    last_offline_at = ?,
+                    updated_at = ?
+                WHERE config_id = ? AND node_id = ?
+                """,
+                (boot_id, session_id, now, now, config_id, node_id),
+            )
+            connection.execute(
+                """
+                UPDATE endpoint_runtime_status
+                SET online = 0,
+                    connectivity_state = ?,
+                    wg_running = 0,
+                    wg_runtime_state = ?,
+                    heartbeat_wg_online = 0,
+                    detect_wg_online = 0,
+                    last_connectivity_reason = ?,
+                    updated_at = ?
+                WHERE config_id = ? AND node_id = ?
+                """,
+                (ConnectivityState.offline.value, WgRuntimeState.unknown.value, reason, now, config_id, node_id),
+            )
+        return self.get_client_state(config_id, node_id)
 
     def list_detect_targets(self) -> list[dict[str, str]]:
         with connect() as connection:
@@ -398,10 +504,11 @@ class SQLiteClientStateMixin:
                     boot_id = COALESCE(NULLIF(?, ''), boot_id),
                     session_id = COALESCE(NULLIF(?, ''), session_id),
                     last_heartbeat_at = ?,
+                    last_reachable_at = ?,
                     updated_at = ?
                 WHERE config_id = ? AND node_id = ?
                 """,
-                (boot_id, session_id, now, now, config_id, node_id),
+                (boot_id, session_id, now, now, now, config_id, node_id),
             )
             connection.execute(
                 """
@@ -418,13 +525,13 @@ class SQLiteClientStateMixin:
                 WHERE config_id = ? AND node_id = ?
                 """,
                 (
-                    int(client_online),
-                    ConnectivityState.online.value if client_online else ConnectivityState.offline.value,
+                    1,
+                    ConnectivityState.online.value,
                     int(client_online and wg_online),
                     WgRuntimeState.running.value if wg_online else WgRuntimeState.stopped.value if client_online else WgRuntimeState.unknown.value,
                     int(client_online),
                     int(client_online and wg_online),
-                    now if client_online else None,
+                    now,
                     "client-heartbeat",
                     now,
                     config_id,
@@ -457,12 +564,29 @@ class SQLiteClientStateMixin:
                     boot_id = COALESCE(NULLIF(?, ''), boot_id),
                     session_id = COALESCE(NULLIF(?, ''), session_id),
                     last_will_at = CASE WHEN ? = 'offline' THEN ? ELSE last_will_at END,
+                    last_offline_at = CASE WHEN ? = 'offline' THEN ? ELSE last_offline_at END,
+                    last_reachable_at = CASE WHEN ? = 'offline' THEN last_reachable_at ELSE ? END,
                     last_event = ?,
                     last_event_at = ?,
                     updated_at = ?
                 WHERE config_id = ? AND node_id = ?
                 """,
-                (presence, boot_id, session_id, event, now, f"{event}: {message}".strip(": "), now, now, config_id, node_id),
+                (
+                    presence,
+                    boot_id,
+                    session_id,
+                    event,
+                    now,
+                    event,
+                    now,
+                    event,
+                    now,
+                    f"{event}: {message}".strip(": "),
+                    now,
+                    now,
+                    config_id,
+                    node_id,
+                ),
             )
             if event == "offline":
                 connection.execute(
@@ -559,10 +683,11 @@ class SQLiteClientStateMixin:
                     boot_id = COALESCE(NULLIF(?, ''), boot_id),
                     session_id = COALESCE(NULLIF(?, ''), session_id),
                     last_detect_ack_at = ?,
+                    last_reachable_at = ?,
                     updated_at = ?
                 WHERE config_id = ? AND node_id = ?
                 """,
-                (boot_id, session_id, now, now, config_id, node_id),
+                (boot_id, session_id, now, now, now, config_id, node_id),
             )
             connection.execute(
                 """
@@ -580,13 +705,13 @@ class SQLiteClientStateMixin:
                 WHERE config_id = ? AND node_id = ?
                 """,
                 (
-                    int(client_online),
-                    ConnectivityState.online.value if client_online else ConnectivityState.offline.value,
+                    1,
+                    ConnectivityState.online.value,
                     int(client_online and wg_online),
                     WgRuntimeState.running.value if wg_online else WgRuntimeState.stopped.value if client_online else WgRuntimeState.unknown.value,
                     int(client_online),
                     int(client_online and wg_online),
-                    now if client_online else None,
+                    now,
                     now,
                     "detect-ack",
                     now,

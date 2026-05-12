@@ -201,13 +201,13 @@ class MqttIngressService:
                 await node_runtime_service.apply_detect_ack(config_id, node_id, body, boot_id=boot_id, session_id=session_id)
                 return
             if kind == "info/ack":
-                await node_runtime_service.apply_info_ack(config_id, node_id, body)
+                await node_runtime_service.apply_info_ack(config_id, node_id, body, boot_id=boot_id, session_id=session_id)
                 return
             if kind == "control/ack":
-                await node_runtime_service.apply_control_ack(config_id, node_id, body)
+                await node_runtime_service.apply_control_ack(config_id, node_id, body, boot_id=boot_id, session_id=session_id)
                 return
             if kind == "config/push/ack":
-                await node_runtime_service.apply_config_push_ack(config_id, node_id, body)
+                await node_runtime_service.apply_config_push_ack(config_id, node_id, body, boot_id=boot_id, session_id=session_id)
                 return
             await node_runtime_service.apply_generic_ack(config_id, node_id, boot_id=boot_id, session_id=session_id)
             return

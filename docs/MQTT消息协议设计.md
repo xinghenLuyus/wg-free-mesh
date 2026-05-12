@@ -359,8 +359,8 @@
 
 - `heartbeat` 不需要 ACK。
 - 客户端固定每 30 分钟发送一次。
-- 服务端超过 45 分钟未收到 heartbeat，视为心跳超时。
-- heartbeat 是客户端单向状态上报，用于被动判断客户端在线和 WireGuard 在线。
+- 服务端不只依赖 heartbeat 判断在线；heartbeat 是低频可达信号之一。
+- heartbeat 是客户端单向状态上报，用于被动刷新客户端可达时间和 WireGuard 在线状态。
 - `wg_online` 只表示当前 profile 对应 `interface_name` 的运行状态。
 
 ## ACK 规则
@@ -382,6 +382,7 @@
 - 服务端向 broker 发布成功，不算真正成功。
 - 只有收到客户端对应 `request_id` 的 ACK，才算这次动作闭环完成。
 - ACK 只表达对应命令的接收、执行完成、失败或超时。
+- 任意 ACK 同时证明客户端在当前时刻可达，会刷新服务端 `last_reachable_at` 和运行态在线状态。
 - 命令行输出、stdout/stderr、诊断文本全部通过 `event` 上报。
 
 ## retained / LWT 规则
@@ -421,6 +422,7 @@ LWT payload 直接表达“正常离线”事件，例如：
 
 - 遗言是唯一“正常离线”的判定来源。
 - 一旦收到遗言，控制台状态直接收束为 `离线`。
+- 遗言之后如果又收到 heartbeat、detect ACK、control ACK、info ACK、config push ACK 或非 `offline` 的 event，说明客户端已重新可达，状态应恢复为 `在线`。
 
 ## 在线状态投影规则
 
@@ -433,12 +435,10 @@ LWT payload 直接表达“正常离线”事件，例如：
 判定规则：
 
 - `在线`
-  - 最近 heartbeat 未超时且上报 `client_online=true`
-  - 或最近一次 detect 成功且上报 `client_online=true`
+  - 最近存在有效可达信号，且没有更新的离线信号
 - `掉线`
-  - heartbeat 超时
-  - 或 detect 失败
-  - 或 detect 返回综合异常
+  - 所有有效可达信号都超过服务端 TTL
+  - 或 detect 失败 / 超时导致当前可达性无法确认
 - `离线`
   - 收到遗言
   - 或未初始化
@@ -448,6 +448,8 @@ LWT payload 直接表达“正常离线”事件，例如：
 
 补充说明：
 
+- 有效可达信号包括 heartbeat、detect ACK、control ACK、info ACK、config push ACK、generic ACK 和非 `offline` 的 client event。
+- 服务端保留 30 分钟 heartbeat 以节约流量，在线 TTL 必须大于 heartbeat 周期；当前按 90 分钟投影，避免一次心跳丢失造成误判。
 - “异常掉线”不是第四种页面状态，只是 `掉线` 的内部原因。
 - 遗言是唯一正常掉线方式。
 - WireGuard 展示态以 `wg_runtime_state` 为准，而不是单纯布尔值：

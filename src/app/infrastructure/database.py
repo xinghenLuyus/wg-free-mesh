@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import timedelta
 from pathlib import Path
 import sqlite3
 
@@ -201,6 +202,8 @@ def init_database() -> None:
               session_id TEXT NOT NULL DEFAULT '',
               last_heartbeat_at TEXT,
               last_detect_ack_at TEXT,
+              last_reachable_at TEXT,
+              last_offline_at TEXT,
               last_will_at TEXT,
               last_event TEXT NOT NULL DEFAULT '',
               last_event_at TEXT,
@@ -259,13 +262,69 @@ def init_database() -> None:
         _ensure_column(connection, "node_client_state", "client_platform", "client_platform TEXT NOT NULL DEFAULT ''")
         _ensure_column(connection, "node_client_state", "client_version", "client_version TEXT NOT NULL DEFAULT ''")
         _ensure_column(connection, "node_client_state", "client_hostname", "client_hostname TEXT NOT NULL DEFAULT ''")
+        _ensure_column(connection, "node_client_state", "last_reachable_at", "last_reachable_at TEXT")
+        _ensure_column(connection, "node_client_state", "last_offline_at", "last_offline_at TEXT")
         _ensure_column(connection, "endpoint_runtime_status", "heartbeat_client_online", "heartbeat_client_online INTEGER NOT NULL DEFAULT 0")
         _ensure_column(connection, "endpoint_runtime_status", "heartbeat_wg_online", "heartbeat_wg_online INTEGER NOT NULL DEFAULT 0")
         _ensure_column(connection, "endpoint_runtime_status", "detect_client_online", "detect_client_online INTEGER NOT NULL DEFAULT 0")
         _ensure_column(connection, "endpoint_runtime_status", "detect_wg_online", "detect_wg_online INTEGER NOT NULL DEFAULT 0")
         _ensure_column(connection, "nodes", "enabled", "enabled INTEGER NOT NULL DEFAULT 1")
-
         now = now_utc().isoformat()
+        connection.execute(
+            """
+            UPDATE node_client_state
+            SET last_reachable_at = NULLIF(
+                    max(
+                        coalesce(last_heartbeat_at, ''),
+                        coalesce(last_detect_ack_at, ''),
+                        CASE
+                            WHEN last_event NOT LIKE 'offline:%' THEN coalesce(last_event_at, '')
+                            ELSE ''
+                        END
+                    ),
+                    ''
+                )
+            WHERE last_reachable_at IS NULL
+            """
+        )
+        connection.execute(
+            """
+            UPDATE node_client_state
+            SET last_offline_at = last_will_at
+            WHERE last_offline_at IS NULL AND last_will_at IS NOT NULL
+            """
+        )
+        connection.execute(
+            """
+            UPDATE endpoint_runtime_status
+            SET online = 1,
+                connectivity_state = 'online',
+                last_seen = (
+                    SELECT s.last_reachable_at
+                    FROM node_client_state s
+                    WHERE s.config_id = endpoint_runtime_status.config_id
+                      AND s.node_id = endpoint_runtime_status.node_id
+                ),
+                last_connectivity_reason = 'migration-reachable-signal',
+                updated_at = ?
+            WHERE online = 0
+              AND EXISTS (
+                SELECT 1
+                FROM node_client_state s
+                JOIN nodes n ON n.id = s.node_id
+                WHERE s.config_id = endpoint_runtime_status.config_id
+                  AND s.node_id = endpoint_runtime_status.node_id
+                  AND s.client_initialized = 1
+                  AND n.enabled = 1
+                  AND n.node_type = 'dynamic'
+                  AND s.last_reachable_at IS NOT NULL
+                  AND (s.last_offline_at IS NULL OR s.last_reachable_at > s.last_offline_at)
+                  AND s.last_reachable_at >= ?
+              )
+            """,
+            (now, (now_utc() - timedelta(minutes=90)).isoformat()),
+        )
+
         connection.execute(
             """
             INSERT OR IGNORE INTO node_client_state

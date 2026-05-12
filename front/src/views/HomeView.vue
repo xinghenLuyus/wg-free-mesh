@@ -583,7 +583,7 @@ watch(
 
 .config-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr));
   gap: 16px;
   margin-top: 16px;
 }
@@ -591,6 +591,8 @@ watch(
 .config-card {
   display: grid;
   gap: 18px;
+  width: 100%;
+  min-width: 0;
   min-height: 292px;
   padding: 18px;
   border: 1px solid var(--app-border);
@@ -630,6 +632,7 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .config-card__status-tags {
@@ -655,19 +658,27 @@ watch(
 .config-card__body {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .config-card__body h3 {
+  overflow: hidden;
   margin: 0;
   color: var(--app-text-strong);
   font-size: 20px;
   line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .config-card__body p {
+  display: -webkit-box;
+  overflow: hidden;
   margin: 0;
   color: var(--app-muted);
   line-height: 1.6;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .config-stat-grid {
@@ -704,9 +715,18 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
   color: var(--app-faint);
   font-size: 12px;
   font-weight: 650;
+}
+
+.config-card__foot > span:last-child {
+  overflow: hidden;
+  min-width: 0;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .config-list {
@@ -923,6 +943,20 @@ watch(
   .config-stat-grid,
   .config-stat-grid--list {
     grid-template-columns: 1fr;
+  }
+
+  .config-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .config-card {
+    min-height: unset;
+    padding: 16px;
+  }
+
+  .config-card__head,
+  .config-card__foot {
+    align-items: flex-start;
   }
 }
 </style>

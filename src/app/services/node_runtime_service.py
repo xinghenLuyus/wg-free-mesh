@@ -70,17 +70,43 @@ class NodeRuntimeService:
         await self._publish_runtime_scope(config_id, node_id)
 
     async def apply_generic_ack(self, config_id: str, node_id: str, *, boot_id: str = "", session_id: str = "") -> None:
+        store.mark_client_reachable(config_id, node_id, reason="generic-ack", boot_id=boot_id, session_id=session_id)
         await self._publish_runtime_scope(config_id, node_id)
 
-    async def apply_info_ack(self, config_id: str, node_id: str, body: dict[str, Any]) -> None:
-        await self._apply_ack(config_id, node_id, body, default_action="wg_show")
+    async def apply_info_ack(
+        self,
+        config_id: str,
+        node_id: str,
+        body: dict[str, Any],
+        *,
+        boot_id: str = "",
+        session_id: str = "",
+    ) -> None:
+        await self._apply_ack(config_id, node_id, body, default_action="wg_show", boot_id=boot_id, session_id=session_id)
 
-    async def apply_control_ack(self, config_id: str, node_id: str, body: dict[str, Any]) -> None:
-        await self._apply_ack(config_id, node_id, body, default_action="")
+    async def apply_control_ack(
+        self,
+        config_id: str,
+        node_id: str,
+        body: dict[str, Any],
+        *,
+        boot_id: str = "",
+        session_id: str = "",
+    ) -> None:
+        await self._apply_ack(config_id, node_id, body, default_action="", boot_id=boot_id, session_id=session_id)
 
-    async def apply_config_push_ack(self, config_id: str, node_id: str, body: dict[str, Any]) -> None:
+    async def apply_config_push_ack(
+        self,
+        config_id: str,
+        node_id: str,
+        body: dict[str, Any],
+        *,
+        boot_id: str = "",
+        session_id: str = "",
+    ) -> None:
         request_id = str(body.get("request_id") or "")
         if not request_id:
+            store.mark_client_reachable(config_id, node_id, reason="config-push-ack", boot_id=boot_id, session_id=session_id)
             await self._publish_runtime_scope(config_id, node_id)
             return
         payload = _payload(body)
@@ -94,11 +120,23 @@ class NodeRuntimeService:
             )
         except Exception:
             pass
+        store.mark_client_reachable(config_id, node_id, reason="config-push-ack", boot_id=boot_id, session_id=session_id)
         await self._publish_runtime_scope(config_id, node_id)
 
-    async def _apply_ack(self, config_id: str, node_id: str, body: dict[str, Any], *, default_action: str) -> None:
+    async def _apply_ack(
+        self,
+        config_id: str,
+        node_id: str,
+        body: dict[str, Any],
+        *,
+        default_action: str,
+        boot_id: str = "",
+        session_id: str = "",
+    ) -> None:
         request_id = str(body.get("request_id") or "")
         if not request_id:
+            reason = f"{default_action or 'control'}-ack"
+            store.mark_client_reachable(config_id, node_id, reason=reason, boot_id=boot_id, session_id=session_id)
             await self._publish_runtime_scope(config_id, node_id)
             return
         payload = _payload(body)
@@ -118,6 +156,13 @@ class NodeRuntimeService:
             )
         except Exception:
             pass
+        store.mark_client_reachable(
+            config_id,
+            node_id,
+            reason=f"{action or default_action or 'control'}-ack",
+            boot_id=boot_id,
+            session_id=session_id,
+        )
         await self._publish_runtime_scope(config_id, node_id)
 
     async def _publish_runtime_scope(self, config_id: str, node_id: str) -> None:

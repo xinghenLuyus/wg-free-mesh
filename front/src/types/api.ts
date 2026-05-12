@@ -434,6 +434,8 @@ export interface EndpointStatusRead {
     session_id?: string
     last_heartbeat_at?: string | null
     last_detect_ack_at?: string | null
+    last_reachable_at?: string | null
+    last_offline_at?: string | null
     last_will_at?: string | null
     last_event?: string
     last_event_at?: string | null
