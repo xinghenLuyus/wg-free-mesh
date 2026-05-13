@@ -167,13 +167,15 @@ onMounted(() => {
           <label v-for="node in options.nodes" :key="node.id" class="endpoint-row" :class="{ 'endpoint-row--disabled': !node.can_download }">
             <el-checkbox :value="node.id" :disabled="!node.can_download" />
             <span class="endpoint-row__main">
-              <strong>{{ node.name }}</strong>
-              <span>{{ node.virtual_ip || t('common.notAvailable') }} · {{ node.node_type }}</span>
-            </span>
-            <span class="endpoint-row__meta">
-              <span v-if="node.can_download">{{ t('tools.configBulkDownload.stagedVersion') }} {{ node.staged_version }}</span>
-              <span v-else>{{ t('tools.configBulkDownload.notReady') }}</span>
-              <small>{{ t('tools.configBulkDownload.syncStatus') }}: {{ node.sync_status }}</small>
+              <span class="endpoint-row__title">
+                <strong>{{ node.name }}</strong>
+                <em>{{ node.can_download ? `${t('tools.configBulkDownload.stagedVersion')} ${node.staged_version}` : t('tools.configBulkDownload.notReady') }}</em>
+              </span>
+              <span class="endpoint-row__meta">
+                <small>{{ node.virtual_ip || t('common.notAvailable') }}</small>
+                <small>{{ node.node_type }}</small>
+                <small>{{ t('tools.configBulkDownload.syncStatus') }}: {{ node.sync_status }}</small>
+              </span>
             </span>
           </label>
         </el-checkbox-group>
@@ -207,22 +209,29 @@ onMounted(() => {
 .bulk-panel :deep(.el-select) { width: 100%; }
 .bulk-select-all { display: flex; align-items: center; gap: 10px; color: var(--app-text); font-weight: 750; }
 .bulk-meta { color: var(--app-muted); font-size: 13px; }
-.endpoint-list { display: grid; gap: 10px; }
+.endpoint-list { display: grid; gap: 8px; }
 .endpoint-row {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(190px, auto); align-items: center; gap: 12px; padding: 14px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 10px; min-width: 0; padding: 10px 12px;
   border: 1px solid var(--app-border-soft); border-radius: 10px; background: var(--app-surface-elevated);
 }
 .endpoint-row--disabled { opacity: .62; }
-.endpoint-row__main { display: grid; gap: 4px; min-width: 0; }
-.endpoint-row__main strong { color: var(--app-text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.endpoint-row__main span, .endpoint-row__meta small { color: var(--app-muted); font-size: 12px; }
-.endpoint-row__meta { display: grid; gap: 4px; justify-items: end; color: var(--app-text); font-size: 12px; font-weight: 750; }
+.endpoint-row__main { display: grid; gap: 5px; min-width: 0; }
+.endpoint-row__title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.endpoint-row__title strong {
+  min-width: 0; color: var(--app-text-strong); font-size: 14px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.endpoint-row__title em {
+  flex: 0 0 auto; max-width: 46%; padding: 2px 7px; border-radius: 999px; background: var(--app-surface-selected); color: var(--app-primary-strong);
+  font-size: 11px; font-style: normal; font-weight: 800; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.endpoint-row__meta { display: flex; flex-wrap: wrap; gap: 5px 10px; min-width: 0; color: var(--app-muted); }
+.endpoint-row__meta small { min-width: 0; color: var(--app-muted); font-size: 12px; line-height: 1.35; overflow-wrap: anywhere; }
 @media (max-width: 960px) {
   .tool-hero { align-items: flex-start; padding: 24px; }
   .tool-hero > .el-icon { width: 64px; height: 64px; font-size: 32px; }
   .bulk-layout { grid-template-columns: 1fr; }
   .bulk-panel--controls { position: static; }
-  .endpoint-row { grid-template-columns: auto minmax(0, 1fr); }
-  .endpoint-row__meta { grid-column: 2; justify-items: start; }
+  .endpoint-row__title { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .endpoint-row__title em { max-width: 100%; }
 }
 </style>
