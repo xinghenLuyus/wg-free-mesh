@@ -586,6 +586,7 @@ Authorization: Bearer <access_token>
 ### `POST /api/v1/tools/download/config-bulk/package`
 
 - 用途：生成配置批量下载 zip
+- 生命周期：生成新批量包前，后端会删除已有配置批量 zip，只保留最近一次生成结果
 - 鉴权：后台会话令牌
 - 请求字段：
   - `config_id`

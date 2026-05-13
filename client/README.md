@@ -30,7 +30,7 @@
 - ACK 只表示命令执行状态；命令行输出统一通过 `event` 回传
 - 动态节点先经过客户端初始化页，再进入真正控制页
 - 绑定命令为一次性命令，默认 5 分钟有效
-- heartbeat 每 30 分钟上报一次，45 分钟未收到由服务端判定离线
+- heartbeat 每 30 分钟上报一次；服务端同时使用 heartbeat、ACK 和非离线 event 投影在线态
 - 前端存在 SSE 订阅时，服务端每 2 分钟主动发送 `detect`
 - 客户端应以系统服务运行，否则 WireGuard 状态读取和控制可能权限不足
 
@@ -40,24 +40,56 @@
 
 ```powershell
 cd D:\wenjian\stepsave\project\wg-free-mesh\client
-go build -o .\bin\wfmctl.exe .\cmd\ctl
-go build -o .\bin\wfm-agent.exe .\cmd\agent
+python build_release.py
 ```
 
-### 2. 绑定节点
+发布构建会读取 [src/pyproject.toml](D:/wenjian/stepsave/project/wg-free-mesh/src/pyproject.toml) 中的 `[project].version`，并通过 Go `ldflags` 注入 `wfmctl` / `wfm-agent`。构建产物输出到 `client/dist/`。
 
-绑定 token 不应手写，应该在控制台动态节点的“端点控制”初始化页点击“生成节点绑定命令并复制”获得。
-
-Windows 生产环境建议使用管理员 PowerShell：
+只构建单个平台：
 
 ```powershell
-.\bin\wfmctl.exe bind --server https://example.com --token <token>
+python build_release.py --target windows/amd64
 ```
 
-Linux / macOS 生产环境建议使用 `sudo`：
+### 2. 安装并启动客户端
+
+`install` 在三端语义一致：安装系统服务、设置开机自启、立即启动服务，并把当前 `wfmctl` 所在目录加入全局命令路径。`start` 仍然保留，用于服务已安装但当前未运行时手动启动。
+
+如果安装后移动了 `wfmctl` 所在目录，全局命令路径会失效。此时在新目录重新执行安装命令即可修复。
+
+Windows 生产环境建议在解压后的客户端目录使用管理员 PowerShell：
+
+```powershell
+.\wfmctl.exe install
+wfmctl status
+```
+
+Linux 生产环境建议在解压后的客户端目录使用 `sudo`：
 
 ```bash
-sudo ./wfmctl bind --server https://example.com --token <token>
+sudo ./wfmctl install
+wfmctl status
+```
+
+macOS 生产环境建议在解压后的客户端目录使用 `sudo`：
+
+```bash
+sudo ./wfmctl install
+wfmctl status
+```
+
+服务运行账号：
+
+- Windows：`LocalSystem`
+- Linux：`root`
+- macOS：`root`
+
+### 3. 绑定节点
+
+绑定 token 不应手写，应该在控制台动态节点的“端点控制”初始化页点击“生成端点绑定命令并复制”获得。完成 `install` 后，三端都使用统一绑定命令：
+
+```powershell
+wfmctl bind --server https://example.com --token <token>
 ```
 
 `bind` 会写入机器级 profile 目录：
@@ -78,39 +110,6 @@ wfmctl unbind --all
 `unbind` 删除本机 profile、MQTT 凭据、目标配置和运行文件，不负责撤销服务端节点权限。服务端侧权限回收仍应在控制台执行“重置客户端”、节点转静态、节点删除或配置停用。
 
 如果 `wfm-agent` 服务正在运行，`unbind` 需要重启整个服务，让已加载的 MQTT session 立即退出并重新扫描剩余 profile。
-
-### 3. 安装并启动客户端
-
-`install` 在三端语义一致：安装系统服务、设置开机自启、立即启动服务，并把当前 `wfmctl` 所在目录加入全局命令路径。`start` 仍然保留，用于服务已安装但当前未运行时手动启动。
-
-如果安装后移动了 `wfmctl` 所在目录，全局命令路径会失效。此时在新目录重新执行 `wfmctl install` 即可修复。
-
-Windows：
-
-```powershell
-.\bin\wfmctl.exe install
-wfmctl status
-```
-
-Linux：
-
-```bash
-sudo ./wfmctl install
-wfmctl status
-```
-
-macOS：
-
-```bash
-sudo ./wfmctl install
-wfmctl status
-```
-
-服务运行账号：
-
-- Windows：`LocalSystem`
-- Linux：`root`
-- macOS：`root`
 
 ### 4. 常用维护命令
 
@@ -158,6 +157,8 @@ go run .\cmd\agent
 
 ## 手动构建
 
+手动 `go build` 仅用于开发调试，二进制版本会显示为 `dev`。正式发布包必须使用 `python build_release.py` 或后端客户端下载页构建。
+
 ```powershell
 cd D:\wenjian\stepsave\project\wg-free-mesh\client
 go build ./...
@@ -168,8 +169,8 @@ go build ./...
 ```powershell
 go build -o .\bin\wfmctl.exe .\cmd\ctl
 go build -o .\bin\wfm-agent.exe .\cmd\agent
-go run .\cmd\ctl list
-go run .\cmd\agent
+go run ./cmd/ctl version
+go run ./cmd/agent
 ```
 
 如果只想更新单个二进制：
@@ -188,6 +189,15 @@ $env:GOOS='linux'; $env:GOARCH='amd64'; go build -o .\bin\wfmctl-linux-amd64 .\c
 Remove-Item Env:GOOS
 Remove-Item Env:GOARCH
 ```
+
+## 版本来源
+
+项目唯一版本源是 [src/pyproject.toml](D:/wenjian/stepsave/project/wg-free-mesh/src/pyproject.toml) 的 `[project].version`。
+
+- 后端 API 版本展示读取该字段。
+- 后端客户端下载构建读取该字段，并注入客户端二进制。
+- `client/build_release.py` 读取该字段，并生成所有发布 zip。
+- `client/internal/bind.Version` 默认值仅为开发占位 `dev`，不是版本源。
 
 ## 设计原则
 

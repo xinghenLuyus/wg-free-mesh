@@ -143,7 +143,7 @@ python -m pytest -q
 - FastAPI 优先读取根目录 `front/dist`
 - Docker 镜像会先构建前端，再把 `dist` 复制进后端镜像
 - 生产启动命令同样带 `--timeout-graceful-shutdown 1`，避免 SSE 长连接阻塞停机
-- 下载工具生成的客户端和配置批量下载产物缓存到后端运行数据目录 `data/artifacts/`；本地开发使用 `--reload` 时应排除 `data` 目录，避免产物写入触发重载
+- 下载工具生成的客户端构建产物缓存到后端运行数据目录 `data/artifacts/clients/`；配置批量下载临时包写入 `data/artifacts/config-bulk/`，每次生成新包时会删除旧包，只保留最近一次生成结果。本地开发使用 `--reload` 时应排除 `data` 目录，避免产物写入触发重载
 
 ## 目录索引
 

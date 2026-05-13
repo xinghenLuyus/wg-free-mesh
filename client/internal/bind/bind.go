@@ -13,7 +13,7 @@ import (
 	"wfm/client/internal/profile"
 )
 
-const Version = "0.1.0"
+var Version = "dev"
 
 type requestBody struct {
 	Token         string `json:"token"`
@@ -70,4 +70,3 @@ func Run(serverURL, token string) (profile.Profile, error) {
 	}
 	return result, nil
 }
-

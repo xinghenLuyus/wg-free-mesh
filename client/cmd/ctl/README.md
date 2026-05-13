@@ -33,6 +33,15 @@
 
 ## 构建
 
+正式发布请在 `client/` 根目录使用统一脚本，它会从 `src/pyproject.toml` 读取版本并注入二进制：
+
+```powershell
+cd D:\wenjian\stepsave\project\wg-free-mesh\client
+python build_release.py --target windows/amd64
+```
+
+下面的命令只用于开发调试，版本显示为 `dev`：
+
 ```powershell
 cd D:\wenjian\stepsave\project\wg-free-mesh\client
 go build -o .\bin\wfmctl.exe .\cmd\ctl

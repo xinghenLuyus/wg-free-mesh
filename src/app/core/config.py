@@ -6,6 +6,8 @@ from pydantic import field_validator
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.version import read_project_version
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -15,7 +17,6 @@ class Settings(BaseSettings):
     )
 
     app_name: str = "WG Free Mesh API"
-    app_version: str = "0.1.0"
     debug: bool = True
     api_v1_prefix: str = "/api/v1"
     api_v0_prefix: str = "/api/v0"
@@ -54,6 +55,10 @@ class Settings(BaseSettings):
         if not self.database_url.startswith("sqlite:///"):
             return "./data/wg_free_mesh.db"
         return self.database_url.removeprefix("sqlite:///")
+
+    @property
+    def app_version(self) -> str:
+        return read_project_version()
 
     @property
     def dev_test_api_enabled(self) -> bool:

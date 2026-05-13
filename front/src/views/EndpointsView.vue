@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Monitor, RefreshRight, SwitchButton, VideoPause, VideoPlay } from '@element-plus/icons-vue'
+import { CopyDocument, Download, Monitor, RefreshRight, SwitchButton, VideoPause, VideoPlay } from '@element-plus/icons-vue'
 import { computed, onMounted, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -29,6 +29,10 @@ const bindingCommand = shallowRef('')
 const bindingExpiresAt = shallowRef('')
 const bindingBusy = shallowRef(false)
 let lastRealtimeVersion = 0
+const installCommands = [
+  { key: 'windows', labelKey: 'endpointControl.installCommandWindowsAdmin', command: '.\\wfmctl.exe install' },
+  { key: 'unix', labelKey: 'endpointControl.installCommandUnix', command: 'sudo ./wfmctl install' },
+]
 
 const outputLogs = computed(() => logs.value.filter((log) => log.action === 'event').slice(0, 20))
 
@@ -103,6 +107,19 @@ async function copyText(value: string) {
   input.select()
   document.execCommand('copy')
   document.body.removeChild(input)
+}
+
+async function copyInstallCommand(command: string) {
+  try {
+    await copyText(command)
+    notify.success(t('endpointControl.installCommandCopied'))
+  } catch (error) {
+    notify.error(error instanceof Error ? error.message : t('endpointControl.installCommandCopyFailed'))
+  }
+}
+
+function goToClientDownload() {
+  void router.push('/tools/download/client')
 }
 
 async function generateBindCommand() {
@@ -222,15 +239,40 @@ watch(
           </div>
           <div class="endpoint-init__steps">
             <div class="endpoint-init__step">
-              <strong>{{ t('endpointControl.downloadClientStep') }}</strong>
-              <span>{{ t('endpointControl.downloadClientPlaceholder') }}</span>
+              <div class="endpoint-init__step-header">
+                <div>
+                  <strong>{{ t('endpointControl.downloadClientStep') }}</strong>
+                  <span>{{ t('endpointControl.downloadClientPlaceholder') }}</span>
+                </div>
+                <el-button :icon="Download" @click="goToClientDownload">
+                  {{ t('endpointControl.downloadClientAction') }}
+                </el-button>
+              </div>
             </div>
             <div class="endpoint-init__step">
-              <strong>{{ t('endpointControl.bindCommandStep') }}</strong>
-              <span>{{ t('endpointControl.bindCommandDescription') }}</span>
-              <el-button type="primary" :loading="bindingBusy" @click="generateBindCommand">
-                {{ t('endpointControl.generateBindCommand') }}
-              </el-button>
+              <strong>{{ t('endpointControl.installClientStep') }}</strong>
+              <span>{{ t('endpointControl.installClientDescription') }}</span>
+              <div class="install-command-list">
+                <div v-for="item in installCommands" :key="item.key" class="install-command">
+                  <div class="install-command__label">{{ t(item.labelKey) }}</div>
+                  <code class="install-command__text">{{ item.command }}</code>
+                  <el-button plain :icon="CopyDocument" @click="copyInstallCommand(item.command)">
+                    {{ t('endpointControl.copyInstallCommand') }}
+                  </el-button>
+                </div>
+              </div>
+              <small class="endpoint-init__hint">{{ t('endpointControl.installMoveHint') }}</small>
+            </div>
+            <div class="endpoint-init__step">
+              <div class="endpoint-init__step-header">
+                <div>
+                  <strong>{{ t('endpointControl.bindCommandStep') }}</strong>
+                  <span>{{ t('endpointControl.bindCommandDescription') }}</span>
+                </div>
+                <el-button type="primary" :loading="bindingBusy" @click="generateBindCommand">
+                  {{ t('endpointControl.generateBindCommand') }}
+                </el-button>
+              </div>
             </div>
           </div>
           <pre v-if="bindingCommand" class="bind-command">{{ bindingCommand }}</pre>
@@ -301,8 +343,15 @@ watch(
 .endpoint-init__description { margin: 8px 0 0; color: var(--app-muted); line-height: 1.6; }
 .endpoint-init__steps { display: grid; gap: 12px; }
 .endpoint-init__step { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-sunken); }
+.endpoint-init__step-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.endpoint-init__step-header > div { display: grid; gap: 8px; min-width: 0; }
 .endpoint-init__step strong { color: var(--app-text-strong); }
-.endpoint-init__step span, .endpoint-init__expires { color: var(--app-muted); }
+.endpoint-init__step span, .endpoint-init__expires, .endpoint-init__hint { color: var(--app-muted); }
+.endpoint-init__hint { font-size: 12px; line-height: 1.5; }
+.install-command-list { display: grid; gap: 8px; }
+.install-command { display: grid; grid-template-columns: minmax(86px, auto) minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-elevated); }
+.install-command__label { color: var(--app-muted); font-size: 13px; font-weight: 700; }
+.install-command__text { min-width: 0; overflow-x: auto; padding: 7px 9px; border: 1px solid var(--app-border-soft); border-radius: 6px; background: var(--app-surface-sunken); color: var(--app-text-strong); font-family: var(--app-font-mono, ui-monospace, SFMono-Regular, Consolas, monospace); white-space: nowrap; }
 .endpoint-disabled__message { color: var(--app-danger-text); line-height: 1.6; }
 .endpoint-output-box {
   display: grid;
@@ -334,4 +383,8 @@ watch(
 .bind-command { margin: 0; padding: 14px; border: 1px solid var(--app-border-strong); border-radius: 8px; overflow-x: auto; background: var(--app-surface-sunken); color: var(--app-text-strong); white-space: pre-wrap; word-break: break-all; }
 .empty-state { display: grid; place-items: center; min-height: 120px; border: 1px dashed var(--app-border-strong); border-radius: 8px; color: var(--app-muted); }
 @media (max-width: 860px) { .template-toolbar { flex-direction: column; align-items: stretch; } }
+@media (max-width: 720px) {
+  .endpoint-init__step-header { align-items: stretch; }
+  .install-command { grid-template-columns: 1fr; align-items: stretch; }
+}
 </style>

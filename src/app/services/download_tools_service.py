@@ -45,6 +45,7 @@ class DownloadToolsService:
     def __init__(self) -> None:
         self._build_locks: dict[str, threading.Lock] = {}
         self._build_locks_guard = threading.Lock()
+        self._config_bulk_lock = threading.Lock()
 
     @property
     def _repo_root(self) -> Path:
@@ -147,8 +148,8 @@ class DownloadToolsService:
             temp_dir = Path(temp_dir_text)
             ctl_path = temp_dir / f"wfmctl{executable_suffix}"
             agent_path = temp_dir / f"wfm-agent{executable_suffix}"
-            self._run_go_build(client_dir, env, ctl_path, "./cmd/ctl")
-            self._run_go_build(client_dir, env, agent_path, "./cmd/agent")
+            self._run_go_build(client_dir, env, ctl_path, "./cmd/ctl", settings.app_version)
+            self._run_go_build(client_dir, env, agent_path, "./cmd/agent", settings.app_version)
 
             temp_zip = artifact_path.with_suffix(".tmp")
             with ZipFile(temp_zip, "w", ZIP_DEFLATED) as archive:
@@ -168,10 +169,19 @@ class DownloadToolsService:
                 )
             temp_zip.replace(artifact_path)
 
-    def _run_go_build(self, client_dir: Path, env: dict[str, str], output_path: Path, package: str) -> None:
+    def _run_go_build(self, client_dir: Path, env: dict[str, str], output_path: Path, package: str, version: str) -> None:
         try:
             result = subprocess.run(
-                ["go", "build", "-trimpath", "-o", str(output_path), package],
+                [
+                    "go",
+                    "build",
+                    "-trimpath",
+                    "-ldflags",
+                    f"-X wfm/client/internal/bind.Version={version}",
+                    "-o",
+                    str(output_path),
+                    package,
+                ],
                 cwd=client_dir,
                 env=env,
                 capture_output=True,
@@ -284,10 +294,12 @@ class DownloadToolsService:
                 for entry in entries
             ],
         }
-        with ZipFile(path, "w", ZIP_DEFLATED) as archive:
-            for entry in entries:
-                archive.writestr(str(entry["filename"]), str(entry["content"]))
-            archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=True, indent=2))
+        with self._config_bulk_lock:
+            self._remove_existing_config_bulk_packages()
+            with ZipFile(path, "w", ZIP_DEFLATED) as archive:
+                for entry in entries:
+                    archive.writestr(str(entry["filename"]), str(entry["content"]))
+                archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=True, indent=2))
 
         return {
             "package_id": package_id,
@@ -316,6 +328,10 @@ class DownloadToolsService:
         if path.parent != self._config_bulk_root or not path.exists():
             raise AppError("CONFIG_BULK_PACKAGE_NOT_FOUND", "Config bulk package not found", 404)
         return path
+
+    def _remove_existing_config_bulk_packages(self) -> None:
+        for path in self._config_bulk_root.glob("*.zip"):
+            path.unlink(missing_ok=True)
 
 
 download_tools_service = DownloadToolsService()
