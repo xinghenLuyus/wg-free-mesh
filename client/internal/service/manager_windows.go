@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 )
 
@@ -103,7 +104,7 @@ func Start() error {
 	if err := requireAdministrator(); err != nil {
 		return err
 	}
-	if err := run("start", "sc.exe", "start", Name); err != nil {
+	if err := startServiceRequest(); err != nil {
 		return err
 	}
 	fmt.Printf("Service %s start requested.\n", Name)
@@ -114,7 +115,7 @@ func Stop() error {
 	if err := requireAdministrator(); err != nil {
 		return err
 	}
-	if err := run("stop", "sc.exe", "stop", Name); err != nil {
+	if err := stopServiceRequest(); err != nil {
 		return err
 	}
 	fmt.Printf("Service %s stop requested.\n", Name)
@@ -125,7 +126,16 @@ func Restart() error {
 	if err := requireAdministrator(); err != nil {
 		return err
 	}
-	_ = Stop()
+	info, err := platformStatus()
+	if err != nil {
+		return err
+	}
+	if info.Installed && info.State != "stopped" {
+		_ = stopServiceRequest()
+		if err := waitForServiceState("stopped", 30*time.Second); err != nil {
+			return err
+		}
+	}
 	return Start()
 }
 
@@ -152,7 +162,15 @@ func platformLogs(lines int) error {
 	path := filepath.Join(logDir(), "wfm-agent.log")
 	body, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Printf("No log file found at %s\n", path)
+			return nil
+		}
 		return err
+	}
+	if strings.TrimSpace(string(body)) == "" {
+		fmt.Printf("Log file is empty: %s\n", path)
+		return nil
 	}
 	printLastLines(string(body), lines)
 	return nil
@@ -193,10 +211,12 @@ func serviceMain(argc uint32, argv **uint16) uintptr {
 	activeCancel = cancel
 	setStatus(serviceRunning, serviceAcceptStop|serviceAcceptShutdown)
 	stderr := serviceLogWriter()
+	fmt.Fprintf(stderr, "service started at %s\n", time.Now().Format(time.RFC3339))
 	err := activeRunner(ctx, stderr)
 	if err != nil {
 		fmt.Fprintf(stderr, "agent failed: %v\n", err)
 	}
+	fmt.Fprintf(stderr, "service stopped at %s\n", time.Now().Format(time.RFC3339))
 	setStatus(serviceStopped, 0)
 	return 0
 }
@@ -321,6 +341,49 @@ func run(action string, name string, args ...string) error {
 		return friendlyCommandError(action, err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+func startServiceRequest() error {
+	cmd := exec.Command("sc.exe", "start", Name)
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1056 {
+		return nil
+	}
+	return friendlyCommandError("start", err, strings.TrimSpace(string(output)))
+}
+
+func stopServiceRequest() error {
+	cmd := exec.Command("sc.exe", "stop", Name)
+	output, err := cmd.CombinedOutput()
+	if err == nil {
+		return nil
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1062 {
+		return nil
+	}
+	return friendlyCommandError("stop", err, strings.TrimSpace(string(output)))
+}
+
+func waitForServiceState(target string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastState string
+	for {
+		info, err := platformStatus()
+		if err != nil {
+			return err
+		}
+		lastState = info.State
+		if lastState == target {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("service %s did not reach %s state within %s; last state: %s", Name, target, timeout, lastState)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func commandOutput(action string, name string, args ...string) (string, error) {

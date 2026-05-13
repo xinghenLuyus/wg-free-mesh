@@ -169,7 +169,7 @@ func runBind(args []string) error {
 		return fmt.Errorf("bind failed: %w", err)
 	}
 	fmt.Printf("Bound profile %s for node %s\n", p.Profile.ProfileID, p.Profile.NodeName)
-	return restartIfRunning()
+	return service.ReloadOrStart()
 }
 
 func runUnbind(args []string) error {

@@ -49,6 +49,22 @@ func IsRunning() (bool, error) {
 	return info.Running, nil
 }
 
+func ReloadOrStart() error {
+	info, err := platformStatus()
+	if err != nil {
+		return err
+	}
+	if !info.Installed {
+		return nil
+	}
+	if info.Running {
+		fmt.Println("Restarting service to apply changes.")
+		return Restart()
+	}
+	fmt.Println("Starting service to apply changes.")
+	return Start()
+}
+
 func PurgeData() error {
 	return platformPurgeData()
 }

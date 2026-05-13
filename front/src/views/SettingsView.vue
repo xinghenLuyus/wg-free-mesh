@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, Connection, Delete, Download, Edit, Files, Lock, Monitor, Plus, Setting, Upload } from '@element-plus/icons-vue'
+import { Check, Connection, Delete, Download, Edit, Files, Lock, Monitor, Plus, RefreshLeft, Setting, Upload } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import type { FormInstance, FormItemRule, FormRules } from 'element-plus'
 import { computed, nextTick, onMounted, reactive, shallowRef } from 'vue'
@@ -30,6 +30,7 @@ const preferencesStore = usePreferencesStore()
 const actions = useAsyncActionGroup()
 const savingPassword = actions.isPending('save-password')
 const savingMqtt = actions.isPending('save-mqtt')
+const resettingMqtt = actions.isPending('reset-mqtt')
 const testingMqtt = actions.isPending('test-mqtt')
 const creatingSnapshot = actions.isPending('create-snapshot')
 const importingSnapshot = actions.isPending('import-snapshot')
@@ -159,6 +160,18 @@ async function saveMqtt() {
       notify.success(t('settings.mqttSaved'))
     } catch (error) {
       notify.error(error instanceof ApiClientError ? error.message : t('settings.mqttSaveFailed'))
+    }
+  })
+}
+
+async function resetMqtt() {
+  await actions.run('reset-mqtt', async () => {
+    try {
+      Object.assign(mqttForm, await api.resetMqttSettings())
+      mqttFormRef.value?.clearValidate()
+      notify.success(t('settings.mqttReset'))
+    } catch (error) {
+      notify.error(error instanceof ApiClientError ? error.message : t('settings.mqttResetFailed'))
     }
   })
 }
@@ -455,6 +468,7 @@ onMounted(async () => {
 
         <div class="action-row">
           <el-button type="primary" :icon="Check" :loading="savingMqtt" @click="saveMqtt">{{ t('settings.saveMqtt') }}</el-button>
+          <el-button :icon="RefreshLeft" :loading="resettingMqtt" @click="resetMqtt">{{ t('settings.resetMqtt') }}</el-button>
           <el-button :icon="Connection" :loading="testingMqtt" @click="testMqtt">{{ t('settings.testConnection') }}</el-button>
         </div>
       </el-form>

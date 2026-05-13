@@ -69,6 +69,7 @@ WFM_ENABLE_DEV_TEST_API=false
 
 客户端对外可见的 MQTT 默认 `host`、`port` 与 `tls` 来自 `WFM_MQTT_PUBLIC_HOST`、`WFM_MQTT_PUBLIC_PORT`、`WFM_MQTT_PUBLIC_TLS_PORT` 和 `WFM_MQTT_TLS_ENABLED`，前端设置页可以覆盖保存给后续绑定使用；客户端 MQTT 能力是否启用只由 `WFM_ENABLE_MQTT_SERVICES` 这个部署环境变量控制，不暴露给前端设置页。EMQX 容器侧的 TLS listener、证书路径、回查地址等容器专用参数由 `docker/.env` 控制。  
 `WFM_MQTT_PUBLIC_HOST` 只是客户端 MQTT 引导默认主机，可以填写服务主机的域名或 IP，不参与后端连接 EMQX 的内部通信。  
+TLS 开启时，后端从项目相对路径 `docker/emqx/certs/ca.crt` 读取 CA，并在客户端绑定时下发给客户端；客户端会校验 CA 和 MQTT 主机名。Docker 模式下该目录以只读方式挂载到 app 容器。  
 `WFM_APP_PORT` 只用于 Docker Compose 宿主机端口映射，后端本地运行不读取该变量。  
 EMQX 统一账号密码为 `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD`，本地手动运行后端且修改过 Docker 默认值时，需要让本地后端读取到同一组值。  
 `WFM_ENABLE_MQTT_SERVICES=false` 时，后端不会启动 MQTT 入口服务，所有客户端绑定和远程控制能力都会被禁用。
@@ -148,6 +149,7 @@ python -m pytest -q
 - 生产态由 FastAPI 同时提供 API 和前端静态资源
 - FastAPI 优先读取根目录 `front/dist`
 - Docker 镜像会先构建前端，再把 `dist` 复制进后端镜像
+- Docker 模式将项目目录 `src/data` 挂载到容器内 `/app/data`，和本地后端开发使用同一份运行数据
 - 生产启动命令同样带 `--timeout-graceful-shutdown 1`，避免 SSE 长连接阻塞停机
 - 下载工具生成的客户端构建产物缓存到后端运行数据目录 `data/artifacts/clients/`；配置批量下载临时包写入 `data/artifacts/config-bulk/`，每次生成新包时会删除旧包，只保留最近一次生成结果。本地开发使用 `--reload` 时应排除 `data` 目录，避免产物写入触发重载
 

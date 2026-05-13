@@ -26,6 +26,7 @@
 - 本地只维护系统级 `wfm-agent` 服务，服务启动时统一加载所有 profile
 - 运行期通信全部走 MQTT
 - MQTT 凭据按节点隔离，topic ACL 按节点收口
+- MQTT TLS 开启时，绑定响应会保存服务端下发的 CA，客户端连接时会校验 CA 和 MQTT 主机名
 - 配置下发、控制命令、主动探测和诊断信息必须有 ACK
 - ACK 只表示命令执行状态；命令行输出统一通过 `event` 回传
 - 动态节点先经过客户端初始化页，再进入真正控制页
@@ -60,7 +61,7 @@ python build_release.py --target windows/amd64
 Windows 生产环境建议在解压后的客户端目录使用管理员 PowerShell：
 
 ```powershell
-.\wfmctl.exe install
+.\wfmctl.exe install; $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine")
 wfmctl status
 ```
 

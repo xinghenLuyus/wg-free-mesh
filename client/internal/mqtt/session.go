@@ -3,6 +3,7 @@ package mqtt
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -107,7 +108,18 @@ func (s *Session) Run(ctx context.Context) error {
 func (s *Session) dial() (net.Conn, error) {
 	addr := net.JoinHostPort(s.profile.MQTT.Host, strconv.Itoa(s.profile.MQTT.Port))
 	if s.profile.MQTT.TLS {
-		return tls.Dial("tcp", addr, &tls.Config{MinVersion: tls.VersionTLS12, InsecureSkipVerify: true})
+		if strings.TrimSpace(s.profile.MQTT.CACert) == "" {
+			return nil, fmt.Errorf("mqtt tls ca certificate is missing, re-bind this client")
+		}
+		roots := x509.NewCertPool()
+		if !roots.AppendCertsFromPEM([]byte(s.profile.MQTT.CACert)) {
+			return nil, fmt.Errorf("invalid mqtt tls ca certificate, re-bind this client")
+		}
+		return tls.Dial("tcp", addr, &tls.Config{
+			MinVersion: tls.VersionTLS12,
+			RootCAs:    roots,
+			ServerName: s.profile.MQTT.Host,
+		})
 	}
 	return net.DialTimeout("tcp", addr, 10*time.Second)
 }

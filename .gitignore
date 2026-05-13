@@ -37,6 +37,7 @@ dist/
 # Go / client build outputs
 client/bin/
 client/build/
+client/.gocache/
 *.test
 coverage.out
 .coverprofile
@@ -71,6 +72,15 @@ temp/
 
 # Docker / local tooling
 .docker/
+!docker/emqx/data/
+docker/emqx/data/*
+!docker/emqx/data/.gitkeep
+!docker/emqx/log/
+docker/emqx/log/*
+!docker/emqx/log/.gitkeep
+!docker/emqx/certs/
+docker/emqx/certs/*
+!docker/emqx/certs/.gitkeep
 
 # IDE / editor / OS
 .DS_Store

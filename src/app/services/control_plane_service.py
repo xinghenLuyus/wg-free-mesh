@@ -682,6 +682,10 @@ class ControlPlaneService:
         )
         return self.mqtt_settings()
 
+    def reset_mqtt_settings(self):
+        store.delete_setting("mqtt_client")
+        return self.mqtt_settings()
+
     async def test_mqtt_settings(self, payload: dict[str, object]) -> dict[str, object]:
         host = str(payload.get("host", "")).strip()
         raw_port = payload.get("port", 0)

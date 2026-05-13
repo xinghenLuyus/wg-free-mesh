@@ -67,6 +67,7 @@ class SnapshotService:
     def restore_snapshot_archive(self, path: Path) -> None:
         archive_path = Path(path)
         self._validate_archive(archive_path)
+        self._clear_wireguard_dir()
         with ZipFile(archive_path, "r") as archive:
             self._safe_extract(archive, Path.cwd())
         self._remove_sqlite_sidecars()
@@ -136,6 +137,14 @@ class SnapshotService:
             database_path.with_name(f"{database_path.name}-shm"),
         ):
             sidecar_path.unlink(missing_ok=True)
+
+    def _clear_wireguard_dir(self) -> None:
+        target = wireguard_dir().resolve()
+        data_root = data_dir().resolve()
+        if target == data_root or data_root not in target.parents:
+            raise AppError("SNAPSHOT_RESTORE_UNSAFE_PATH", "WireGuard data path is unsafe", 500)
+        shutil.rmtree(target, ignore_errors=True)
+        target.mkdir(parents=True, exist_ok=True)
 
     def _rewrite_manifest(self, archive_path: Path, note: str) -> None:
         if not archive_path.exists():

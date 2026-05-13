@@ -119,10 +119,10 @@ admin / public
 
 ## 数据保存位置
 
-后端运行数据保存在 Docker volume：
+后端运行数据保存在项目目录：
 
 ```text
-docker_api_data -> /app/data
+src/data -> /app/data
 ```
 
 包括 SQLite 数据库、备份、WireGuard 配置、客户端下载构建产物和配置批量下载临时包。
@@ -190,31 +190,25 @@ WFM_MQTT_TLS_ENABLED=false
 
 需要启用客户端 TLS 时：
 
-1. 把证书放到 `docker/emqx/certs/`。
-2. 确认证书文件名匹配：
-
-```text
-ca.crt
-server.crt
-server.key
-```
-
-3. 修改 `docker/.env`：
+1. 确认 `WFM_MQTT_PUBLIC_HOST` 是客户端实际访问 EMQX 的域名或 IP。
+2. 修改 `docker/.env`：
 
 ```env
 WFM_MQTT_TLS_ENABLED=true
 ```
 
-4. 重启：
+3. 重启：
 
 ```powershell
 docker compose down
 docker compose up -d
 ```
 
-如果开启 TLS 但证书缺失，EMQX 会拒绝启动。
+首次启用时，EMQX 会在 `docker/emqx/certs/` 自动生成 `ca.crt`、`server.crt` 和 `server.key`。证书已存在时不会覆盖。
 
-启用后，EMQX 会开放 TLS listener，后端仍通过 `WFM_MQTT_URL=mqtt://emqx:1883` 连接 EMQX。
+启用后，EMQX 会开放 TLS listener，后端仍通过 `WFM_MQTT_URL=mqtt://emqx:1883` 连接 EMQX。客户端绑定时会拿到 `ca.crt` 内容，并在 TLS 连接时校验 CA 和 `WFM_MQTT_PUBLIC_HOST`。
+
+如果修改了 `WFM_MQTT_PUBLIC_HOST` 并希望证书 SAN 同步更新，删除 `docker/emqx/certs/` 下旧证书后重启，EMQX 会重新生成。
 
 ## 重新构建
 

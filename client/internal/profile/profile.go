@@ -12,6 +12,7 @@ type MQTTConfig struct {
 	Host     string              `json:"host"`
 	Port     int                 `json:"port"`
 	TLS      bool                `json:"tls"`
+	CACert   string              `json:"ca_cert,omitempty"`
 	Username string              `json:"username"`
 	Password string              `json:"password"`
 	ClientID string              `json:"client_id"`

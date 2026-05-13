@@ -180,6 +180,8 @@ export const api = {
     request<UiSettingsRead>('/settings/ui', { method: 'PUT', data: payload }),
   updateMqttSettings: (payload: MqttSettingsRead) =>
     request<MqttSettingsRead>('/settings/mqtt', { method: 'PUT', data: payload }),
+  resetMqttSettings: () =>
+    request<MqttSettingsRead>('/settings/mqtt/reset', { method: 'POST' }),
   testMqttSettings: (payload: MqttSettingsRead) =>
     request<{ success: boolean; message: string; latency_ms: number }>('/settings/mqtt/test', {
       method: 'POST',

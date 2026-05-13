@@ -3,7 +3,7 @@ FROM node:22-alpine AS front-build
 WORKDIR /front
 
 COPY front/package.json front/pnpm-lock.yaml ./
-RUN corepack enable && pnpm install --frozen-lockfile
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install --frozen-lockfile
 
 COPY front ./
 RUN pnpm run build

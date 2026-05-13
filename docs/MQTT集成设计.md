@@ -63,7 +63,7 @@
 - `WFM_MQTT_TLS_ENABLED=true`
   - EMQX 启用 TLS listener
   - 客户端默认拿到 8883
-  - 容器启动前必须准备好 `docker/emqx/certs/` 下的证书
+  - EMQX 启动脚本会在证书缺失时根据 `WFM_MQTT_PUBLIC_HOST` 自动生成 `docker/emqx/certs/` 下的 CA 和服务端证书
 - `WFM_EMQX_AUTHZ_URL`
   - 开发期默认回查本机后端 `http://host.docker.internal:8000/api/internal/emqx/authz`
 - `WFM_MQTT_TLS_ENABLED`
@@ -170,6 +170,7 @@
 - `MqttAuthService` 节点级 topic ACL 判断
 - `/api/internal/emqx/authz` 内部回查接口
 - 节点 bind 时创建或轮换 EMQX 账号
+- 节点 bind 时在 TLS 模式下下发 CA 证书，客户端据此校验 EMQX 服务端证书
 - Go 客户端 bind 后保存本地 profile 并连接 MQTT
 - 服务端作为高权限 MQTT 客户端订阅上行 topic
 - MQTT 服务启停状态纳入系统检查，并由 `WFM_ENABLE_MQTT_SERVICES` 作为部署级开关统一控制客户端相关能力

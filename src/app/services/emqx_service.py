@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 from collections.abc import Sequence
 
 import httpx
 
 from app.core.config import settings
+from app.core.errors import AppError
 from app.services.mqtt_auth_service import mqtt_auth_service
 
 
@@ -21,6 +23,22 @@ class EmqxService:
         password: str,
         client_id: str,
     ) -> dict[str, object]:
+        mqtt_settings = self._effective_client_settings()
+        payload: dict[str, object] = {
+            **mqtt_settings,
+            "username": username,
+            "password": password,
+            "client_id": client_id,
+        }
+        if mqtt_settings["tls"]:
+            payload["ca_cert"] = self._read_client_ca_cert()
+        return payload
+
+    def ensure_client_tls_ready(self) -> None:
+        if self._effective_client_settings()["tls"]:
+            self._read_client_ca_cert()
+
+    def _effective_client_settings(self) -> dict[str, Any]:
         from app.repositories.sqlite import store
 
         mqtt_settings = store.read_setting_json(
@@ -37,10 +55,34 @@ class EmqxService:
             "host": str(mqtt_settings.get("host") or settings.mqtt_public_host),
             "port": port,
             "tls": bool(mqtt_settings.get("tls", settings.mqtt_tls_enabled)),
-            "username": username,
-            "password": password,
-            "client_id": client_id,
         }
+
+    def _read_client_ca_cert(self) -> str:
+        for path in self._client_ca_candidates():
+            if path.exists():
+                return path.read_text(encoding="utf-8").strip()
+        raise AppError(
+            "MQTT_TLS_CA_NOT_READY",
+            "MQTT TLS CA certificate is not ready. Wait for EMQX to generate it or restart EMQX.",
+            409,
+        )
+
+    def _client_ca_candidates(self) -> list[Path]:
+        service_path = Path(__file__).resolve()
+        candidates = [
+            Path.cwd().parent / "docker" / "emqx" / "certs" / "ca.crt",
+            Path.cwd() / "docker" / "emqx" / "certs" / "ca.crt",
+            service_path.parents[3] / "docker" / "emqx" / "certs" / "ca.crt",
+            service_path.parents[2] / "docker" / "emqx" / "certs" / "ca.crt",
+        ]
+        unique: list[Path] = []
+        seen: set[Path] = set()
+        for candidate in candidates:
+            resolved = candidate.resolve()
+            if resolved not in seen:
+                unique.append(resolved)
+                seen.add(resolved)
+        return unique
 
     def node_credentials_payload(self, *, config_id: str, node_id: str, password: str) -> dict[str, object]:
         return {

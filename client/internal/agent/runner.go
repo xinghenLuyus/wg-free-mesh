@@ -17,9 +17,11 @@ func Run(ctx context.Context, stderr io.Writer) error {
 		return fmt.Errorf("load profiles failed: %w", err)
 	}
 	if len(profiles) == 0 {
-		fmt.Fprintln(stderr, "No profiles. Run wfmctl bind first.")
+		fmt.Fprintln(stderr, "No profiles. Waiting for wfmctl bind.")
+		<-ctx.Done()
 		return nil
 	}
+	fmt.Fprintf(stderr, "Loaded %d profile(s).\n", len(profiles))
 
 	var wg sync.WaitGroup
 	for _, item := range profiles {
@@ -31,6 +33,7 @@ func Run(ctx context.Context, stderr io.Writer) error {
 				if ctx.Err() != nil {
 					return
 				}
+				fmt.Fprintf(stderr, "starting mqtt session profile=%s host=%s port=%d tls=%t\n", p.Profile.ProfileID, p.MQTT.Host, p.MQTT.Port, p.MQTT.TLS)
 				session := wfmmqtt.NewSession(p)
 				if err := session.Run(ctx); err != nil && ctx.Err() == nil {
 					fmt.Fprintf(stderr, "mqtt session failed profile=%s err=%v\n", p.Profile.ProfileID, err)

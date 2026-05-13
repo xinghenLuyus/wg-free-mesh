@@ -35,6 +35,7 @@ async def bind_client(payload: ClientBindRequest) -> ApiResponse[dict[str, Any]]
     username = mqtt_auth_service.node_username(node.id)
     client_id = mqtt_auth_service.node_client_id(node.id)
 
+    emqx_service.ensure_client_tls_ready()
     response = emqx_service.upsert_node_user(node_id=node.id, password=password)
     if response.status_code >= 400:
         raise AppError(

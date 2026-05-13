@@ -28,9 +28,6 @@ class Settings(BaseSettings):
     mqtt_public_tls_port: int = 8883
     mqtt_tls_enabled: bool = False
     enable_mqtt_services: bool = True
-    mqtt_tls_ca_path: str = "/opt/emqx/etc/certs/ca.crt"
-    mqtt_tls_cert_path: str = "/opt/emqx/etc/certs/server.crt"
-    mqtt_tls_key_path: str = "/opt/emqx/etc/certs/server.key"
     emqx_api_base_url: str = "http://localhost:18083"
     emqx_username: str = "admin"
     emqx_password: str = "public"

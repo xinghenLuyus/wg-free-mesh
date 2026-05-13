@@ -8,7 +8,8 @@ services:
     ports:
       - "${WFM_APP_PORT:-8000}:8000"
     volumes:
-      - api_data:/app/data
+      - ../src/data:/app/data
+      - ./emqx/certs:/app/docker/emqx/certs:ro
     depends_on:
       - emqx
 
@@ -37,6 +38,3 @@ services:
       - ./emqx/log:/opt/emqx/log
       - ./emqx/certs:/opt/emqx/etc/certs
     command: ["/bin/sh", "/opt/emqx/wfm/start-emqx.sh"]
-
-volumes:
-  api_data:

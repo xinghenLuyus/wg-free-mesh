@@ -104,6 +104,17 @@ async def update_mqtt_settings(payload: MqttSettingsRequest) -> ApiResponse[dict
     return ok(result)
 
 
+@router.post("/mqtt/reset")
+async def reset_mqtt_settings() -> ApiResponse[dict[str, Any]]:
+    from app.services.mqtt_ingress_service import mqtt_ingress_service
+
+    result = control_plane_service.reset_mqtt_settings()
+    await mqtt_ingress_service.reconcile()
+    await control_plane_service.publish_mqtt_settings()
+    await control_plane_service.publish_system_status()
+    return ok(result)
+
+
 @router.post("/mqtt/test")
 async def test_mqtt(payload: MqttSettingsRequest) -> ApiResponse[dict[str, Any]]:
     return ok(await control_plane_service.test_mqtt_settings(payload.model_dump()))

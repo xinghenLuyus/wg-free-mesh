@@ -110,8 +110,7 @@ const systemStatusText = computed(() => {
   if (health.value?.dev_test_api_enabled) return t('layout.runningDev')
   if (!systemStatus.value) return t('layout.checking')
   if (systemStatus.value.summary.pending_sync_nodes > 0) return t('layout.pendingSync')
-  if (systemStatus.value.summary.online_nodes > 0) return t('layout.running')
-  return t('layout.waiting')
+  return t('layout.running')
 })
 const systemStatusMeta = computed(() => {
   if (!systemStatus.value) return t('layout.statusMetaEmpty')
