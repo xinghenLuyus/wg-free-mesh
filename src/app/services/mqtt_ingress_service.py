@@ -138,7 +138,7 @@ class MqttIngressService:
         hostname = parsed.hostname or "localhost"
         port = parsed.port or (8883 if parsed.scheme in {"mqtts", "ssl"} else 1883)
         tls_context: ssl.SSLContext | None = None
-        if parsed.scheme in {"mqtts", "ssl"} or settings.mqtt_tls_enabled:
+        if parsed.scheme in {"mqtts", "ssl"}:
             tls_context = ssl.create_default_context()
             tls_context.check_hostname = False
             tls_context.verify_mode = ssl.CERT_NONE

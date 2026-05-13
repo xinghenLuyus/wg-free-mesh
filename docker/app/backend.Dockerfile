@@ -12,6 +12,14 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates golang-go \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY client/go.mod client/go.sum /client/
+RUN cd /client && go mod download
+COPY client /client
+
 COPY src/pyproject.toml src/README.md ./
 COPY src/app ./app
 COPY --from=front-build /front/dist /front/dist

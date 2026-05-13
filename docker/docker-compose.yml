@@ -6,7 +6,7 @@ services:
     env_file:
       - ./.env
     ports:
-      - "8000:8000"
+      - "${WFM_APP_PORT:-8000}:8000"
     volumes:
       - api_data:/app/data
     depends_on:
@@ -23,9 +23,10 @@ services:
       EMQX_DASHBOARD__DEFAULT_USERNAME: ${WFM_EMQX_USERNAME}
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${WFM_EMQX_PASSWORD}
     ports:
-      - "1883:1883"
-      - "8883:8883"
-      - "18083:18083"
+      - "${WFM_MQTT_PUBLIC_PORT:-1883}:1883"
+      - "${WFM_MQTT_PUBLIC_TLS_PORT:-8883}:8883"
+      # EMQX Dashboard/API is disabled by default. Uncomment only when local administration is needed.
+      # - "18083:18083"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

@@ -10,7 +10,7 @@
 - `docker/.env` 与 `src/.env` 职责分离
 - 客户端 bind 后拿到节点专属 MQTT 凭据
 - EMQX 认证和授权都能被 `wfm` 统一控制
-- TLS 开关可通过后端与 Docker 环境变量统一收口
+- 客户端 TLS 开关可通过后端与 Docker 环境变量统一收口
 
 ## 总体方案
 
@@ -66,6 +66,10 @@
   - 容器启动前必须准备好 `docker/emqx/certs/` 下的证书
 - `WFM_EMQX_AUTHZ_URL`
   - 开发期默认回查本机后端 `http://host.docker.internal:8000/api/internal/emqx/authz`
+- `WFM_MQTT_TLS_ENABLED`
+  - 只影响客户端绑定参数和 EMQX 客户端 TLS listener，不影响后端连接 EMQX
+- `WFM_MQTT_URL`
+  - 后端连接 EMQX 的 broker 地址；是否使用 TLS 只由 URL scheme 决定
 
 ## 后端配置
 

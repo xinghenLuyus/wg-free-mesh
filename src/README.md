@@ -48,6 +48,10 @@ WFM_CORS_ORIGINS=["http://localhost:5173","http://localhost:8080"]
 WFM_AUTH_TOKEN_EXPIRE_MINUTES=1440
 WFM_ENABLE_MQTT_SERVICES=true
 WFM_MQTT_URL=mqtt://127.0.0.1:1883
+WFM_MQTT_PUBLIC_HOST=localhost
+WFM_MQTT_PUBLIC_PORT=1883
+WFM_MQTT_PUBLIC_TLS_PORT=8883
+WFM_MQTT_TLS_ENABLED=false
 WFM_EMQX_API_BASE_URL=http://127.0.0.1:18083
 WFM_EMQX_USERNAME=admin
 WFM_EMQX_PASSWORD=public
@@ -63,7 +67,9 @@ WFM_ENABLE_DEV_TEST_API=false
 时间存储仍统一使用 UTC，控制台默认显示时区由 `WFM_TIMEZONE` 控制，默认值为北京时间 `Asia/Shanghai`。
 `WFM_ENABLE_DEV_TEST_API` 默认关闭；只有显式设为 `true` 时，`/api/v0` 开发测试接口才会注册。
 
-客户端对外可见的 MQTT `host`、`port` 与 `tls` 由前端设置页维护；客户端 MQTT 能力是否启用只由 `WFM_ENABLE_MQTT_SERVICES` 这个部署环境变量控制，不暴露给前端设置页。EMQX 容器侧的 TLS listener、证书路径、回查地址等容器专用参数由 `docker/.env` 控制。  
+客户端对外可见的 MQTT 默认 `host`、`port` 与 `tls` 来自 `WFM_MQTT_PUBLIC_HOST`、`WFM_MQTT_PUBLIC_PORT`、`WFM_MQTT_PUBLIC_TLS_PORT` 和 `WFM_MQTT_TLS_ENABLED`，前端设置页可以覆盖保存给后续绑定使用；客户端 MQTT 能力是否启用只由 `WFM_ENABLE_MQTT_SERVICES` 这个部署环境变量控制，不暴露给前端设置页。EMQX 容器侧的 TLS listener、证书路径、回查地址等容器专用参数由 `docker/.env` 控制。  
+`WFM_MQTT_PUBLIC_HOST` 只是客户端 MQTT 引导默认主机，可以填写服务主机的域名或 IP，不参与后端连接 EMQX 的内部通信。  
+`WFM_APP_PORT` 只用于 Docker Compose 宿主机端口映射，后端本地运行不读取该变量。  
 EMQX 统一账号密码为 `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD`，本地手动运行后端且修改过 Docker 默认值时，需要让本地后端读取到同一组值。  
 `WFM_ENABLE_MQTT_SERVICES=false` 时，后端不会启动 MQTT 入口服务，所有客户端绑定和远程控制能力都会被禁用。
 

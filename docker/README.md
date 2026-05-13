@@ -1,148 +1,266 @@
-# docker
+# Docker 部署
 
-`docker/` 当前同时兼容两种模式：
+`docker/` 用于一体化启动 WG Free Mesh 后端、前端静态资源和 EMQX。
 
-- 一体化启动 `app + emqx`
-- 开发期只拉起 `emqx`，本地 `uvicorn` 跑后端
-- MQTT 使用独立 EMQX 容器
-- `wfm` 通过 EMQX 管理 API 管理节点专属 MQTT 账号
-- EMQX 通过 HTTP Authorization 回查 `wfm` 的 ACL 判断
-- EMQX 启动脚本按 `WFM_MQTT_TLS_ENABLED` 切换 plain / TLS 配置
-- FastAPI 后端与前端开发服务器继续在本机手动启动
+启动后：
 
-## 环境变量
+- 控制台访问：`http://127.0.0.1:8000`
+- MQTT 明文端口：`127.0.0.1:1883`
+- MQTT TLS 端口：`127.0.0.1:8883`
+- EMQX Dashboard/API：默认不暴露到宿主机；需要时手动放开 `docker-compose.yml` 中的 `18083:18083`
 
-`docker compose` 只读取 [docker/.env](D:/wenjian/stepsave/project/wg-free-mesh/docker/.env)。
+## 目录内容
 
-- `docker/.env`：只给 compose 和容器使用
-- `docker/.env` 在容器场景下应包含 `app` 运行所需的完整环境变量集合
-- `src/.env`：只给本地手动运行的 FastAPI 后端使用，且其中字段必须都能在 `docker/.env` 中找到对应项
+- `docker-compose.yml`：启动 `app` 和 `emqx`。
+- `.env.example`：Docker 场景的环境变量模板。
+- `.env`：本机实际 Docker 环境变量，不进入版本管理。
+- `app/backend.Dockerfile`：后端镜像，多阶段构建前端，并在镜像内安装 Go 工具链供客户端下载页本地构建使用。
+- `app/backend.Dockerfile.dockerignore`：后端镜像构建上下文排除规则。
+- `emqx/`：EMQX 配置、启动脚本、证书目录和本地持久化目录。
 
-初始化时先复制：
+## 首次准备
+
+进入 Docker 目录：
 
 ```powershell
 cd docker
+```
+
+复制环境变量模板：
+
+```powershell
 Copy-Item .env.example .env
 ```
 
-这样像 `WFM_EMQX_AUTHZ_URL` 这类和容器网络强相关的配置，只会留在 `docker/.env`，不会污染本地 dev 后端环境。  
-约束上，`docker/.env` 是完整注入源，`src/.env` 是它的本地 dev 运行子集。
-正式部署时，`docker/.env` 会统一注入 `app` 与 `emqx`；即使 `src/.env` 也存在，容器仍以 `docker/.env` 为准。
+然后打开 `docker/.env`，至少确认下面这些值：
 
-## 启动
+```env
+WFM_EMQX_USERNAME=admin
+WFM_EMQX_PASSWORD=public
+WFM_EMQX_NODE_COOKIE=wfm-emqx-cookie
+WFM_EMQX_AUTHZ_SHARED_KEY=wfm-internal-emqx-authz
+WFM_APP_PORT=8000
+WFM_MQTT_PUBLIC_HOST=localhost
+WFM_MQTT_TLS_ENABLED=false
+WFM_MQTT_PUBLIC_PORT=1883
+WFM_MQTT_PUBLIC_TLS_PORT=8883
+```
 
-一体化启动：
+如果是正式部署，建议修改默认密码、cookie 和共享密钥。
+
+## 一体化启动
+
+在 `docker/` 目录执行：
 
 ```powershell
-cd docker
 docker compose up -d
 ```
 
-开发期只起 EMQX：
+首次执行会构建后端镜像，包含：
+
+- 安装 Python 依赖。
+- 构建前端并复制到镜像内。
+- 安装 Go 工具链。
+- 复制 `client/` 源码到镜像内，用于客户端下载页的本地源码构建。
+
+查看运行状态：
 
 ```powershell
-cd docker
-docker compose up -d emqx
+docker compose ps
 ```
 
-访问：
+查看日志：
 
-- 应用: `http://127.0.0.1:8000`
-- MQTT: `mqtt://127.0.0.1:1883`
-- MQTT TLS: `mqtts://127.0.0.1:8883`
-- EMQX Dashboard/API: `http://127.0.0.1:18083`
+```powershell
+docker compose logs -f app
+docker compose logs -f emqx
+```
 
-默认 EMQX 统一账号密码：
+停止服务：
 
-- `admin / public`
+```powershell
+docker compose down
+```
 
-这组账号密码由 `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD` 控制，并同时用于：
+## 访问和初始化
 
-- EMQX Dashboard 初始登录
-- EMQX REST 管理 API bootstrap key / secret
-- `wfm` 服务端 MQTT 超级用户
+启动完成后访问：
 
-## TLS 开关
+```text
+http://127.0.0.1:8000
+```
 
-Docker Compose 使用 `docker/.env` 中的以下环境变量控制 EMQX 的启动模式：
+首次打开会进入初始化页面，设置管理员密码。
+
+EMQX Dashboard 默认不暴露到宿主机。如果需要本地访问，先取消 `docker-compose.yml` 中这一行的注释：
+
+```yaml
+- "18083:18083"
+```
+
+然后重启：
+
+```powershell
+docker compose down
+docker compose up -d
+```
+
+Dashboard 地址：
+
+```text
+http://127.0.0.1:18083
+```
+
+默认账号密码来自 `docker/.env`：
+
+```text
+admin / public
+```
+
+## 数据保存位置
+
+后端运行数据保存在 Docker volume：
+
+```text
+docker_api_data -> /app/data
+```
+
+包括 SQLite 数据库、备份、WireGuard 配置、客户端下载构建产物和配置批量下载临时包。
+
+EMQX 数据保存在本地目录：
+
+```text
+docker/emqx/data
+docker/emqx/log
+docker/emqx/certs
+```
+
+`docker/emqx/data` 和 `docker/emqx/log` 是运行期目录，不应作为源码内容理解。
+
+## MQTT 和 EMQX
+
+后端容器通过容器网络访问 EMQX，Docker 默认使用明文内部连接：
 
 ```env
-WFM_EMQX_NODE_COOKIE=wfm-emqx-cookie
-WFM_EMQX_USERNAME=admin
-WFM_EMQX_PASSWORD=public
+WFM_MQTT_URL=mqtt://emqx:1883
+WFM_EMQX_API_BASE_URL=http://emqx:18083
+```
+
+`WFM_MQTT_TLS_ENABLED` 不影响后端连接 EMQX。后端是否使用 TLS 只由 `WFM_MQTT_URL` 的 scheme 决定；Docker 默认保持 `mqtt://emqx:1883`。
+
+客户端绑定时拿到的 MQTT 地址由这些变量控制：
+
+```env
+WFM_MQTT_PUBLIC_HOST=localhost
+WFM_MQTT_PUBLIC_PORT=1883
+WFM_MQTT_PUBLIC_TLS_PORT=8883
 WFM_MQTT_TLS_ENABLED=false
-WFM_EMQX_AUTHZ_SHARED_KEY=wfm-internal-emqx-authz
-WFM_EMQX_AUTHZ_URL=http://host.docker.internal:8000/api/internal/emqx/authz
 ```
 
-说明：
+`WFM_MQTT_PUBLIC_HOST` 只是客户端 MQTT 引导默认主机，不参与容器内部通信。部署到远程服务器时，应改为客户端能访问到的域名或公网 IP。
 
-- `false`：客户端使用 `1883`
-- `true`：客户端使用 `8883`
-- `WFM_EMQX_NODE_COOKIE`：显式覆盖 EMQX 默认 Erlang cookie，避免启动时出现 insecure cookie 警告
-- Docker 中 EMQX 通过启动脚本在 plain / TLS 两套配置之间切换，避免证书缺失时 TLS listener 直接把容器启动拖死
-- plain 模式下会显式关闭默认 `ssl` / `wss` listener，避免 EMQX 因默认自带证书路径缺失而启动失败
-- 证书目录位于 [docker/emqx/certs](D:/wenjian/stepsave/project/wg-free-mesh/docker/emqx/certs)
-- `WFM_MQTT_TLS_ENABLED=true` 但证书缺失时，EMQX 会直接拒绝启动
+`WFM_MQTT_PUBLIC_PORT` 和 `WFM_MQTT_PUBLIC_TLS_PORT` 同时控制：
 
-## 本地开发
+- 客户端绑定时看到的 MQTT 端口。
+- Docker 映射到宿主机的 MQTT 端口。
 
-本地开发建议按下面顺序启动：
+## 应用端口
 
-1. 准备 `docker/.env`：
-
-```powershell
-cd docker
-Copy-Item .env.example .env
-```
-
-2. 先起 EMQX：
-
-```powershell
-cd docker
-docker compose up -d emqx
-```
-
-3. 再准备本地后端的 `src/.env`。
-
-建议本地 `src/.env` 至少包含：
+后端容器内部固定监听 `8000`。Docker 模式下可以通过 `WFM_APP_PORT` 修改宿主机映射端口：
 
 ```env
-WFM_ENABLE_MQTT_SERVICES=true
-WFM_MQTT_URL=mqtt://127.0.0.1:1883
-WFM_EMQX_API_BASE_URL=http://127.0.0.1:18083
-WFM_EMQX_USERNAME=admin
-WFM_EMQX_PASSWORD=public
-WFM_EMQX_AUTHZ_SHARED_KEY=wfm-internal-emqx-authz
+WFM_APP_PORT=8000
 ```
 
-4. 再起后端：
+例如改为 `18000` 后，访问地址变为：
 
-后端：
+```text
+http://127.0.0.1:18000
+```
+
+这个变量只影响 Docker 端口映射，不改变容器内 uvicorn 监听端口。
+
+## 客户端 TLS 模式
+
+默认关闭客户端 MQTT TLS：
+
+```env
+WFM_MQTT_TLS_ENABLED=false
+```
+
+需要启用客户端 TLS 时：
+
+1. 把证书放到 `docker/emqx/certs/`。
+2. 确认证书文件名匹配：
+
+```text
+ca.crt
+server.crt
+server.key
+```
+
+3. 修改 `docker/.env`：
+
+```env
+WFM_MQTT_TLS_ENABLED=true
+```
+
+4. 重启：
 
 ```powershell
-cd src
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --timeout-graceful-shutdown 1
+docker compose down
+docker compose up -d
 ```
 
-如果本地后端从 `src/` 目录启动，并使用下载工具生成客户端或配置批量下载产物，应追加 `--reload-exclude data`，避免 `src/data/artifacts/` 写入触发开发服务重载。
+如果开启 TLS 但证书缺失，EMQX 会拒绝启动。
 
-推荐命令：
+启用后，EMQX 会开放 TLS listener，后端仍通过 `WFM_MQTT_URL=mqtt://emqx:1883` 连接 EMQX。
+
+## 重新构建
+
+修改后端、前端、客户端源码或 Dockerfile 后，重新构建 app 镜像：
 
 ```powershell
-cd src
-python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-exclude data --timeout-graceful-shutdown 1
+docker compose build app
+docker compose up -d
 ```
 
-5. 最后起前端：
+如果只改了 `docker/.env` 或 EMQX 配置，通常直接重启即可：
 
 ```powershell
-cd front
-pnpm run dev
+docker compose down
+docker compose up -d
 ```
 
-说明：
+## 常见排查
 
-- EMQX 容器回查本机 dev 后端时默认访问 `http://host.docker.internal:8000/api/internal/emqx/authz`
-- Windows 和 macOS Docker Desktop 可直接使用 `host.docker.internal`
-- Linux 如需兼容，compose 中已追加 `extra_hosts: host.docker.internal:host-gateway`
+检查 compose 配置是否能解析：
+
+```powershell
+docker compose config
+```
+
+查看后端日志：
+
+```powershell
+docker compose logs -f app
+```
+
+查看 EMQX 日志：
+
+```powershell
+docker compose logs -f emqx
+```
+
+如果页面能打开但 MQTT 状态异常，优先检查：
+
+- `WFM_MQTT_URL`
+- `WFM_EMQX_API_BASE_URL`
+- `WFM_EMQX_USERNAME`
+- `WFM_EMQX_PASSWORD`
+- `WFM_EMQX_AUTHZ_URL`
+- `WFM_EMQX_AUTHZ_SHARED_KEY`
+
+## 开发期只启动 EMQX
+
+开发时如果只想启动 EMQX，本地手动运行后端和前端，可以执行 `docker compose up -d emqx`；此时 `WFM_EMQX_AUTHZ_URL` 通常保持为 `http://host.docker.internal:8000/api/internal/emqx/authz`，本地 `src/.env` 需要使用 `127.0.0.1:1883` 和 `127.0.0.1:18083`。
