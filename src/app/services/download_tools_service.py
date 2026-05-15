@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,9 +12,9 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from app.core.config import settings
 from app.core.errors import AppError
 from app.domain.models import new_id, now_utc
-from app.infrastructure.database import data_dir
-from app.repositories.naming import config_artifact_name_segment, node_config_artifact_stem
-from app.repositories.sqlite import store
+from app.data.database import data_dir
+from app.data.repositories.naming import config_artifact_name_segment, node_config_artifact_stem
+from app.data.store import store
 
 
 SUPPORTED_CLIENT_SYSTEMS = {
@@ -88,8 +89,26 @@ class DownloadToolsService:
         if goarch not in SUPPORTED_CLIENT_ARCHES:
             raise AppError("INVALID_CLIENT_ARCH", "Client architecture is invalid", 400)
 
+    def _client_source_hash(self) -> str:
+        client_dir = self._repo_root / "client"
+        if not client_dir.exists():
+            return "missing"
+        digest = hashlib.sha256()
+        for path in sorted(client_dir.rglob("*")):
+            if not path.is_file():
+                continue
+            if any(part in {".git", ".gocache", "bin", "build"} for part in path.parts):
+                continue
+            if path.suffix not in {".go", ".mod", ".sum"}:
+                continue
+            digest.update(str(path.relative_to(client_dir)).replace("\\", "/").encode("utf-8"))
+            digest.update(b"\0")
+            digest.update(path.read_bytes())
+            digest.update(b"\0")
+        return digest.hexdigest()[:12]
+
     def _client_artifact_id(self, source: str, goos: str, goarch: str) -> str:
-        return f"{source}-{settings.app_version}-{goos}-{goarch}"
+        return f"{source}-{settings.app_version}-{self._client_source_hash()}-{goos}-{goarch}"
 
     def _client_artifact_filename(self, goos: str, goarch: str) -> str:
         return f"wfm-client-{goos}-{goarch}-v{settings.app_version}.zip"
@@ -130,6 +149,7 @@ class DownloadToolsService:
             "goos": goos,
             "goarch": goarch,
             "version": settings.app_version,
+            "source_hash": self._client_source_hash(),
             "cached": cached,
         }
 

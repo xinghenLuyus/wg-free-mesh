@@ -29,14 +29,16 @@ func Run(ctx context.Context, stderr io.Writer) error {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			connectedOnce := false
 			for {
 				if ctx.Err() != nil {
 					return
 				}
-				fmt.Fprintf(stderr, "starting mqtt session profile=%s host=%s port=%d tls=%t\n", p.Profile.ProfileID, p.MQTT.Host, p.MQTT.Port, p.MQTT.TLS)
-				session := wfmmqtt.NewSession(p)
+				session := wfmmqtt.NewSession(p, stderr, connectedOnce)
 				if err := session.Run(ctx); err != nil && ctx.Err() == nil {
-					fmt.Fprintf(stderr, "mqtt session failed profile=%s err=%v\n", p.Profile.ProfileID, err)
+					if session.Connected() {
+						connectedOnce = true
+					}
 					time.Sleep(5 * time.Second)
 				}
 			}

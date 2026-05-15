@@ -5,7 +5,7 @@ from typing import Literal
 from app.core.errors import AppError
 from app.core.config import settings
 from app.domain.models import NodeType
-from app.repositories.sqlite import store
+from app.data.store import store
 
 MqttAction = Literal["publish", "subscribe"]
 
@@ -56,6 +56,13 @@ class MqttAuthService:
         if not config.enabled:
             return False
         if client_id != self.node_client_id(node.id):
+            return False
+        client_state = store.get_client_state(config.id, node.id)
+        if not bool(client_state.get("client_initialized")):
+            return False
+        if str(client_state.get("mqtt_username") or "") != username:
+            return False
+        if str(client_state.get("mqtt_client_id") or "") != client_id:
             return False
         topic_map = self.allowed_topics(config.id, node.id)
         return topic in topic_map[action]

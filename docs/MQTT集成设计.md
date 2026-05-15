@@ -6,8 +6,8 @@
 
 目标是：
 
-- Docker 同时兼容一体化启动和开发期只拉 EMQX
-- `docker/.env` 与 `src/.env` 职责分离
+- Docker 按数据库目录启动，并兼容开发期只拉 EMQX
+- `docker/sqlite/.env`、`docker/postgres/.env` 与 `src/.env` 职责分离
 - 客户端 bind 后拿到节点专属 MQTT 凭据
 - EMQX 认证和授权都能被 `wfm` 统一控制
 - 客户端 TLS 开关可通过后端与 Docker 环境变量统一收口
@@ -36,18 +36,20 @@
 
 目录：
 
-- [docker/docker-compose.yml](D:/wenjian/stepsave/project/wg-free-mesh/docker/docker-compose.yml)
-- [docker/.env.example](D:/wenjian/stepsave/project/wg-free-mesh/docker/.env.example)
+- [docker/sqlite/docker-compose.yml](D:/wenjian/stepsave/project/wg-free-mesh/docker/sqlite/docker-compose.yml)
+- [docker/sqlite/.env.example](D:/wenjian/stepsave/project/wg-free-mesh/docker/sqlite/.env.example)
+- [docker/postgres/docker-compose.yml](D:/wenjian/stepsave/project/wg-free-mesh/docker/postgres/docker-compose.yml)
+- [docker/postgres/.env.example](D:/wenjian/stepsave/project/wg-free-mesh/docker/postgres/.env.example)
 - [docker/emqx/base.hocon](D:/wenjian/stepsave/project/wg-free-mesh/docker/emqx/base.hocon)
 - [docker/emqx/base.tls.hocon](D:/wenjian/stepsave/project/wg-free-mesh/docker/emqx/base.tls.hocon)
 - [docker/emqx/start-emqx.sh](D:/wenjian/stepsave/project/wg-free-mesh/docker/emqx/start-emqx.sh)
 
 环境变量边界：
 
-- `docker/.env`
+- Docker 数据库目录内的 `.env`
   - 只给 Docker Compose 和容器使用
   - 在 Docker 场景下同时作为 `app` 与 `emqx` 的完整注入源
-  - 例如 `WFM_EMQX_AUTHZ_URL`、`WFM_MQTT_TLS_ENABLED`
+  - 例如 `WFM_DATABASE`、`WFM_EMQX_AUTHZ_URL`、`WFM_MQTT_TLS_ENABLED`
 - `src/.env`
   - 只给本地手动运行的 FastAPI 后端使用
   - 例如 `WFM_EMQX_API_BASE_URL=http://127.0.0.1:18083`
@@ -171,6 +173,7 @@
 - `/api/internal/emqx/authz` 内部回查接口
 - 节点 bind 时创建或轮换 EMQX 账号
 - 节点 bind 时在 TLS 模式下下发 CA 证书，客户端据此校验 EMQX 服务端证书
+- 重置客户端时删除 EMQX 节点账号，并在 AuthZ 回查中校验 `client_initialized` 与登记的 MQTT 身份，避免旧凭据继续发布或订阅
 - Go 客户端 bind 后保存本地 profile 并连接 MQTT
 - 服务端作为高权限 MQTT 客户端订阅上行 topic
 - MQTT 服务启停状态纳入系统检查，并由 `WFM_ENABLE_MQTT_SERVICES` 作为部署级开关统一控制客户端相关能力

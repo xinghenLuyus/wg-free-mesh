@@ -45,6 +45,7 @@
 ```powershell
 WFM_DEBUG=true
 WFM_CORS_ORIGINS=["http://localhost:5173","http://localhost:8080"]
+WFM_DATABASE=sqlite:///./data/wg_free_mesh.db
 WFM_AUTH_TOKEN_EXPIRE_MINUTES=1440
 WFM_ENABLE_MQTT_SERVICES=true
 WFM_MQTT_URL=mqtt://127.0.0.1:1883
@@ -67,6 +68,7 @@ WFM_ENABLE_DEV_TEST_API=false
 时间存储仍统一使用 UTC，控制台默认显示时区由 `WFM_TIMEZONE` 控制，默认值为北京时间 `Asia/Shanghai`。
 `WFM_ENABLE_DEV_TEST_API` 默认关闭；只有显式设为 `true` 时，`/api/v0` 开发测试接口才会注册。
 
+数据库连接由 `WFM_DATABASE` 控制，默认 `sqlite:///./data/wg_free_mesh.db`。Docker SQLite 与 PostgreSQL 启动目录分别提供自己的 `.env.example`，本地开发通常继续使用 SQLite。  
 客户端对外可见的 MQTT 默认 `host`、`port` 与 `tls` 来自 `WFM_MQTT_PUBLIC_HOST`、`WFM_MQTT_PUBLIC_PORT`、`WFM_MQTT_PUBLIC_TLS_PORT` 和 `WFM_MQTT_TLS_ENABLED`，前端设置页可以覆盖保存给后续绑定使用；客户端 MQTT 能力是否启用只由 `WFM_ENABLE_MQTT_SERVICES` 这个部署环境变量控制，不暴露给前端设置页。EMQX 容器侧的 TLS listener、证书路径、回查地址等容器专用参数由 `docker/.env` 控制。  
 `WFM_MQTT_PUBLIC_HOST` 只是客户端 MQTT 引导默认主机，可以填写服务主机的域名或 IP，不参与后端连接 EMQX 的内部通信。  
 TLS 开启时，后端从项目相对路径 `docker/emqx/certs/ca.crt` 读取 CA，并在客户端绑定时下发给客户端；客户端会校验 CA 和 MQTT 主机名。Docker 模式下该目录以只读方式挂载到 app 容器。  
@@ -150,6 +152,8 @@ python -m pytest -q
 - FastAPI 优先读取根目录 `front/dist`
 - Docker 镜像会先构建前端，再把 `dist` 复制进后端镜像
 - Docker 模式将项目目录 `src/data` 挂载到容器内 `/app/data`，和本地后端开发使用同一份运行数据
+- 数据层使用 SQLAlchemy，迁移目录为 `src/migrations/`，数据库入口为 `WFM_DATABASE`
+- 备份恢复使用应用级快照，可在不同数据库之间导入恢复
 - 生产启动命令同样带 `--timeout-graceful-shutdown 1`，避免 SSE 长连接阻塞停机
 - 下载工具生成的客户端构建产物缓存到后端运行数据目录 `data/artifacts/clients/`；配置批量下载临时包写入 `data/artifacts/config-bulk/`，每次生成新包时会删除旧包，只保留最近一次生成结果。本地开发使用 `--reload` 时应排除 `data` 目录，避免产物写入触发重载
 
@@ -160,8 +164,8 @@ python -m pytest -q
 - [app/api/internal/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/internal/README.md)：内部基础设施接口。
 - [app/core/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/core/README.md)：配置、安全、错误和响应。
 - [app/domain/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/domain/README.md)：领域模型。
-- [app/infrastructure/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/infrastructure/README.md)：数据库与文件路径。
-- [app/repositories/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/repositories/README.md)：仓储实现与命名规则。
+- [app/data/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/data/README.md)：数据库基础设施、仓储入口与应用级快照。
+- [app/infrastructure/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/infrastructure/README.md)：基础设施兼容入口。
 - [app/schemas/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/schemas/README.md)：请求与响应模型。
 - [app/services/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/services/README.md)：认证、控制平面与实时服务。
 - [tests/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/tests/README.md)：后端测试说明。

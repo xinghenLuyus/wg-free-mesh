@@ -8,12 +8,17 @@ import tempfile
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
 from app.core.errors import AppError
+from app.data.application_snapshot import (
+    SNAPSHOT_DATA_ENTRY,
+    archive_has_database,
+    export_database_payload,
+    import_database_from_archive,
+)
 from app.domain.models import SnapshotInfo, new_id, now_utc
-from app.infrastructure.database import backups_dir, data_dir, init_database, wireguard_dir
-from app.repositories.snapshot_repository import snapshot_repository
+from app.data.database import backups_dir, data_dir, init_database, wireguard_dir
+from app.data.repositories.snapshots import snapshot_repository
 
 SNAPSHOT_MANIFEST = "snapshot_manifest.json"
-SNAPSHOT_DATABASE_ENTRY = "data/wg_free_mesh.db"
 
 
 class SnapshotService:
@@ -69,8 +74,8 @@ class SnapshotService:
         self._validate_archive(archive_path)
         self._clear_wireguard_dir()
         with ZipFile(archive_path, "r") as archive:
+            import_database_from_archive(archive)
             self._safe_extract(archive, Path.cwd())
-        self._remove_sqlite_sidecars()
         init_database()
         self.rebuild_index_from_disk()
 
@@ -122,21 +127,11 @@ class SnapshotService:
 
     def _write_archive(self, snapshot_path: Path, snapshot: SnapshotInfo) -> None:
         with ZipFile(snapshot_path, "w", compression=ZIP_DEFLATED) as archive:
-            database_path = data_dir() / "wg_free_mesh.db"
-            if database_path.exists():
-                archive.write(database_path, arcname=SNAPSHOT_DATABASE_ENTRY)
+            archive.writestr(SNAPSHOT_DATA_ENTRY, export_database_payload())
             for file in wireguard_dir().rglob("*"):
                 if file.is_file():
                     archive.write(file, arcname=str(file.relative_to(Path.cwd())))
             archive.writestr(SNAPSHOT_MANIFEST, self._manifest_text(snapshot))
-
-    def _remove_sqlite_sidecars(self) -> None:
-        database_path = data_dir() / "wg_free_mesh.db"
-        for sidecar_path in (
-            database_path.with_name(f"{database_path.name}-wal"),
-            database_path.with_name(f"{database_path.name}-shm"),
-        ):
-            sidecar_path.unlink(missing_ok=True)
 
     def _clear_wireguard_dir(self) -> None:
         target = wireguard_dir().resolve()
@@ -243,15 +238,20 @@ class SnapshotService:
             raise AppError("SNAPSHOT_NOT_FOUND", "Snapshot package not found", 404)
         try:
             with ZipFile(path, "r") as archive:
-                names = set(archive.namelist())
+                has_database = archive_has_database(archive)
         except BadZipFile as exc:
             raise AppError("SNAPSHOT_INVALID_ARCHIVE", "Snapshot archive is invalid", 400) from exc
-        if SNAPSHOT_DATABASE_ENTRY not in names:
+        if not has_database:
             raise AppError("SNAPSHOT_INVALID_ARCHIVE", "Snapshot archive is invalid", 400)
 
     def _safe_extract(self, archive: ZipFile, destination: Path) -> None:
         root = destination.resolve()
-        members = [member for member in archive.infolist() if member.filename != SNAPSHOT_MANIFEST]
+        skipped = {SNAPSHOT_MANIFEST, SNAPSHOT_DATA_ENTRY}
+        members = [
+            member
+            for member in archive.infolist()
+            if member.filename not in skipped and not member.filename.endswith("wg_free_mesh.db")
+        ]
         for member in members:
             target_path = (root / member.filename).resolve()
             if target_path != root and root not in target_path.parents:

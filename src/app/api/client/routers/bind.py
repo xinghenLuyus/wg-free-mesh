@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from app.core.errors import AppError
 from app.core.responses import ApiResponse, ok
 from app.domain.models import Config, Node
-from app.repositories.naming import node_config_interface_name
+from app.data.repositories.naming import node_config_interface_name
 from app.services.control_plane_service import control_plane_service
 from app.services.emqx_service import emqx_service
 from app.services.mqtt_auth_service import mqtt_auth_service

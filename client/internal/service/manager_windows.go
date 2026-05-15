@@ -287,7 +287,31 @@ func serviceLogWriter() io.Writer {
 	if err != nil {
 		return os.Stderr
 	}
-	return io.MultiWriter(os.Stderr, file)
+	return resilientMultiWriter(file, os.Stderr)
+}
+
+type resilientWriter struct {
+	writers []io.Writer
+}
+
+func resilientMultiWriter(writers ...io.Writer) io.Writer {
+	return resilientWriter{writers: writers}
+}
+
+func (w resilientWriter) Write(p []byte) (int, error) {
+	wrote := false
+	for _, writer := range w.writers {
+		if writer == nil {
+			continue
+		}
+		if _, err := writer.Write(p); err == nil {
+			wrote = true
+		}
+	}
+	if !wrote {
+		return 0, fmt.Errorf("all log writers failed")
+	}
+	return len(p), nil
 }
 
 func requireAdministrator() error {

@@ -1,5 +1,5 @@
 from app.domain.models import PeerLink
-from app.repositories.sqlite import store
+from app.data.store import store
 from app.schemas.mesh import MeshValidationRead
 
 

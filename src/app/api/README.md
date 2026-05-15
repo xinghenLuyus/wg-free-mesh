@@ -9,7 +9,7 @@
 - 基础设施内部接口单独收口到 `/api/internal`
 - 客户端首次绑定接口单独收口到 `/api/client/v1`
 - 路由只负责请求绑定、响应输出、错误抛转
-- 业务规则放到 `repositories/` 和 `services/`
+- 业务规则放到 `services/`，持久化访问统一经由 `app.data.store`
 - 实时推送统一走 `/api/v1/events/stream`
 
 ## 当前模块

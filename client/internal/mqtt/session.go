@@ -6,6 +6,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -35,15 +36,24 @@ type Session struct {
 	bootID    string
 	sessionID string
 	client    *pahomqtt.Client
+	logger    io.Writer
+	reconnect bool
+	connected bool
 }
 
-func NewSession(p profile.Profile) *Session {
+func NewSession(p profile.Profile, logger io.Writer, reconnect bool) *Session {
 	now := time.Now().UnixNano()
 	return &Session{
 		profile:   p,
 		bootID:    fmt.Sprintf("boot-%d", now),
 		sessionID: fmt.Sprintf("session-%d", now),
+		logger:    logger,
+		reconnect: reconnect,
 	}
+}
+
+func (s *Session) Connected() bool {
+	return s.connected
 }
 
 func (s *Session) Run(ctx context.Context) error {
@@ -62,6 +72,12 @@ func (s *Session) Run(ctx context.Context) error {
 		Router: pahomqtt.NewSingleHandlerRouter(func(m *pahomqtt.Publish) {
 			s.handleMessage(m)
 		}),
+		OnClientError: func(err error) {
+			_ = err
+		},
+		OnServerDisconnect: func(d *pahomqtt.Disconnect) {
+			_ = d
+		},
 	})
 	cp := &pahomqtt.Connect{
 		KeepAlive:  60,
@@ -91,16 +107,32 @@ func (s *Session) Run(ctx context.Context) error {
 	if err := s.subscribe(ctx); err != nil {
 		return err
 	}
-	_ = s.publishEvent("online", "Client connected and MQTT session established.")
-	_ = s.publishHeartbeat()
+	if err := s.publishEvent("online", "Client connected and MQTT session established."); err != nil {
+		return fmt.Errorf("publish online event failed: %w", err)
+	}
+	if err := s.publishHeartbeat(); err != nil {
+		return fmt.Errorf("publish heartbeat failed: %w", err)
+	}
+	s.connected = true
+	if s.reconnect {
+		s.logf("mqtt reconnected profile=%s host=%s port=%d tls=%t", s.profile.Profile.ProfileID, s.profile.MQTT.Host, s.profile.MQTT.Port, s.profile.MQTT.TLS)
+	} else {
+		s.logf("mqtt connected profile=%s host=%s port=%d tls=%t", s.profile.Profile.ProfileID, s.profile.MQTT.Host, s.profile.MQTT.Port, s.profile.MQTT.TLS)
+	}
 	ticker := time.NewTicker(30 * time.Minute)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
+		case <-client.Done():
+			s.logf("mqtt disconnected profile=%s reason=connection_closed", s.profile.Profile.ProfileID)
+			return fmt.Errorf("mqtt connection closed")
 		case <-ticker.C:
-			_ = s.publishHeartbeat()
+			if err := s.publishHeartbeat(); err != nil {
+				s.logf("mqtt disconnected profile=%s reason=%v", s.profile.Profile.ProfileID, err)
+				return fmt.Errorf("publish heartbeat failed: %w", err)
+			}
 		}
 	}
 }
@@ -274,7 +306,7 @@ func (s *Session) applyConfigPush(payload map[string]any) error {
 		if err != nil {
 			return err
 		}
-		if err := startWireGuard(nextInterfaceName, configPath); err != nil {
+		if err := restartWireGuardAfterConfigUpdate(currentInterfaceName, nextInterfaceName, configPath); err != nil {
 			return fmt.Errorf("restart interface after config update failed: %w", err)
 		}
 	}
@@ -338,11 +370,35 @@ func startWireGuard(interfaceName string, configPath string) error {
 	return runCommand("wg-quick", "up", configPath)
 }
 
+func restartWireGuardAfterConfigUpdate(oldInterfaceName string, newInterfaceName string, configPath string) error {
+	if runtime.GOOS == "windows" {
+		if err := waitWireGuardStopped(oldInterfaceName, 15*time.Second); err != nil {
+			return err
+		}
+		return startWireGuard(newInterfaceName, configPath)
+	}
+	return startWireGuard(newInterfaceName, configPath)
+}
+
 func stopWireGuard(interfaceName string) error {
 	if runtime.GOOS == "windows" {
 		return runCommand("wireguard.exe", "/uninstalltunnelservice", interfaceName)
 	}
 	return runCommand("wg-quick", "down", interfaceName)
+}
+
+func waitWireGuardStopped(interfaceName string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		running, detail := inspectWireGuard(interfaceName)
+		if !running {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("wireguard interface %s did not stop before timeout: %s", interfaceName, detail)
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 func runCommand(name string, args ...string) error {
@@ -376,6 +432,13 @@ func (s *Session) publish(kind string, env Envelope) error {
 		QoS:     1,
 	})
 	return err
+}
+
+func (s *Session) logf(format string, args ...any) {
+	if s.logger == nil {
+		return
+	}
+	fmt.Fprintf(s.logger, "%s %s\n", time.Now().Format(time.RFC3339), fmt.Sprintf(format, args...))
 }
 
 func (s *Session) envelope(kind, requestID string, payload map[string]any) Envelope {

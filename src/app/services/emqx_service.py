@@ -39,7 +39,7 @@ class EmqxService:
             self._read_client_ca_cert()
 
     def _effective_client_settings(self) -> dict[str, Any]:
-        from app.repositories.sqlite import store
+        from app.data.store import store
 
         mqtt_settings = store.read_setting_json(
             "mqtt_client",

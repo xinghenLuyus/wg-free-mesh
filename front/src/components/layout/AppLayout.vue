@@ -107,9 +107,9 @@ const systemStatusText = computed(() => {
   if (systemStatus.value?.topology.invalid_config_count) return t('layout.meshAlert')
   if (systemStatus.value?.services.mqtt === 'error') return t('layout.mqttError')
   if (systemStatus.value?.services.mqtt === 'disabled') return t('layout.mqttDisabled')
-  if (health.value?.dev_test_api_enabled) return t('layout.runningDev')
   if (!systemStatus.value) return t('layout.checking')
-  if (systemStatus.value.summary.pending_sync_nodes > 0) return t('layout.pendingSync')
+  if (systemStatus.value.sync.issue_count > 0) return t('layout.syncIssue')
+  if (health.value?.dev_test_api_enabled) return t('layout.runningDev')
   return t('layout.running')
 })
 const systemStatusMeta = computed(() => {
@@ -124,7 +124,7 @@ const systemStatusMeta = computed(() => {
   if (systemStatus.value.services.mqtt === 'disabled') return t('layout.mqttDisabledMeta')
   return t('layout.statusMeta', {
     online: systemStatus.value.summary.online_nodes,
-    pending: systemStatus.value.summary.pending_sync_nodes,
+    nodes: systemStatus.value.summary.nodes,
   })
 })
 const systemStatusType = computed<'success' | 'warning' | 'info' | 'danger'>(() => {
@@ -132,8 +132,8 @@ const systemStatusType = computed<'success' | 'warning' | 'info' | 'danger'>(() 
   if (systemStatus.value.topology.invalid_config_count > 0) return 'danger'
   if (systemStatus.value.services.mqtt === 'error') return 'warning'
   if (systemStatus.value.services.mqtt === 'disabled') return 'info'
+  if (systemStatus.value.sync.issue_count > 0) return 'warning'
   if (health.value?.dev_test_api_enabled) return 'success'
-  if (systemStatus.value.summary.pending_sync_nodes > 0) return 'warning'
   if (systemStatus.value.summary.online_nodes > 0) return 'success'
   return 'success'
 })

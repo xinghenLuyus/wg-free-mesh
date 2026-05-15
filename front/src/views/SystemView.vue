@@ -51,6 +51,10 @@ function openConfig(configId: string) {
   void router.push(`/configs/${configId}`)
 }
 
+function openNodeApply(configId: string, nodeId: string) {
+  void router.push(`/configs/${configId}/nodes/${nodeId}/apply`)
+}
+
 const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type === 'system.clock.sync' && health.value) {
     const payload = event.payload as unknown as SystemClockSyncPayload
@@ -120,12 +124,41 @@ onBeforeUnmount(() => {
       <el-descriptions-item :label="t('system.configs')">{{ status.summary.configs }}</el-descriptions-item>
       <el-descriptions-item :label="t('system.nodes')">{{ status.summary.nodes }}</el-descriptions-item>
       <el-descriptions-item :label="t('system.onlineNodes')">{{ status.summary.online_nodes }}</el-descriptions-item>
-      <el-descriptions-item :label="t('system.pendingSyncNodes')">{{ status.summary.pending_sync_nodes }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.syncIssueNodes')">{{ status.sync.issue_count }}</el-descriptions-item>
       <el-descriptions-item :label="t('system.database')">{{ status.services.database }}</el-descriptions-item>
       <el-descriptions-item :label="t('system.realtimeState')">
         {{ streamConnectionText }}
       </el-descriptions-item>
     </el-descriptions>
+  </section>
+
+  <section v-if="status" class="content-band section-gap">
+    <div class="topology-head">
+      <h2>{{ t('system.syncIssueTitle') }}</h2>
+      <el-tag :type="status.sync.issue_count ? 'warning' : 'success'">
+        {{ status.sync.issue_count ? t('system.syncIssueFailed') : t('system.syncIssueHealthy') }}
+      </el-tag>
+    </div>
+    <div v-if="status.sync.issues.length" class="topology-list">
+      <button
+        v-for="item in status.sync.issues"
+        :key="`${item.config_id}:${item.node_id}`"
+        class="topology-card"
+        @click="openNodeApply(item.config_id, item.node_id)"
+      >
+        <div class="topology-card__head">
+          <strong>{{ item.node_name }}</strong>
+          <el-tag type="warning" size="small">{{ item.status }}</el-tag>
+        </div>
+        <div class="topology-card__meta">
+          <span>{{ item.config_name }}</span>
+          <span>{{ item.node_type }}</span>
+          <span>{{ item.topology_valid ? t('system.topologyHealthy') : t('system.topologyFailed') }}</span>
+        </div>
+        <p>{{ item.messages[0] || t('system.syncIssueDefaultMessage') }}</p>
+      </button>
+    </div>
+    <div v-else class="topology-empty">{{ t('system.syncIssueEmpty') }}</div>
   </section>
 
   <section v-if="status" class="content-band section-gap">

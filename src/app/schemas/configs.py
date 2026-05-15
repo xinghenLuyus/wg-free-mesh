@@ -23,8 +23,6 @@ class ConfigRead(BaseModel):
     online_node_count: int = 0
     offline_node_count: int = 0
     disabled_node_count: int = 0
-    pending_sync_node_count: int = 0
-    latest_config_node_count: int = 0
     topology_invalid: bool = False
     topology_error_count: int = 0
     created_at: datetime

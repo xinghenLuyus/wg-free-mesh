@@ -15,8 +15,8 @@ from app.api.v0.router import api_v0_router
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.errors import install_exception_handlers
-from app.infrastructure.database import init_database
-from app.repositories.sqlite import store
+from app.data.database import init_database
+from app.data.store import store
 from app.services.control_plane_service import control_plane_service
 from app.services.mqtt_ingress_service import mqtt_ingress_service
 from app.services.realtime_service import realtime_service

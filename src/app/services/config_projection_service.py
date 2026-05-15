@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 
 from app.domain.models import now_utc
-from app.repositories.sqlite import store
+from app.data.store import store
 
 
 @dataclass(slots=True)

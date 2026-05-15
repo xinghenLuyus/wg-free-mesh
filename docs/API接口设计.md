@@ -175,14 +175,12 @@ Authorization: Bearer <access_token>
   - `online_node_count`
   - `offline_node_count`
   - `disabled_node_count`
-  - `pending_sync_node_count`
-  - `latest_config_node_count`
 
 说明：
 
 - 首页配置卡片和左侧配置列表直接使用这里返回的拓扑异常标记。
 - 如果配置已停用，列表层不再上浮其拓扑异常，前端只显示停用状态。
-- 首页网格 / 列表视图直接使用这里返回的节点数量、在线数量、动态节点数量、禁用节点数量和下发态数量。
+- 首页网格 / 列表视图直接使用这里返回的节点数量、在线数量、动态节点数量和禁用节点数量。
 - `node_count` 包含已禁用端点；`dynamic_node_count`、`online_node_count`、`offline_node_count` 只统计启用动态端点。
 - 前端不得自行遍历 Mesh 连接、运行态快照或同步状态去推断配置是否异常、在线节点数或待下发节点数。
 
@@ -200,6 +198,7 @@ Authorization: Bearer <access_token>
   - `auto_sync`
 - 约束：
   - `virtual_subnet` 必须是合法的 CIDR 网段字符串
+  - `auto_sync` 是新建端点时的默认自动同步开关，不是配置下所有端点的总开关
 
 ### `GET /api/v1/configs/{config_id}`
 
@@ -216,6 +215,7 @@ Authorization: Bearer <access_token>
 
 - `virtual_subnet` 当前仅作为推荐虚拟 IP 的来源，不再作为节点虚拟 IP 的硬性限制边界。
 - 为了保证推荐虚拟 IP 能力稳定可用，`virtual_subnet` 仍必须保存为合法的 CIDR 网段字符串。
+- `auto_sync` 只影响后续新建节点的默认值；已有节点是否自动把系统态写入同步态，由节点自己的 `auto_sync` 决定。
 - 当 `default_listen_port` 变更导致一批端点需要按默认端口重算时，后端会通过 `change_hints` 返回提示信息。
 
 ### `DELETE /api/v1/configs/{config_id}`
@@ -273,6 +273,7 @@ Authorization: Bearer <access_token>
 - `ipv4_address` 表示公网 IPv4 入口，可填写 IP 或域名。
 - `ipv6_address` 表示公网 IPv6 入口，可填写 IP 或域名。
 - 前端不得把二者合并成单个“公网端点”字段。
+- 如果创建节点时未传 `auto_sync`，后端使用所属配置的 `auto_sync` 作为默认值。节点创建后，自动同步开关只受节点自己的 `auto_sync` 控制。
 - `enabled=false` 表示端点进入可恢复软删除态。禁用端点仍保留数据，仍计入节点总数，但不参与动态/静态/在线统计、配置生成、同步、下载、远程控制和 MQTT 授权。
 
 ### `GET /api/v1/nodes/{node_id}`
@@ -702,12 +703,14 @@ Authorization: Bearer <access_token>
 - 用途：重置当前节点客户端初始化状态
 - 鉴权：必须携带后台会话 Bearer Token
 - 效果：
-  - 删除该节点当前 MQTT 凭据
+  - MQTT 服务启用时，通过 EMQX 管理 API 删除该节点当前 MQTT 凭据；EMQX 返回 404 视为已删除
   - 删除或失效该节点绑定权限
   - 清空客户端运行态
   - 将 `client_initialized` 重置为 `false`
   - 控制台端点页面重新回到初始化页
-- 约束：节点已禁用时返回 `NODE_DISABLED`。
+- 约束：
+  - 节点已禁用时返回 `NODE_DISABLED`
+  - MQTT 服务启用且 EMQX 凭据删除失败时返回 `EMQX_USER_DELETE_FAILED`，避免旧客户端凭据仍可用于连接
 
 ## 设置
 
@@ -772,7 +775,8 @@ Authorization: Bearer <access_token>
 - 用途：创建快照
 - 请求体：原始字符串 `note`
 - 说明：
-  - 后端会先登记快照元数据，再打包数据库和 WireGuard 目录。
+  - 后端会先登记快照元数据，再打包应用级数据库数据和 WireGuard 目录。
+  - 数据库数据写入 `database.json`，不直接复制数据库物理文件。
   - 快照包内会写入 manifest，保存快照 id、创建时间和备注。
 
 ### `GET /api/v1/backups/list`
@@ -800,14 +804,15 @@ Authorization: Bearer <access_token>
 - 用途：导入快照包
 - 说明：
   - 只导入到快照列表，不自动恢复。
-  - 导入时会校验压缩包结构，要求至少包含 `data/wg_free_mesh.db`。
+  - 导入时会校验压缩包结构，要求包含 `database.json`；旧 SQLite 数据库快照包也可作为导入源。
 
 ### `POST /api/v1/backups/restore/{snapshot_id}`
 
 - 用途：恢复快照
 - 说明：
+  - 恢复前会清空现有数据库表数据，并删除 `data/wireguard` 下全部数据。
   - 恢复后后端会重新扫描快照目录并重建 `backups` 表索引。
-  - 恢复旧版本快照后，后端必须重新执行数据库初始化/兼容迁移，补齐当前版本新增表和字段，再发布全量实时状态。
+  - 恢复后后端必须重新执行数据库初始化，补齐当前 schema 所需默认数据，再发布全量实时状态。
 
 ### `DELETE /api/v1/backups/{snapshot_id}`
 
@@ -834,12 +839,16 @@ Authorization: Bearer <access_token>
   - `topology.invalid_config_count`
   - `topology.invalid_node_count`
   - `topology.invalid_configs`
+  - `sync.issue_count`
+  - `sync.issues`
 
 说明：
 
 - `system/status` 除了系统健康，还承担全局业务异常摘要。
 - 已停用的配置不会再进入系统层拓扑异常统计；这类异常只保留在配置内部查看。
-- 左下角系统状态入口和系统状态页都直接消费这里返回的拓扑异常聚合，不在前端二次计算。
+- 待同步统计已移除。关闭自动同步的端点属于用户主动手动维护，不进入系统异常。
+- `sync.issues` 只列出启用配置下、启用且 `auto_sync=true`、但同步态未能更新到系统态的端点，供系统状态页提示人工修复。
+- 左下角系统状态入口和系统状态页都直接消费这里返回的拓扑异常与自动同步异常聚合，不在前端二次计算。
 
 ## SSE 实时流
 

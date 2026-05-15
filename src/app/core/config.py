@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     auth_download_token_expire_minutes: int = 5
     enable_dev_test_api: bool = False
     timezone: str = "Asia/Shanghai"
+    database: str = ""
 
     @field_validator("timezone")
     @classmethod
@@ -49,9 +50,14 @@ class Settings(BaseSettings):
 
     @property
     def sqlite_path(self) -> str:
-        if not self.database_url.startswith("sqlite:///"):
+        if not self.database.startswith("sqlite:///"):
             return "./data/wg_free_mesh.db"
-        return self.database_url.removeprefix("sqlite:///")
+        return self.database.removeprefix("sqlite:///")
+
+    @model_validator(mode="after")
+    def normalize_database(self) -> "Settings":
+        self.database = self.database.strip() or self.database_url.strip() or "sqlite:///./data/wg_free_mesh.db"
+        return self
 
     @property
     def app_version(self) -> str:

@@ -15,9 +15,10 @@ from app.core.errors import AppError
 from app.domain.models import ControlStatus, NodeType
 from app.events.publish_plan import PublishPlan
 from app.events.realtime_publisher import RealtimePublisher
-from app.repositories.naming import node_config_interface_name
-from app.repositories.sqlite import store
+from app.data.repositories.naming import node_config_interface_name
+from app.data.store import store
 from app.services.config_projection_service import ConfigProjectionSnapshot, config_projection_service
+from app.services.emqx_service import emqx_service
 from app.services.realtime_service import realtime_service
 from app.services.snapshot_service import snapshot_service
 from app.services.system_projection_service import system_projection_service
@@ -523,6 +524,15 @@ class ControlPlaneService:
         )
 
     def reset_client_state(self, config_id: str, node_id: str) -> dict[str, object]:
+        if self.mqtt_service_enabled():
+            response = emqx_service.delete_node_user(node_id=node_id)
+            if response.status_code not in {200, 204, 404}:
+                raise AppError(
+                    "EMQX_USER_DELETE_FAILED",
+                    "Failed to delete MQTT credentials",
+                    502,
+                    {"status_code": response.status_code, "body": response.text},
+                )
         return store.reset_client_state(config_id, node_id)
 
     def endpoint_logs(self, config_id: str, node_id: str):

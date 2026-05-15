@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
-from app.domain.models import Config, ConfigSyncState, Node, NodeType, now_utc
+from app.domain.models import Config, Node, NodeType, now_utc
 
 
 class SystemStatusProjection:
@@ -44,15 +44,8 @@ class SystemStatusProjection:
                 "online_nodes": len(
                     [runtime for runtime in runtimes if str(runtime["node_id"]) in enabled_dynamic_node_ids and bool(runtime["online"])]
                 ),
-                "pending_sync_nodes": len(
-                    [
-                        runtime
-                        for runtime in runtimes
-                        if str(runtime["node_id"]) in enabled_dynamic_node_ids
-                        and str(runtime["config_sync_state"]) != ConfigSyncState.in_sync.value
-                    ]
-                ),
             },
+            "sync": {"issue_count": 0, "issues": []},
             "topology": {
                 "valid": not invalid_configs,
                 "invalid_config_count": len(invalid_configs),

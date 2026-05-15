@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from app.domain.models import Config, ConfigSyncState, Node, NodeType
+from app.domain.models import Config, Node, NodeType
 
 
 class ConfigOverviewProjection:
@@ -45,14 +45,6 @@ class ConfigOverviewProjection:
                 "disabled_nodes": len(disabled_nodes),
                 "online_nodes": len(
                     [item for item in runtimes if str(item["node_id"]) in dynamic_node_ids and bool(item["online"])]
-                ),
-                "pending_sync_nodes": len(
-                    [
-                        item
-                        for item in runtimes
-                        if str(item["node_id"]) in dynamic_node_ids
-                        and str(item["config_sync_state"]) != ConfigSyncState.in_sync.value
-                    ]
                 ),
                 "peer_links": peer_link_count,
             },

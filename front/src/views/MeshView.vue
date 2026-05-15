@@ -174,18 +174,16 @@ function meshText(value: string | undefined) {
 }
 
 const forwardEndpointSummaryText = computed(() => {
-  const summary =
-    dialogMode.value === 'edit'
-      ? editingConnection.value?.forward.endpoint_summary
-      : draft.value?.forward.endpoint_summary
+  const summary = draft.value?.forward.endpoint_summary ?? (
+    dialogMode.value === 'edit' ? editingConnection.value?.forward.endpoint_summary : undefined
+  )
   return endpointSummary(summary, form.forward_endpoint_mode, form.forward_manual_host, form.forward_manual_port)
 })
 
 const reverseEndpointSummaryText = computed(() => {
-  const summary =
-    dialogMode.value === 'edit'
-      ? editingConnection.value?.reverse?.endpoint_summary
-      : draft.value?.reverse.endpoint_summary
+  const summary = draft.value?.reverse.endpoint_summary ?? (
+    dialogMode.value === 'edit' ? editingConnection.value?.reverse?.endpoint_summary : undefined
+  )
   return endpointSummary(summary, form.reverse_endpoint_mode, form.reverse_manual_host, form.reverse_manual_port)
 })
 
@@ -220,10 +218,11 @@ function applyDraft(nextDraft: PeerLinkDraftRead) {
 }
 
 async function loadDraft() {
-  if (!dialogVisible.value || dialogMode.value !== 'create' || !form.peer_node_id) return
+  if (!dialogVisible.value || !form.peer_node_id) return
   const requestToken = draftRequestToken.value + 1
   draftRequestToken.value = requestToken
   draftLoading.value = true
+  draft.value = null
   try {
     const nextDraft = await api.peerLinkDraft(
       String(route.params.configId),
@@ -234,15 +233,16 @@ async function loadDraft() {
     if (
       requestToken !== draftRequestToken.value ||
       !dialogVisible.value ||
-      dialogMode.value !== 'create' ||
       form.peer_node_id !== nextDraft.peer_node.id
     ) {
       return
     }
     draft.value = nextDraft
-    applyDraft(nextDraft)
+    if (dialogMode.value === 'create') {
+      applyDraft(nextDraft)
+    }
   } catch (error) {
-    if (requestToken === draftRequestToken.value && dialogVisible.value && dialogMode.value === 'create') {
+    if (requestToken === draftRequestToken.value && dialogVisible.value) {
       notify.error(error instanceof ApiClientError ? error.message : t('mesh.draftFailed'))
     }
   } finally {
@@ -301,6 +301,7 @@ function openEdit(connection: MeshConnectionRead) {
     applyDirection('reverse', connection.reverse)
   }
   dialogVisible.value = true
+  void loadDraft()
 }
 
 async function generatePsk() {

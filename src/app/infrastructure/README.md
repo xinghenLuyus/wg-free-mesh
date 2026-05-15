@@ -1,16 +1,15 @@
 # infrastructure
 
-`infrastructure/` 保存数据库、MQTT、文件系统等外部资源适配。
+`infrastructure/` 保存外部资源适配的兼容入口。
 
 ## 当前内容
 
 - `__init__.py`：包标记文件。
 - `database.py`
-  - `connect()`：创建 SQLite 连接。
-  - `init_database()`：初始化数据目录与建表。
-  - `data_dir()` / `backups_dir()` / `wireguard_dir()`：运行时文件目录定位。
+  - re-export `app.data.database` 和 `app.data.paths` 的稳定入口。
+  - 旧调用方可以继续读取 `init_database()`、`connect()`、`data_dir()`、`wireguard_dir()`。
 
 ## 约定
 
 - 业务规则不放在这里。
-- 后续 SQLAlchemy/Alembic 落地时从这里收敛数据库 Session 管理。
+- 新增数据库实现放在 `app/data/`，不要继续往这里堆实现。

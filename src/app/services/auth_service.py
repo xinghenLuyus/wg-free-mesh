@@ -13,7 +13,7 @@ from app.core.security import (
     is_password_hash,
     verify_password,
 )
-from app.repositories.sqlite import store
+from app.data.store import store
 
 ADMIN_USERNAME = "admin"
 ADMIN_DISPLAY_NAME = "Admin"

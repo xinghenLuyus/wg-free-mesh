@@ -125,8 +125,6 @@ export interface ConfigRead {
   online_node_count: number
   offline_node_count: number
   disabled_node_count: number
-  pending_sync_node_count: number
-  latest_config_node_count: number
   topology_invalid: boolean
   topology_error_count: number
   created_at: string
@@ -191,7 +189,6 @@ export interface ConfigOverviewRead {
     static_nodes: number
     disabled_nodes: number
     online_nodes: number
-    pending_sync_nodes: number
     peer_links: number
   }
   nodes: NodeRead[]
@@ -499,7 +496,19 @@ export interface SystemStatusRead {
     nodes: number
     dynamic_nodes: number
     online_nodes: number
-    pending_sync_nodes: number
+  }
+  sync: {
+    issue_count: number
+    issues: Array<{
+      config_id: string
+      config_name: string
+      node_id: string
+      node_name: string
+      node_type: 'dynamic' | 'static' | string
+      status: string
+      topology_valid: boolean
+      messages: string[]
+    }>
   }
   topology: SystemTopologySummaryRead
   services: {

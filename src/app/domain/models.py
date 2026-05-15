@@ -115,8 +115,6 @@ class Config(BaseModel):
     online_node_count: int = 0
     offline_node_count: int = 0
     disabled_node_count: int = 0
-    pending_sync_node_count: int = 0
-    latest_config_node_count: int = 0
     topology_invalid: bool = False
     topology_error_count: int = 0
     updated_at: datetime = Field(default_factory=now_utc)

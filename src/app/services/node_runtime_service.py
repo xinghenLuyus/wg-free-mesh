@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.domain.models import ControlStatus
-from app.repositories.sqlite import store
+from app.data.store import store
 from app.services.realtime_service import realtime_service
 
 

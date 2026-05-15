@@ -75,9 +75,6 @@ const realtime = useRealtime((event: RealtimeEvent) => {
       stats: {
         ...overview.value.stats,
         online_nodes: payload.items.filter((item) => activeDynamicIds.has(item.node_id) && item.online).length,
-        pending_sync_nodes: payload.items.filter(
-          (item) => activeDynamicIds.has(item.node_id) && item.config_sync_state !== 'in_sync',
-        ).length,
       },
       runtime_snapshot: payload.items,
       node_cards: overview.value.node_cards.map((card) => {
@@ -235,7 +232,7 @@ function resetCreateForm() {
     virtual_ip: '',
     mtu: 1420,
     dns: '1.1.1.1',
-    auto_sync: true,
+    auto_sync: overview.value?.config.auto_sync ?? true,
     node_type: 'dynamic',
     public_key: '',
     private_key: '',
@@ -775,8 +772,8 @@ watch(
         </div>
         <div class="switch-row">
           <div>
-            <strong>{{ t('nodeWorkspace.autoSync') }}</strong>
-            <span>{{ t('nodeWorkspace.autoSyncDescription') }}</span>
+            <strong>{{ t('configOverview.defaultNodeAutoSync') }}</strong>
+            <span>{{ t('configOverview.defaultNodeAutoSyncDescription') }}</span>
           </div>
           <el-switch v-model="settingsForm.auto_sync" />
         </div>

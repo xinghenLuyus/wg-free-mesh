@@ -12,7 +12,6 @@ from app.core.errors import AppError
 from app.core.responses import ApiResponse, ok
 from app.schemas.auth import DownloadTokenRead
 from app.services.control_plane_service import control_plane_service
-from app.services.emqx_service import emqx_service
 from app.services.auth_service import auth_service
 
 router = SessionProtectedAPIRouter(tags=["endpoints"])
@@ -128,10 +127,6 @@ async def reset_client(config_id: str, node_id: str) -> ApiResponse[dict[str, ob
         raise AppError("NODE_CONFIG_MISMATCH", "Node does not belong to this config", 400)
     if not node.enabled:
         raise AppError("NODE_DISABLED", "Disabled endpoint cannot reset client state", 409)
-    try:
-        emqx_service.delete_node_user(node_id=node_id)
-    except Exception:
-        pass
     state = control_plane_service.reset_client_state(config_id, node_id)
     await control_plane_service.publish_runtime(config_id, node_id)
     return ok({"client_state": state})

@@ -6,7 +6,8 @@ bak/
 .env.*
 !.env.example
 !src/.env.example
-!docker/.env.example
+!docker/sqlite/.env.example
+!docker/postgres/.env.example
 
 # Python caches and tooling
 __pycache__/
@@ -81,6 +82,9 @@ docker/emqx/log/*
 !docker/emqx/certs/
 docker/emqx/certs/*
 !docker/emqx/certs/.gitkeep
+!docker/postgres/data/
+docker/postgres/data/*
+!docker/postgres/data/.gitkeep
 
 # IDE / editor / OS
 .DS_Store

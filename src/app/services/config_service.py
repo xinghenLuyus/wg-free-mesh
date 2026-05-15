@@ -1,5 +1,5 @@
 from app.domain.models import Config
-from app.repositories.sqlite import store
+from app.data.store import store
 
 
 class ConfigService:

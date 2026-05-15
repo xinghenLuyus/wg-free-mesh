@@ -1,0 +1,62 @@
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: docker/app/backend.Dockerfile
+    env_file:
+      - ./.env
+    ports:
+      - "${WFM_APP_PORT:-8000}:8000"
+    volumes:
+      - ../../src/data:/app/data
+      - ../emqx/certs:/app/docker/emqx/certs:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      emqx:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    env_file:
+      - ./.env
+    environment:
+      POSTGRES_DB: ${WFM_POSTGRES_DB:-wfm}
+      POSTGRES_USER: ${WFM_POSTGRES_USER:-wfm}
+      POSTGRES_PASSWORD: ${WFM_POSTGRES_PASSWORD:-wfm}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${WFM_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - ./data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${WFM_POSTGRES_USER:-wfm} -d ${WFM_POSTGRES_DB:-wfm}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  emqx:
+    image: emqx/emqx:5.8.5
+    env_file:
+      - ./.env
+    environment:
+      EMQX_NAME: emqx
+      EMQX_HOST: 127.0.0.1
+      EMQX_NODE__COOKIE: ${WFM_EMQX_NODE_COOKIE}
+      EMQX_DASHBOARD__DEFAULT_USERNAME: ${WFM_EMQX_USERNAME}
+      EMQX_DASHBOARD__DEFAULT_PASSWORD: ${WFM_EMQX_PASSWORD}
+    ports:
+      - "${WFM_MQTT_PUBLIC_PORT:-1883}:1883"
+      - "${WFM_MQTT_PUBLIC_TLS_PORT:-8883}:8883"
+      # EMQX Dashboard/API is disabled by default. Uncomment only when local administration is needed.
+      # - "18083:18083"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ../emqx/base.hocon:/opt/emqx/wfm/base.hocon:ro
+      - ../emqx/base.tls.hocon:/opt/emqx/wfm/base.tls.hocon:ro
+      - ../emqx/start-emqx.sh:/opt/emqx/wfm/start-emqx.sh:ro
+      - ../emqx/data:/opt/emqx/data
+      - ../emqx/log:/opt/emqx/log
+      - ../emqx/certs:/opt/emqx/etc/certs
+    command: ["/bin/sh", "/opt/emqx/wfm/start-emqx.sh"]

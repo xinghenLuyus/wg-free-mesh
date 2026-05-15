@@ -11,7 +11,7 @@ from uuid import uuid4
 import aiomqtt
 
 from app.core.config import settings
-from app.repositories.sqlite import store
+from app.data.store import store
 from app.services.emqx_service import emqx_service
 from app.services.node_runtime_service import node_runtime_service
 from app.services.realtime_service import realtime_service
