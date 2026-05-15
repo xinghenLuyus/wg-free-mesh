@@ -1,3 +1,5 @@
+name: wg-free-mesh
+
 services:
   app:
     build:
