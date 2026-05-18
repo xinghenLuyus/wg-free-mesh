@@ -11,7 +11,7 @@
 - `wfm-agent` 读取机器级 profile，连接 EMQX。
 - `wfm-agent` 会发布 `heartbeat`，并上报 `client_online` / `wg_online`。
 - `wfm-agent` 会订阅 `config/push`、`control`、`detect`、`info` 并返回对应 ACK。
-- `info` 当前用于控制台主动请求诊断输出；客户端根据服务端 payload 中的 `tunnel_protocol` 执行 `wg show` 或 `awg show`，命令输出统一通过 `event` topic 回传。
+- `info` 当前用于控制台主动请求诊断输出；客户端根据服务端 payload 中的 `tunnel_protocol` 执行裸 `wg` 或 `awg`，命令输出统一通过 `event` topic 回传。
 
 ## 当前方向
 
@@ -34,7 +34,7 @@
 - heartbeat 每 30 分钟上报一次；服务端同时使用 heartbeat、ACK 和非离线 event 投影在线态
 - 前端存在 SSE 订阅时，服务端每 2 分钟主动发送 `detect`
 - 客户端应以系统服务运行，否则 WireGuard 状态读取和控制可能权限不足
-- 客户端 bind profile 不保存隧道协议。服务端每次下发 `config/push`、`control`、`detect`、`info` 时携带当前协议，客户端按当次 payload 选择 `wg` / `wg-quick` 或 `awg` / `awg-quick`，避免配置协议切换后本地状态漂移。
+- 客户端 bind profile 不保存隧道协议。服务端每次下发 `config/push`、`control`、`detect`、`info` 时携带当前协议，客户端按当次 payload 选择工具链，避免配置协议切换后本地状态漂移。Linux/macOS 启停隧道使用 `wg-quick` / `awg-quick`，Windows 启停隧道使用 `wireguard.exe` / `amneziawg.exe` 的 tunnel service 命令；状态检查使用 `wg` / `awg`。
 - 服务端会保存 bind 时生成的客户端 MQTT 密码，用于快照恢复后重建 EMQX 节点用户。恢复完成后客户端可能经历一次 MQTT 重连，重新连接成功后继续发送在线事件和心跳。
 
 ## 使用方式
@@ -56,7 +56,7 @@ python build_release.py --target windows/amd64
 
 ### 2. 安装并启动客户端
 
-`install` 在三端语义一致：安装系统服务、设置开机自启、立即启动服务，并把当前 `wfmctl` 所在目录加入全局命令路径。`start` 仍然保留，用于服务已安装但当前未运行时手动启动。
+`install` 在三端语义一致：安装系统服务、设置开机自启、立即启动服务，并把当前 `wfmctl` 所在目录加入全局命令路径。安装成功后会输出客户端终端标识，并执行 `wg -v`、`awg -v` 检查；检查结果只用于提示，不阻断安装流程。若缺少 WireGuard 或 AmneziaWG 工具链，按提示到服务端下载页面下载对应内核或工具链。`start` 仍然保留，用于服务已安装但当前未运行时手动启动。
 
 如果安装后移动了 `wfmctl` 所在目录，全局命令路径会失效。此时在新目录重新执行安装命令即可修复。
 
@@ -146,7 +146,7 @@ wfmctl uninstall --purge
 - `wfmctl uninstall`：停止服务、取消开机自启、删除服务定义并移除全局命令路径，不删除本机 profile。
 - `wfmctl uninstall --purge`：在 `uninstall` 基础上删除本机 profile、runtime 和日志目录。
 
-本地不提供单个 profile 的启动、停止、重启或日志命令。`unbind` 只是删除本机绑定文件，不是运行控制。要控制 WireGuard 启停、下发配置、查看 `wg show`，应在服务端控制台操作，由服务端通过 MQTT 向 `wfm-agent` 下发命令。
+本地不提供单个 profile 的启动、停止、重启或日志命令。`unbind` 只是删除本机绑定文件，不是运行控制。要控制 WireGuard 启停、下发配置、查看 `wg` / `awg` 诊断信息，应在服务端控制台操作，由服务端通过 MQTT 向 `wfm-agent` 下发命令。
 
 ### 5. 本地调试
 

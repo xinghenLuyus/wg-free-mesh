@@ -146,6 +146,7 @@
 - 用户名默认使用 `node_id`
 - `client_id` 默认使用 `wfm-{node_id}`
 - topic 权限按 `config_id + node_id` 收口
+- 端点执行客户端重置时，服务端必须删除对应 EMQX 用户，并调用 EMQX Clients API 踢出 `wfm-{node_id}` 当前连接；404 视为用户或连接已不存在
 
 允许订阅：
 

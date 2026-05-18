@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Files, Plus, Setting } from '@element-plus/icons-vue'
+import { Files, Plus } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -7,14 +7,14 @@ import { useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import ConfigProtocolForm from '@/components/config/ConfigProtocolForm.vue'
+import type { ConfigProtocolModel } from '@/components/config/ConfigProtocolForm.vue'
 import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useHomePrefs } from '@/composables/useHomePrefs'
 import { useRealtime } from '@/composables/useRealtime'
 import type { ConfigListUpdatedPayload, ConfigRead, RealtimeEvent } from '@/types/api'
 import { cidrRule, requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
-import ConfigProtocolForm from '@/components/config/ConfigProtocolForm.vue'
-import type { ConfigProtocolModel } from '@/components/config/ConfigProtocolForm.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -129,7 +129,7 @@ async function load() {
 
 async function submit() {
   await actions.run('create-config', async () => {
-    const valid = await formRef.value?.validate().catch(() => false)
+    const valid = formRef.value ? await formRef.value.validate().catch(() => false) : true
     if (!valid) return
     try {
       const config = await api.createConfig(form)
@@ -320,11 +320,30 @@ watch(
     <el-button type="primary" :icon="Plus" @click="openCreateDialog">{{ t('home.createConfig') }}</el-button>
   </section>
 
-  <el-dialog v-model="dialogVisible" :title="t('home.dialogTitle')" width="620px">
-    <div class="dialog-top-actions">
-      <el-button v-if="dialogAdvanced" :icon="ArrowLeft" @click="dialogAdvanced = false">{{ t('common.back') }}</el-button>
-      <el-button v-else :icon="Setting" @click="dialogAdvanced = true">{{ t('protocol.advancedSettings') }}</el-button>
-    </div>
+  <el-dialog v-model="dialogVisible" width="620px">
+    <template #header="{ titleId, titleClass }">
+      <div class="create-dialog-header">
+        <nav class="create-dialog-tabs" :aria-label="t('home.dialogTitle')">
+          <button
+            :id="titleId"
+            type="button"
+            :class="['create-dialog-tab', titleClass, { 'create-dialog-tab--active': !dialogAdvanced }]"
+            :aria-current="!dialogAdvanced ? 'page' : undefined"
+            @click="dialogAdvanced = false"
+          >
+            {{ t('home.dialogTitle') }}
+          </button>
+          <button
+            type="button"
+            :class="['create-dialog-tab', { 'create-dialog-tab--active': dialogAdvanced }]"
+            :aria-current="dialogAdvanced ? 'page' : undefined"
+            @click="dialogAdvanced = true"
+          >
+            {{ t('protocol.advancedSettings') }}
+          </button>
+        </nav>
+      </div>
+    </template>
     <template v-if="!dialogAdvanced">
     <div class="dialog-intro">
       <span class="dialog-intro__icon">
@@ -872,7 +891,55 @@ watch(
   border-radius: 8px;
   background: var(--app-surface-sunken);
 }
-.dialog-top-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
+
+.create-dialog-header {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+}
+
+.create-dialog-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.create-dialog-tab {
+  position: relative;
+  padding: 0 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--app-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.create-dialog-tab::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 999px;
+  background: transparent;
+}
+
+.create-dialog-tab--active {
+  color: var(--app-text-strong);
+}
+
+.create-dialog-tab--active::after {
+  background: var(--app-primary);
+}
+
+.create-dialog-tab:focus-visible {
+  outline: 0;
+  box-shadow: var(--app-focus);
+}
 
 .dialog-intro h3 {
   margin: 0;

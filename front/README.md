@@ -32,8 +32,8 @@
 - 节点公网地址分为公网 IPv4 和公网 IPv6，不合并为单个公网端点
 - 公网 IPv4 和公网 IPv6 都可以填写 IP 或域名
 - Mesh 自动 Endpoint 只选择 IPv4 或 IPv6 公网入口；对应入口不存在时自动留空
-- 创建配置和配置设置中的“高级设置”可选择 WireGuard 或 AmneziaWG 2.0；配置级 AWG 参数只展示和提交，随机生成由后端负责
-- 新建端点不展示高级参数；端点高级配置页维护 PreUp/PostUp/PreDown/PostDown 和 AWG 节点本地参数
+- 创建配置和配置设置中的“高级设置”可选择 WireGuard 或 AmneziaWG 2.0；配置级 AWG 参数以表格展示和提交，随机生成由后端负责
+- 新建端点不展示高级参数；端点高级配置页以表格维护 PreUp/PostUp/PreDown/PostDown 和 AWG 节点本地参数，字段问号提示解释参数含义
 
 ## 静态资源
 

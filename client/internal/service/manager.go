@@ -2,12 +2,19 @@ package service
 
 import (
 	"context"
+	_ "embed"
 	"fmt"
 	"io"
+	"os/exec"
 	"strings"
+	"time"
 
+	"wfm/client/internal/bind"
 	"wfm/client/internal/profile"
 )
+
+//go:embed install_logo.txt
+var installLogo string
 
 const (
 	Name        = "WfmAgent"
@@ -67,6 +74,53 @@ func ReloadOrStart() error {
 
 func PurgeData() error {
 	return platformPurgeData()
+}
+
+func printInstallDiagnostics() {
+	fmt.Print(installLogo)
+	fmt.Printf("\n WG Free Mesh Client %s\n", bind.Version)
+	fmt.Println("Kernel/toolchain check:")
+	printToolchainCheck("wg", "WireGuard")
+	printToolchainCheck("awg", "AmneziaWG")
+	fmt.Println()
+}
+
+func printToolchainCheck(command string, label string) {
+	path, err := exec.LookPath(command)
+	if err != nil {
+		fmt.Printf("  [missing] %-10s command %q not found. Download and install the matching kernel/toolchain from the WFM server download page when needed.\n", label, command)
+		return
+	}
+	version, err := commandVersion(command)
+	if err != nil {
+		fmt.Printf("  [warn]    %-10s found at %s, but %q failed: %v\n", label, path, command+" -v", err)
+		if version != "" {
+			fmt.Printf("            output: %s\n", firstLine(version))
+		}
+		return
+	}
+	fmt.Printf("  [ok]      %-10s %s\n", label, firstLine(version))
+}
+
+func commandVersion(command string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	output, err := exec.CommandContext(ctx, command, "-v").CombinedOutput()
+	text := strings.TrimSpace(string(output))
+	if ctx.Err() != nil {
+		return text, ctx.Err()
+	}
+	return text, err
+}
+
+func firstLine(text string) string {
+	for _, line := range strings.Split(strings.TrimSpace(text), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return "(no version output)"
 }
 
 func printStatus(info StatusInfo) {

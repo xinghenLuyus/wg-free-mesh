@@ -22,15 +22,16 @@ def random_config_params() -> dict[str, object]:
 def random_node_params() -> dict[str, object]:
     jmin = secrets.randbelow(193) + 64
     jmax = secrets.randbelow(1024 - max(jmin + 1, 256) + 1) + max(jmin + 1, 256)
+    i_packets = _random_i_packet_chain()
     return {
         "awg_jc": secrets.randbelow(7) + 4,
         "awg_jmin": jmin,
         "awg_jmax": jmax,
-        "awg_i1": None,
-        "awg_i2": None,
-        "awg_i3": None,
-        "awg_i4": None,
-        "awg_i5": None,
+        "awg_i1": i_packets[0],
+        "awg_i2": i_packets[1],
+        "awg_i3": i_packets[2],
+        "awg_i4": i_packets[3],
+        "awg_i5": i_packets[4],
     }
 
 
@@ -79,7 +80,7 @@ def ensure_config_params(payload: dict[str, object]) -> dict[str, object]:
 def ensure_node_params(payload: dict[str, object]) -> dict[str, object]:
     random_values = random_node_params()
     cleaned = validate_node_params(payload)
-    for key in ("awg_jc", "awg_jmin", "awg_jmax"):
+    for key in cleaned:
         if cleaned[key] is None:
             cleaned[key] = random_values[key]
     return cleaned
@@ -151,3 +152,42 @@ def _random_non_overlapping_h_ranges() -> list[str]:
             continue
         ranges.append((start, end))
     return [f"{start}-{end}" for start, end in ranges]
+
+
+def _random_i_packet_chain() -> list[str]:
+    templates = (_dns_like_i_packets, _stun_like_i_packets, _quic_like_i_packets)
+    return templates[secrets.randbelow(len(templates))]()
+
+
+def _dns_like_i_packets() -> list[str]:
+    return [
+        f"<b 0x{_hex_bytes(2)}01000001000000000000><b 0x0a><rc 10><b 0x03><rc 3><b 0x00><b 0x00010001>",
+        f"<b 0x{_hex_bytes(2)}01000001000000000000><b 0x08><rc 8><b 0x03><rc 3><b 0x00><b 0x001c0001>",
+        "<r 12>",
+        "<t><r 16>",
+        "<r 24>",
+    ]
+
+
+def _stun_like_i_packets() -> list[str]:
+    return [
+        "<b 0x000100002112a442><r 12>",
+        "<b 0x000100082112a442><r 12><r 8>",
+        "<b 0x000100142112a442><r 12><t><r 16>",
+        "<r 32>",
+        "<r 48>",
+    ]
+
+
+def _quic_like_i_packets() -> list[str]:
+    return [
+        "<b 0xc3><r 4><b 0x01><r 8><r 8><r 32>",
+        "<b 0xc7><r 4><b 0x01><r 12><r 8><r 48>",
+        "<r 64>",
+        "<t><r 32>",
+        "<r 80>",
+    ]
+
+
+def _hex_bytes(length: int) -> str:
+    return secrets.token_hex(length)

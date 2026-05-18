@@ -272,7 +272,7 @@ Authorization: Bearer <access_token>
   - `private_key`
 - `tags`
 - `pre_up`、`post_up`、`pre_down`、`post_down`：多条 `wg-quick` / `awg-quick` hook 命令，新建端点页面不展示，端点高级配置页维护。
-- `awg_jc`、`awg_jmin`、`awg_jmax`、`awg_i1`-`awg_i5`：AmneziaWG 2.0 节点本地参数，仅所属配置为 `amneziawg_2` 时参与配置生成；新建端点时由后端随机补齐 J 参数，I 参数默认留空。
+- `awg_jc`、`awg_jmin`、`awg_jmax`、`awg_i1`-`awg_i5`：AmneziaWG 2.0 节点本地参数，仅所属配置为 `amneziawg_2` 时参与配置生成；新建端点时由后端随机补齐 J 参数和 I1-I5 CPS 签名链。
 
 说明：
 
@@ -301,7 +301,7 @@ Authorization: Bearer <access_token>
 - 禁用端点不会重置已绑定客户端；后端必须保留 `client_initialized`、MQTT 身份和客户端基础信息。重新启用时，后端不自动恢复历史 Mesh 对，也不要求客户端重新初始化，用户可以在启用端点侧手动启用或删除 Mesh 对。
 - 当公网入口或监听端口变化导致相关 auto Endpoint 重算时，后端会同步清空已失效的 `persistent_keepalive`。
 - 当 `virtual_ip` 变更时，后端不会自动改写 `allowed_ips`，只会返回提示，由用户手工确认。
-- `POST /api/v1/nodes/awg/random` 返回一组节点级 AWG 随机参数，供端点高级配置页复用。
+- `POST /api/v1/nodes/awg/random` 返回一组节点级 AWG 随机参数，供端点高级配置页复用。返回值包含 `Jc/Jmin/Jmax` 和非空 `I1-I5`，其中 `I1-I5` 使用 DNS-like、STUN-like 或 QUIC-like CPS 模板生成。
 
 ### `DELETE /api/v1/nodes/{node_id}`
 
@@ -684,7 +684,7 @@ Authorization: Bearer <access_token>
 - `config/push` 是唯一的“同步态 -> 客户端下发态”通道。控制台手动下发和服务端自动同步态变更后的自动下发都必须走该通道。
 - 客户端收到 `config/push` 时，如果当前 profile 的 WG 接口正在运行，必须执行 stop -> 写配置 -> start；如果未运行，只写配置。
 - `wg_show` 通过 `info` topic 下发。
-- `wg_show` 的 ACK 只表示命令完成；具体 `wg show` 输出由客户端发布到 `event` topic，服务端写入命令行回显日志。
+- `wg_show` 的 ACK 只表示命令完成；具体 `wg` / `awg` 诊断输出由客户端发布到 `event` topic，服务端写入命令行回显日志。
 - 服务端每次 `config/push`、`control`、`detect`、`info` 下发都会在 payload 中携带 `tunnel_protocol`。客户端 bind profile 不保存协议，运行期以当次服务端 payload 为准，避免配置协议切换后本地状态漂移。
 - 节点已禁用时返回 `NODE_DISABLED`。
 
@@ -712,6 +712,7 @@ Authorization: Bearer <access_token>
 - 鉴权：必须携带后台会话 Bearer Token
 - 效果：
   - MQTT 服务启用时，通过 EMQX 管理 API 删除该节点当前 MQTT 凭据；EMQX 返回 404 视为已删除
+  - MQTT 服务启用时，通过 EMQX Clients API 踢出 `wfm-{node_id}` 当前连接；EMQX 返回 404 视为客户端已不在线
   - 删除或失效该节点绑定权限
   - 清空客户端运行态
   - 将 `client_initialized` 重置为 `false`
@@ -719,6 +720,7 @@ Authorization: Bearer <access_token>
 - 约束：
   - 节点已禁用时返回 `NODE_DISABLED`
   - MQTT 服务启用且 EMQX 凭据删除失败时返回 `EMQX_USER_DELETE_FAILED`，避免旧客户端凭据仍可用于连接
+  - MQTT 服务启用且 EMQX 客户端踢出失败时返回 `EMQX_CLIENT_DISCONNECT_FAILED`，避免旧连接继续保持在线
 
 ## 设置
 

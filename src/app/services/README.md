@@ -20,7 +20,7 @@
   - `TopologyService`：负责 Mesh 连接完整性、拓扑校验和系统级拓扑摘要，不再把这部分规则散落在仓储和 Router 中。
   - 同一节点对允许存在多组历史 Peer 连接，但不允许多组连接同时启用；重复启用会直接进入拓扑校验失败。
 - `emqx_service.py`
-  - `EmqxService`：集中管理 EMQX 管理 API 地址、节点 MQTT 凭据写入请求格式和 bind 时下发给客户端的 broker 参数。
+  - `EmqxService`：集中管理 EMQX 管理 API 地址、节点 MQTT 凭据写入 / 删除、客户端连接踢出请求格式和 bind 时下发给客户端的 broker 参数。
 - `mqtt_auth_service.py`
   - `MqttAuthService`：统一管理节点 MQTT 用户名、client_id、topic ACL 和 EMQX AuthZ 授权判断。
 - `mqtt_ingress_service.py`

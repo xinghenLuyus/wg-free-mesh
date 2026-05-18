@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 from collections.abc import Sequence
+from urllib.parse import quote
 
 import httpx
 
@@ -187,6 +188,10 @@ class EmqxService:
     def delete_node_user(self, *, node_id: str) -> httpx.Response:
         user_id = mqtt_auth_service.node_username(node_id)
         return self.request("DELETE", f"/api/v5/authentication/password_based:built_in_database/users/{user_id}")
+
+    def disconnect_node_client(self, *, node_id: str) -> httpx.Response:
+        client_id = quote(mqtt_auth_service.node_client_id(node_id), safe="")
+        return self.request("DELETE", f"/api/v5/clients/{client_id}")
 
 
 emqx_service = EmqxService()

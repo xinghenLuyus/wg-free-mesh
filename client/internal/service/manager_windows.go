@@ -75,12 +75,20 @@ func Install() error {
 			if err := run("configure", "sc.exe", "config", Name, "binPath=", binPath, "DisplayName=", DisplayName, "start=", "auto", "obj=", "LocalSystem"); err != nil {
 				return err
 			}
-			return Restart()
+			if err := Restart(); err != nil {
+				return err
+			}
+			printInstallDiagnostics()
+			return nil
 		}
 		return err
 	}
 	fmt.Printf("Service %s installed.\n", Name)
-	return Start()
+	if err := Start(); err != nil {
+		return err
+	}
+	printInstallDiagnostics()
+	return nil
 }
 
 func Uninstall() error {
@@ -92,11 +100,13 @@ func Uninstall() error {
 	if err := run("uninstall", "sc.exe", "delete", Name); err != nil {
 		if strings.Contains(err.Error(), "not installed") {
 			fmt.Printf("Service %s is not installed.\n", Name)
+			printPathRefreshHint()
 			return nil
 		}
 		return err
 	}
 	fmt.Printf("Service %s uninstalled.\n", Name)
+	printPathRefreshHint()
 	return nil
 }
 
@@ -344,6 +354,10 @@ func uninstallPath() error {
 		return fmt.Errorf("uninstall PATH failed: %w\n%s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+func printPathRefreshHint() {
+	fmt.Println(`Refresh current PowerShell PATH with: $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine")`)
 }
 
 func executableDir() string {

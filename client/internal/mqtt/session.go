@@ -191,7 +191,7 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 		}
 		output, err := runWGShow(tunnelProtocol)
 		level := "info"
-		message := "wg show completed."
+		message := "wg completed."
 		status := "applied"
 		if err != nil {
 			level = "error"
@@ -360,7 +360,7 @@ func runWGShowInterface(interfaceName string, tunnelProtocol string) (string, er
 func runWGShow(tunnelProtocol string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, tunnelTool(tunnelProtocol), "show")
+	cmd := exec.CommandContext(ctx, tunnelTool(tunnelProtocol))
 	output, err := cmd.CombinedOutput()
 	text := string(output)
 	if ctx.Err() != nil {
@@ -370,7 +370,7 @@ func runWGShow(tunnelProtocol string) (string, error) {
 		return text, err
 	}
 	if strings.TrimSpace(text) == "" {
-		return text, fmt.Errorf("wg show returned no interfaces")
+		return text, fmt.Errorf("%s returned no interfaces", tunnelTool(tunnelProtocol))
 	}
 	return text, nil
 }
@@ -380,10 +380,7 @@ func startWireGuard(interfaceName string, configPath string, tunnelProtocol stri
 		return err
 	}
 	if runtime.GOOS == "windows" {
-		if tunnelProtocol == "amneziawg_2" {
-			return runCommand(tunnelQuickTool(tunnelProtocol), "up", configPath)
-		}
-		return runCommand("wireguard.exe", "/installtunnelservice", configPath)
+		return runCommand(tunnelServiceTool(tunnelProtocol), "/installtunnelservice", configPath)
 	}
 	return runCommand(tunnelQuickTool(tunnelProtocol), "up", configPath)
 }
@@ -400,10 +397,7 @@ func restartWireGuardAfterConfigUpdate(oldInterfaceName string, newInterfaceName
 
 func stopWireGuard(interfaceName string, tunnelProtocol string) error {
 	if runtime.GOOS == "windows" {
-		if tunnelProtocol == "amneziawg_2" {
-			return runCommand(tunnelQuickTool(tunnelProtocol), "down", interfaceName)
-		}
-		return runCommand("wireguard.exe", "/uninstalltunnelservice", interfaceName)
+		return runCommand(tunnelServiceTool(tunnelProtocol), "/uninstalltunnelservice", interfaceName)
 	}
 	return runCommand(tunnelQuickTool(tunnelProtocol), "down", interfaceName)
 }
@@ -460,6 +454,13 @@ func tunnelQuickTool(tunnelProtocol string) string {
 		return "awg-quick"
 	}
 	return "wg-quick"
+}
+
+func tunnelServiceTool(tunnelProtocol string) string {
+	if tunnelProtocol == "amneziawg_2" {
+		return "amneziawg.exe"
+	}
+	return "wireguard.exe"
 }
 
 func (s *Session) publish(kind string, env Envelope) error {

@@ -125,8 +125,8 @@
 
 `tunnel_protocol` 支持：
 
-- `wireguard`：客户端使用 `wg` / `wg-quick`，Windows 标准 WireGuard 继续使用 `wireguard.exe` 服务安装方式。
-- `amneziawg_2`：客户端使用 `awg` / `awg-quick`。
+- `wireguard`：客户端使用 `wg` 做状态检查；Linux/macOS 使用 `wg-quick` 启停隧道，Windows 使用 `wireguard.exe` tunnel service 命令。
+- `amneziawg_2`：客户端使用 `awg` 做状态检查；Linux/macOS 使用 `awg-quick` 启停隧道，Windows 使用 `amneziawg.exe` tunnel service 命令。
 
 客户端必须以本次 payload 的 `tunnel_protocol` 为准选择工具链，不得从 bind profile 缓存协议。
 
@@ -149,7 +149,7 @@
 
 - `start` / `stop` 只作用于当前 profile 对应的 `interface_name`。
 - 客户端不得因为主机上存在其它 WireGuard 接口而把当前 profile 判定为 running。
-- `control` payload 必须携带 `tunnel_protocol`，客户端按该字段选择 `wg-quick` 或 `awg-quick` 执行。
+- `control` payload 必须携带 `tunnel_protocol`，客户端按该字段选择当前平台对应工具链执行。Linux/macOS 使用 `wg-quick` / `awg-quick`，Windows 使用 `wireguard.exe` / `amneziawg.exe` 的 tunnel service 命令。
 
 对应 ACK：
 
@@ -181,7 +181,7 @@
 用途：
 
 - 服务端按用户主动操作向客户端请求诊断信息。
-- 当前用于执行 `wg show` 或 `awg show` 并通过 `event` 返回命令行回显。
+- 当前用于执行裸 `wg` 或 `awg` 并通过 `event` 返回命令行回显。
 
 下行 topic：
 
@@ -195,7 +195,7 @@
 
 - `info/ack` 只表达命令是否完成。
 - 具体 stdout/stderr、命令行回显、诊断文本统一通过 `event` 上报。
-- `info` payload 携带 `tunnel_protocol`，客户端按该字段执行 `wg show` 或 `awg show`，且不限定接口。
+- `info` payload 携带 `tunnel_protocol`，客户端按该字段执行裸 `wg` 或 `awg`，且不限定接口。
 
 ### 5. `event`
 
@@ -226,7 +226,7 @@
   "request_id": "req_xxx",
   "action": "wg_show",
   "stream": "stdout",
-  "message": "wg show completed.",
+  "message": "wg completed.",
   "output": "interface: wg0\n..."
 }
 ```
@@ -345,7 +345,7 @@
 说明：
 
 - `info ack` 只更新控制日志状态。
-- `wg show` 输出由 `event` 承载。
+- `wg` / `awg` 诊断输出由 `event` 承载。
 
 ### 10. `heartbeat`
 
@@ -469,7 +469,7 @@ LWT payload 直接表达“正常离线”事件，例如：
   - `running`：客户端在线并明确上报当前 profile 接口运行中。
   - `stopped`：客户端在线并明确上报当前 profile 接口未运行。
 - 静态节点的 WG 状态永远是 `unknown`，不能显示“离线”。
-- `wg show` 属于诊断信息，允许返回主机上所有 WireGuard 接口；它不参与当前 profile 的 WG 状态投影。
+- 裸 `wg` / `awg` 输出属于诊断信息，允许返回主机上所有 WireGuard / AmneziaWG 接口；它不参与当前 profile 的 WG 状态投影。
 
 ## 服务端高权限 MQTT 客户端职责
 

@@ -534,13 +534,21 @@ class ControlPlaneService:
 
     def reset_client_state(self, config_id: str, node_id: str) -> dict[str, object]:
         if self.mqtt_service_enabled():
-            response = emqx_service.delete_node_user(node_id=node_id)
-            if response.status_code not in {200, 204, 404}:
+            delete_response = emqx_service.delete_node_user(node_id=node_id)
+            if delete_response.status_code not in {200, 204, 404}:
                 raise AppError(
                     "EMQX_USER_DELETE_FAILED",
                     "Failed to delete MQTT credentials",
                     502,
-                    {"status_code": response.status_code, "body": response.text},
+                    {"status_code": delete_response.status_code, "body": delete_response.text},
+                )
+            disconnect_response = emqx_service.disconnect_node_client(node_id=node_id)
+            if disconnect_response.status_code not in {200, 204, 404}:
+                raise AppError(
+                    "EMQX_CLIENT_DISCONNECT_FAILED",
+                    "Failed to disconnect MQTT client",
+                    502,
+                    {"status_code": disconnect_response.status_code, "body": disconnect_response.text},
                 )
         return store.reset_client_state(config_id, node_id)
 

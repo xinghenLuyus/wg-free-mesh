@@ -56,7 +56,11 @@ WantedBy=multi-user.target
 	if err := run("systemctl", "enable", "wfm-agent.service"); err != nil {
 		return err
 	}
-	return Restart()
+	if err := Restart(); err != nil {
+		return err
+	}
+	printInstallDiagnostics()
+	return nil
 }
 
 func Uninstall() error {

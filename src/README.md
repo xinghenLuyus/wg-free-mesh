@@ -39,8 +39,8 @@
 - `endpoint_mode=none` 强制不写 Endpoint。
 - `endpoint_mode=manual` 必须填写 Host 和 Port。
 - WireGuard Endpoint 只有在 Host 是 IPv6 字面量时才加方括号，域名不加。
-- 配置通过 `tunnel_protocol` 选择 `wireguard` 或 `amneziawg_2`。AmneziaWG 2.0 的 S/H 参数属于配置级，J/I 参数属于节点级；切回 WireGuard 时后端清空 AWG 专属字段。
-- 客户端绑定不保存隧道协议；服务端在每次 MQTT 控制、探测、诊断和配置下发 payload 中携带当前协议，客户端按当次 payload 选择 `wg` / `wg-quick` 或 `awg` / `awg-quick`。
+- 配置通过 `tunnel_protocol` 选择 `wireguard` 或 `amneziawg_2`。AmneziaWG 2.0 的 S/H 参数属于配置级，J/I 参数属于节点级；切回 WireGuard 时后端清空 AWG 专属字段。节点级随机值会同时生成 J 参数和非空 I1-I5 CPS 签名链。
+- 客户端绑定不保存隧道协议；服务端在每次 MQTT 控制、探测、诊断和配置下发 payload 中携带当前协议，客户端按当次 payload 选择工具链。Linux/macOS 启停隧道使用 `wg-quick` / `awg-quick`，Windows 启停隧道使用 `wireguard.exe` / `amneziawg.exe` 的 tunnel service 命令；状态检查使用 `wg` / `awg`。
 
 可配置项：
 

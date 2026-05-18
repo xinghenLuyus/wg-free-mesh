@@ -58,7 +58,11 @@ func Install() error {
 		return err
 	}
 	_ = run("launchctl", "bootout", "system/mesh.wg-free.wfm-agent")
-	return Start()
+	if err := Start(); err != nil {
+		return err
+	}
+	printInstallDiagnostics()
+	return nil
 }
 
 func Uninstall() error {
