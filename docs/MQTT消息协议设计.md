@@ -4,7 +4,9 @@
 
 本文件定义 `wfm` 客户端与服务端之间通过 MQTT 交互的消息主题、消息体、ACK 规则和在线状态投影。
 
-当前先固化“客户端接入与状态链路”阶段的协议，不展开具体 WireGuard 业务字段。
+当前协议覆盖客户端接入、状态链路、配置下发和隧道控制。配置所属隧道协议由服务端在每次下行命令中携带，客户端 bind profile 不保存协议字段。
+
+客户端 MQTT 密码由服务端在 bind 时生成并写入应用数据库，用于应用级快照恢复后重建 EMQX 节点用户。快照包包含该凭据和 WireGuard 私钥，必须按敏感备份保存。恢复快照后，服务端会先清空历史运行态，再重建 EMQX 用户并主动发送 detect；端点只有重新发出 heartbeat、event 或 detect ACK 后才重新在线。
 
 ## 设计范围
 
@@ -113,12 +115,20 @@
 ```json
 {
   "action": "push_config",
+  "tunnel_protocol": "wireguard",
   "interface_name": "config-node",
   "config_version": 3,
   "config_sha256": "abc...",
   "config_text": "[Interface]\n..."
 }
 ```
+
+`tunnel_protocol` 支持：
+
+- `wireguard`：客户端使用 `wg` / `wg-quick`，Windows 标准 WireGuard 继续使用 `wireguard.exe` 服务安装方式。
+- `amneziawg_2`：客户端使用 `awg` / `awg-quick`。
+
+客户端必须以本次 payload 的 `tunnel_protocol` 为准选择工具链，不得从 bind profile 缓存协议。
 
 ### 2. `control`
 
@@ -139,6 +149,7 @@
 
 - `start` / `stop` 只作用于当前 profile 对应的 `interface_name`。
 - 客户端不得因为主机上存在其它 WireGuard 接口而把当前 profile 判定为 running。
+- `control` payload 必须携带 `tunnel_protocol`，客户端按该字段选择 `wg-quick` 或 `awg-quick` 执行。
 
 对应 ACK：
 
@@ -163,13 +174,14 @@
 - `detect` 只在前端页面有活跃用户连接时触发。
 - 建议由服务端每 2 分钟触发一次。
 - 没有用户查看时，不做主动探测。
+- `detect` payload 携带 `tunnel_protocol`，客户端按该字段执行当前 profile 接口检测。
 
 ### 4. `info`
 
 用途：
 
 - 服务端按用户主动操作向客户端请求诊断信息。
-- 当前用于执行 `wg show` 并通过 `event` 返回命令行回显。
+- 当前用于执行 `wg show` 或 `awg show` 并通过 `event` 返回命令行回显。
 
 下行 topic：
 
@@ -183,7 +195,7 @@
 
 - `info/ack` 只表达命令是否完成。
 - 具体 stdout/stderr、命令行回显、诊断文本统一通过 `event` 上报。
-- `wg show` 不限定接口，客户端应返回主机上所有 WireGuard 接口信息。
+- `info` payload 携带 `tunnel_protocol`，客户端按该字段执行 `wg show` 或 `awg show`，且不限定接口。
 
 ### 5. `event`
 

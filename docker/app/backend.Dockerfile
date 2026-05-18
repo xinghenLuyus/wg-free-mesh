@@ -20,8 +20,9 @@ COPY client/go.mod client/go.sum /client/
 RUN cd /client && go mod download
 COPY client /client
 
-COPY src/pyproject.toml src/README.md ./
+COPY src/pyproject.toml src/README.md src/alembic.ini ./
 COPY src/app ./app
+COPY src/migrations ./migrations
 COPY --from=front-build /front/dist /front/dist
 
 RUN pip install --no-cache-dir -e .

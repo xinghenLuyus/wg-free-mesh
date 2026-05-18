@@ -27,6 +27,18 @@ class NodeRequest(BaseModel):
     public_key: str | None = None
     private_key: str | None = None
     tags: list[str] = Field(default_factory=list)
+    pre_up: list[str] = Field(default_factory=list)
+    post_up: list[str] = Field(default_factory=list)
+    pre_down: list[str] = Field(default_factory=list)
+    post_down: list[str] = Field(default_factory=list)
+    awg_jc: int | None = None
+    awg_jmin: int | None = None
+    awg_jmax: int | None = None
+    awg_i1: str | None = None
+    awg_i2: str | None = None
+    awg_i3: str | None = None
+    awg_i4: str | None = None
+    awg_i5: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -40,6 +52,11 @@ class NodeRequest(BaseModel):
         "dns",
         "public_key",
         "private_key",
+        "awg_i1",
+        "awg_i2",
+        "awg_i3",
+        "awg_i4",
+        "awg_i5",
         mode="before",
     )
     @classmethod
@@ -49,6 +66,13 @@ class NodeRequest(BaseModel):
     @field_validator("tags", mode="before")
     @classmethod
     def normalize_tags(cls, value: object) -> list[str]:
+        if not isinstance(value, list):
+            return []
+        return normalize_string_list([str(item) for item in value])
+
+    @field_validator("pre_up", "post_up", "pre_down", "post_down", mode="before")
+    @classmethod
+    def normalize_commands(cls, value: object) -> list[str]:
         if not isinstance(value, list):
             return []
         return normalize_string_list([str(item) for item in value])
@@ -200,6 +224,11 @@ def validate_ip(config_id: str, payload: VirtualIpRequest) -> ApiResponse[dict[s
 @router.post("/nodes/keys/generate")
 def generate_keys() -> ApiResponse[dict[str, str]]:
     return ok(control_plane_service.create_keys())
+
+
+@router.post("/nodes/awg/random")
+def random_awg_node() -> ApiResponse[dict[str, object]]:
+    return ok(control_plane_service.random_awg_node_params())
 
 
 @router.post("/nodes/keys/derive-public")

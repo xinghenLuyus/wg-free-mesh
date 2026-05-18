@@ -15,6 +15,7 @@ const HelpView = () => import('@/views/HelpView.vue')
 const HomeView = () => import('@/views/HomeView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const MeshView = () => import('@/views/MeshView.vue')
+const NodeAdvancedView = () => import('@/views/NodeAdvancedView.vue')
 const NodeWorkspaceLayout = () => import('@/views/NodeWorkspaceLayout.vue')
 const NodesView = () => import('@/views/NodesView.vue')
 const SettingsView = () => import('@/views/SettingsView.vue')
@@ -47,6 +48,7 @@ export const router = createRouter({
               redirect: (to) => `/configs/${to.params.configId}/nodes/${to.params.nodeId}/mesh`,
               children: [
                 { path: 'mesh', component: MeshView },
+                { path: 'advanced', component: NodeAdvancedView },
                 { path: 'apply', component: ApplyView },
                 { path: 'control', component: EndpointsView },
                 { path: 'download', component: DownloadConfigView },

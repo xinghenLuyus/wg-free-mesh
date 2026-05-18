@@ -45,6 +45,11 @@ class NodeType(StrEnum):
     static = "static"
 
 
+class TunnelProtocol(StrEnum):
+    wireguard = "wireguard"
+    amneziawg_2 = "amneziawg_2"
+
+
 class ConnectivityState(StrEnum):
     unknown = "unknown"
     online = "online"
@@ -110,6 +115,15 @@ class Config(BaseModel):
     default_mtu: int | None = None
     default_dns: str | None = None
     auto_sync: bool = True
+    tunnel_protocol: TunnelProtocol = TunnelProtocol.wireguard
+    awg_s1: int | None = None
+    awg_s2: int | None = None
+    awg_s3: int | None = None
+    awg_s4: int | None = None
+    awg_h1: str | None = None
+    awg_h2: str | None = None
+    awg_h3: str | None = None
+    awg_h4: str | None = None
     node_count: int = 0
     dynamic_node_count: int = 0
     online_node_count: int = 0
@@ -137,6 +151,18 @@ class Node(BaseModel):
     public_key: str
     private_key: str
     tags: list[str] = Field(default_factory=list)
+    pre_up: list[str] = Field(default_factory=list)
+    post_up: list[str] = Field(default_factory=list)
+    pre_down: list[str] = Field(default_factory=list)
+    post_down: list[str] = Field(default_factory=list)
+    awg_jc: int | None = None
+    awg_jmin: int | None = None
+    awg_jmax: int | None = None
+    awg_i1: str | None = None
+    awg_i2: str | None = None
+    awg_i3: str | None = None
+    awg_i4: str | None = None
+    awg_i5: str | None = None
     created_at: datetime = Field(default_factory=now_utc)
     updated_at: datetime = Field(default_factory=now_utc)
 

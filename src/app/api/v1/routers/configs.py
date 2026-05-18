@@ -21,6 +21,15 @@ class ConfigCreateRequest(BaseModel):
     default_mtu: int | None = Field(default=None, ge=576, le=65535)
     default_dns: str | None = None
     auto_sync: bool = True
+    tunnel_protocol: str = "wireguard"
+    awg_s1: int | None = None
+    awg_s2: int | None = None
+    awg_s3: int | None = None
+    awg_s4: int | None = None
+    awg_h1: str | None = None
+    awg_h2: str | None = None
+    awg_h3: str | None = None
+    awg_h4: str | None = None
 
     @field_validator("name")
     @classmethod
@@ -37,7 +46,7 @@ class ConfigCreateRequest(BaseModel):
     def validate_virtual_subnet(cls, value: str) -> str:
         return normalize_cidr(value, "Virtual subnet")
 
-    @field_validator("default_dns", mode="before")
+    @field_validator("default_dns", "awg_h1", "awg_h2", "awg_h3", "awg_h4", mode="before")
     @classmethod
     def normalize_optional_text(cls, value: str | None) -> str | None:
         return strip_optional_text(value)
@@ -86,3 +95,8 @@ async def delete_config(config_id: str) -> ApiResponse[dict[str, str]]:
 @router.get("/{config_id}/overview")
 def config_overview(config_id: str) -> ApiResponse[dict[str, Any]]:
     return ok(control_plane_service.config_overview(config_id))
+
+
+@router.post("/awg/random")
+def random_awg_config() -> ApiResponse[dict[str, object]]:
+    return ok(control_plane_service.random_awg_config_params())

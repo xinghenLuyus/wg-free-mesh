@@ -24,6 +24,7 @@
 - `wfm`
   - 使用统一账号密码作为 EMQX 管理 API 凭据和服务端 MQTT 超级用户
   - 生成或轮换节点专属 MQTT 用户名与密码
+  - 将节点专属 MQTT 密码写入应用数据库，作为应用级快照的一部分，用于恢复后重建 EMQX 节点用户
   - 调 EMQX 管理 API 创建、更新、删除账号
   - 对 EMQX 的 pub/sub 回查请求返回 allow / deny
   - 在 bind 响应中下发 MQTT 连接参数
@@ -174,6 +175,7 @@
 - 节点 bind 时创建或轮换 EMQX 账号
 - 节点 bind 时在 TLS 模式下下发 CA 证书，客户端据此校验 EMQX 服务端证书
 - 重置客户端时删除 EMQX 节点账号，并在 AuthZ 回查中校验 `client_initialized` 与登记的 MQTT 身份，避免旧凭据继续发布或订阅
+- 快照恢复时清空历史在线运行态，使用快照中的 MQTT 密码重建 EMQX 节点账号，并主动触发 detect
 - Go 客户端 bind 后保存本地 profile 并连接 MQTT
 - 服务端作为高权限 MQTT 客户端订阅上行 topic
 - MQTT 服务启停状态纳入系统检查，并由 `WFM_ENABLE_MQTT_SERVICES` 作为部署级开关统一控制客户端相关能力

@@ -8,7 +8,7 @@
 - 配置管理
 - 节点管理
 - Peer Link / Mesh 校验
-- WireGuard 配置预览
+- WireGuard / AmneziaWG 2.0 隧道配置预览
 - 系统态与同步态管理
 - 端点运行态、控制日志、批量 probe
 - SSE 实时事件
@@ -39,6 +39,8 @@
 - `endpoint_mode=none` 强制不写 Endpoint。
 - `endpoint_mode=manual` 必须填写 Host 和 Port。
 - WireGuard Endpoint 只有在 Host 是 IPv6 字面量时才加方括号，域名不加。
+- 配置通过 `tunnel_protocol` 选择 `wireguard` 或 `amneziawg_2`。AmneziaWG 2.0 的 S/H 参数属于配置级，J/I 参数属于节点级；切回 WireGuard 时后端清空 AWG 专属字段。
+- 客户端绑定不保存隧道协议；服务端在每次 MQTT 控制、探测、诊断和配置下发 payload 中携带当前协议，客户端按当次 payload 选择 `wg` / `wg-quick` 或 `awg` / `awg-quick`。
 
 可配置项：
 
@@ -153,7 +155,8 @@ python -m pytest -q
 - Docker 镜像会先构建前端，再把 `dist` 复制进后端镜像
 - Docker 模式将项目目录 `src/data` 挂载到容器内 `/app/data`，和本地后端开发使用同一份运行数据
 - 数据层使用 SQLAlchemy，迁移目录为 `src/migrations/`，数据库入口为 `WFM_DATABASE`
-- 备份恢复使用应用级快照，可在不同数据库之间导入恢复
+- 后端启动会自动协调数据库迁移到最新 schema，已有 SQLite/PostgreSQL 数据库不需要手动补字段
+- 备份恢复使用应用级快照，可在不同数据库之间导入恢复。快照包含 WireGuard 私钥和客户端 MQTT 密码，必须按敏感备份保存。恢复后后端会重建 EMQX 节点用户、清空历史运行态并主动探测端点，端点重新发出 heartbeat、event 或 detect ACK 后才显示在线
 - 生产启动命令同样带 `--timeout-graceful-shutdown 1`，避免 SSE 长连接阻塞停机
 - 下载工具生成的客户端构建产物缓存到后端运行数据目录 `data/artifacts/clients/`；配置批量下载临时包写入 `data/artifacts/config-bulk/`，每次生成新包时会删除旧包，只保留最近一次生成结果。本地开发使用 `--reload` 时应排除 `data` 目录，避免产物写入触发重载
 

@@ -18,9 +18,13 @@ TEST_PASSWORD = "test-password-123"
 @pytest.fixture()
 def client(tmp_path: Path, monkeypatch) -> Iterator[TestClient]:
     monkeypatch.chdir(tmp_path)
+    database_url = f"sqlite:///{(tmp_path / 'test.db').as_posix()}"
+    monkeypatch.setenv("WFM_DATABASE", database_url)
+    from app.core.config import settings
     from app.data.database import reset_engine
     from app.main import app
 
+    settings.database = database_url
     reset_engine()
     with TestClient(app) as test_client:
         yield test_client

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Files, Plus } from '@element-plus/icons-vue'
+import { ArrowLeft, Files, Plus, Setting } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -13,6 +13,8 @@ import { useRealtime } from '@/composables/useRealtime'
 import type { ConfigListUpdatedPayload, ConfigRead, RealtimeEvent } from '@/types/api'
 import { cidrRule, requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
+import ConfigProtocolForm from '@/components/config/ConfigProtocolForm.vue'
+import type { ConfigProtocolModel } from '@/components/config/ConfigProtocolForm.vue'
 
 const router = useRouter()
 const { t } = useI18n()
@@ -28,6 +30,7 @@ const realtime = useRealtime((event: RealtimeEvent) => {
   }
 })
 const dialogVisible = shallowRef(false)
+const dialogAdvanced = shallowRef(false)
 const formRef = shallowRef<FormInstance>()
 const form = reactive({
   name: '',
@@ -38,6 +41,28 @@ const form = reactive({
   default_mtu: 1420,
   default_dns: '1.1.1.1',
   auto_sync: true,
+  tunnel_protocol: 'wireguard',
+  awg_s1: null,
+  awg_s2: null,
+  awg_s3: null,
+  awg_s4: null,
+  awg_h1: null,
+  awg_h2: null,
+  awg_h3: null,
+  awg_h4: null,
+} satisfies ConfigProtocolModel & {
+  name: string
+  description: string
+  enabled: boolean
+  virtual_subnet: string
+  default_listen_port: number
+  default_mtu: number | null
+  default_dns: string | null
+  auto_sync: boolean
+})
+const protocolForm = computed<ConfigProtocolModel>({
+  get: () => form,
+  set: (next) => Object.assign(form, next),
 })
 const formRules: FormRules<typeof form> = {
   name: [requiredTextRule('fields.name')],
@@ -115,6 +140,11 @@ async function submit() {
       notify.error(error instanceof ApiClientError ? error.message : t('home.createFailed'))
     }
   })
+}
+
+function openCreateDialog() {
+  dialogAdvanced.value = false
+  dialogVisible.value = true
 }
 
 async function openConfig(configId: string) {
@@ -195,7 +225,7 @@ watch(
       <h2>{{ t('home.configSectionTitle') }}</h2>
     </div>
     <div class="config-toolbar__actions">
-      <el-button type="primary" :icon="Plus" @click="dialogVisible = true">{{ t('home.createConfig') }}</el-button>
+      <el-button type="primary" :icon="Plus" @click="openCreateDialog">{{ t('home.createConfig') }}</el-button>
       <el-segmented v-model="statusFilter" :options="statusFilterOptions" :aria-label="t('home.statusFilter')" />
       <el-select v-model="sortKey" class="config-sort-select" :aria-label="t('home.sortLabel')">
         <el-option v-for="option in sortOptions" :key="option.value" :label="option.label" :value="option.value" />
@@ -287,10 +317,15 @@ watch(
     </span>
     <strong>{{ configs.length ? t('home.noMatchingConfigs') : t('home.emptyTitle') }}</strong>
     <span v-if="!configs.length">{{ t('home.emptyDescription') }}</span>
-    <el-button type="primary" :icon="Plus" @click="dialogVisible = true">{{ t('home.createConfig') }}</el-button>
+    <el-button type="primary" :icon="Plus" @click="openCreateDialog">{{ t('home.createConfig') }}</el-button>
   </section>
 
-  <el-dialog v-model="dialogVisible" :title="t('home.dialogTitle')" width="560px">
+  <el-dialog v-model="dialogVisible" :title="t('home.dialogTitle')" width="620px">
+    <div class="dialog-top-actions">
+      <el-button v-if="dialogAdvanced" :icon="ArrowLeft" @click="dialogAdvanced = false">{{ t('common.back') }}</el-button>
+      <el-button v-else :icon="Setting" @click="dialogAdvanced = true">{{ t('protocol.advancedSettings') }}</el-button>
+    </div>
+    <template v-if="!dialogAdvanced">
     <div class="dialog-intro">
       <span class="dialog-intro__icon">
         <el-icon><Files /></el-icon>
@@ -330,6 +365,8 @@ watch(
         <el-switch v-model="form.auto_sync" />
       </div>
     </el-form>
+    </template>
+    <ConfigProtocolForm v-else v-model="protocolForm" />
 
     <template #footer>
       <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
@@ -835,6 +872,7 @@ watch(
   border-radius: 8px;
   background: var(--app-surface-sunken);
 }
+.dialog-top-actions { display: flex; justify-content: flex-end; margin-bottom: 12px; }
 
 .dialog-intro h3 {
   margin: 0;

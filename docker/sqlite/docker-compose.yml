@@ -1,4 +1,4 @@
-name: wg-free-mesh
+name: wg-free-mesh-sqlite
 
 services:
   app:
@@ -29,7 +29,7 @@ services:
       - "${WFM_MQTT_PUBLIC_PORT:-1883}:1883"
       - "${WFM_MQTT_PUBLIC_TLS_PORT:-8883}:8883"
       # EMQX Dashboard/API is disabled by default. Uncomment only when local administration is needed.
-      # - "18083:18083"
+      - "18083:18083"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

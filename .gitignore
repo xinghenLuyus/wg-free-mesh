@@ -54,7 +54,6 @@ front/coverage/
 *.tsbuildinfo
 
 # runtime data and local state
-data/
 logs/
 src/data/
 src/logs/

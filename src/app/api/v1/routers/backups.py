@@ -51,10 +51,11 @@ def export_snapshot(snapshot_id: str) -> FileResponse:
 
 
 @router.post("/restore/{snapshot_id}")
-async def restore_snapshot(snapshot_id: str) -> ApiResponse[dict[str, str]]:
+async def restore_snapshot(snapshot_id: str) -> ApiResponse[dict[str, object]]:
     control_plane_service.restore_snapshot(snapshot_id)
+    recovery = await control_plane_service.recover_after_snapshot_restore()
     await control_plane_service.publish_full_state()
-    return ok({"message": "Snapshot restored"})
+    return ok({"message": "Snapshot restored", "recovery": recovery})
 
 
 @router.post("/upload")

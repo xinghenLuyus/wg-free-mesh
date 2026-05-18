@@ -34,6 +34,7 @@ const resettingMqtt = actions.isPending('reset-mqtt')
 const testingMqtt = actions.isPending('test-mqtt')
 const creatingSnapshot = actions.isPending('create-snapshot')
 const importingSnapshot = actions.isPending('import-snapshot')
+const restoringSnapshot = shallowRef(false)
 const mqttForm = reactive({
   host: '',
   port: 8883,
@@ -277,11 +278,14 @@ async function handleSnapshotImport(event: Event) {
 }
 
 async function restoreSnapshot(snapshotId: string) {
+  restoringSnapshot.value = true
   try {
     await api.restoreSnapshot(snapshotId)
     notify.success(t('settings.snapshotRestored'))
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotRestoreFailed'))
+  } finally {
+    restoringSnapshot.value = false
   }
 }
 
@@ -517,6 +521,26 @@ onMounted(async () => {
         </div>
       </div>
     </article>
+
+    <el-dialog
+      v-model="restoringSnapshot"
+      width="420px"
+      align-center
+      append-to-body
+      :show-close="false"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :lock-scroll="true"
+      class="restore-progress-dialog"
+    >
+      <div class="restore-progress">
+        <span class="restore-progress__icon"><el-icon class="is-loading"><RefreshLeft /></el-icon></span>
+        <div>
+          <h3>{{ t('settings.snapshotRestoringTitle') }}</h3>
+          <p>{{ t('settings.snapshotRestoringDescription') }}</p>
+        </div>
+      </div>
+    </el-dialog>
   </section>
 </template>
 
@@ -811,6 +835,38 @@ onMounted(async () => {
 
 .snapshot-empty strong {
   color: var(--app-text);
+}
+
+.restore-progress {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 4px 2px;
+}
+
+.restore-progress__icon {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--app-border-accent);
+  border-radius: 8px;
+  background: var(--app-primary-soft);
+  color: var(--app-primary);
+  font-size: 22px;
+}
+
+.restore-progress h3 {
+  margin: 0;
+  color: var(--app-text-strong);
+  font-size: 18px;
+}
+
+.restore-progress p {
+  margin: 6px 0 0;
+  color: var(--app-muted);
+  line-height: 1.6;
 }
 
 @media (max-width: 980px) {

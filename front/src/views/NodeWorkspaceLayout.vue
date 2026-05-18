@@ -73,6 +73,18 @@ const settingsForm = reactive({
   public_key: '',
   private_key: '',
   tags: [] as string[],
+  pre_up: [] as string[],
+  post_up: [] as string[],
+  pre_down: [] as string[],
+  post_down: [] as string[],
+  awg_jc: null as number | null,
+  awg_jmin: null as number | null,
+  awg_jmax: null as number | null,
+  awg_i1: '' as string | null,
+  awg_i2: '' as string | null,
+  awg_i3: '' as string | null,
+  awg_i4: '' as string | null,
+  awg_i5: '' as string | null,
 })
 const settingsRules: FormRules<typeof settingsForm> = {
   name: [requiredTextRule('fields.name')],
@@ -87,6 +99,7 @@ const tabs = computed(() => {
   const mqttDisabled = endpointStatus.value?.mqtt_service.enabled === false
   return [
     { label: t('nodeWorkspace.mesh'), path: `/configs/${configId}/nodes/${nodeId}/mesh`, align: 'left' as const },
+    { label: t('nodeWorkspace.advanced'), path: `/configs/${configId}/nodes/${nodeId}/advanced`, align: 'left' as const, disabled: isDisabledNode },
     { label: t('nodeWorkspace.apply'), path: `/configs/${configId}/nodes/${nodeId}/apply`, align: 'left' as const, disabled: isDisabledNode },
     {
       label: t('nodeWorkspace.control'),
@@ -161,6 +174,18 @@ function fillSettingsForm() {
     public_key: node.value.public_key,
     private_key: node.value.private_key,
     tags: [...node.value.tags],
+    pre_up: [...node.value.pre_up],
+    post_up: [...node.value.post_up],
+    pre_down: [...node.value.pre_down],
+    post_down: [...node.value.post_down],
+    awg_jc: node.value.awg_jc,
+    awg_jmin: node.value.awg_jmin,
+    awg_jmax: node.value.awg_jmax,
+    awg_i1: node.value.awg_i1,
+    awg_i2: node.value.awg_i2,
+    awg_i3: node.value.awg_i3,
+    awg_i4: node.value.awg_i4,
+    awg_i5: node.value.awg_i5,
   })
 }
 
@@ -217,6 +242,18 @@ async function saveNodeSettings() {
         public_key: settingsForm.public_key,
         private_key: settingsForm.private_key,
         tags: normalizeTags(settingsForm.tags),
+        pre_up: settingsForm.pre_up,
+        post_up: settingsForm.post_up,
+        pre_down: settingsForm.pre_down,
+        post_down: settingsForm.post_down,
+        awg_jc: settingsForm.awg_jc,
+        awg_jmin: settingsForm.awg_jmin,
+        awg_jmax: settingsForm.awg_jmax,
+        awg_i1: settingsForm.awg_i1 || null,
+        awg_i2: settingsForm.awg_i2 || null,
+        awg_i3: settingsForm.awg_i3 || null,
+        awg_i4: settingsForm.awg_i4 || null,
+        awg_i5: settingsForm.awg_i5 || null,
       }))
       settingsVisible.value = false
       await load()
@@ -229,7 +266,7 @@ async function saveNodeSettings() {
 }
 
 function redirectDisabledRoute() {
-  if (!node.value || node.value.enabled || !route.path.match(/\/(apply|control|download)$/)) return
+  if (!node.value || node.value.enabled || !route.path.match(/\/(advanced|apply|control|download)$/)) return
   void router.replace(`/configs/${route.params.configId}/nodes/${route.params.nodeId}/mesh`)
 }
 

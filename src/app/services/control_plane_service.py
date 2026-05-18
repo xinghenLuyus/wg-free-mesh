@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.errors import AppError
+from app.domain import awg
 from app.domain.models import ControlStatus, NodeType
 from app.events.publish_plan import PublishPlan
 from app.events.realtime_publisher import RealtimePublisher
@@ -414,6 +415,12 @@ class ControlPlaneService:
     def create_preshared_key(self):
         return store.create_preshared_key()
 
+    def random_awg_config_params(self) -> dict[str, object]:
+        return awg.random_config_params()
+
+    def random_awg_node_params(self) -> dict[str, object]:
+        return awg.random_node_params()
+
     def derive_public_key(self, private_key: str):
         return store.derive_public_key_from_private(private_key)
 
@@ -509,6 +516,7 @@ class ControlPlaneService:
         *,
         username: str,
         client_id: str,
+        password: str,
         platform: str = "",
         version: str = "",
         hostname: str = "",
@@ -518,6 +526,7 @@ class ControlPlaneService:
             node_id,
             username=username,
             client_id=client_id,
+            password=password,
             platform=platform,
             version=version,
             hostname=hostname,
@@ -548,6 +557,7 @@ class ControlPlaneService:
             raise AppError("NO_STAGED_CONFIG", "No staged config to push", 409)
         return {
             "action": "push_config",
+            "tunnel_protocol": config.tunnel_protocol.value,
             "interface_name": node_config_interface_name(config.name, node.name),
             "config_version": state.staged_version,
             "config_sha256": state.staged_sha256,
@@ -620,6 +630,8 @@ class ControlPlaneService:
         await realtime_service.publish("control.log.created", {"config_id": config_id, "node_id": node_id, "log": log.model_dump(mode="json")})
         kind = "info" if action == "wg_show" else "config/push" if action == "push_config" else "control"
         payload_body: dict[str, object] = {"action": action}
+        config = store.get_config(config_id)
+        payload_body["tunnel_protocol"] = config.tunnel_protocol.value
         payload = {
             "type": kind,
             "request_id": log.request_id,
@@ -761,6 +773,38 @@ class ControlPlaneService:
 
     def restore_snapshot(self, snapshot_id: str) -> None:
         snapshot_service.restore_snapshot(snapshot_id)
+
+    async def recover_after_snapshot_restore(self) -> dict[str, int]:
+        store.prepare_runtime_after_snapshot_restore()
+        credentials = store.list_restorable_mqtt_credentials()
+        synced = 0
+        failed = 0
+        if self.mqtt_service_enabled():
+            for item in credentials:
+                try:
+                    response = await asyncio.to_thread(
+                        emqx_service.upsert_user,
+                        user_id=item["username"],
+                        password=item["password"],
+                    )
+                    if response.status_code >= 400:
+                        failed += 1
+                    else:
+                        synced += 1
+                except Exception:
+                    logger.exception("Failed to restore EMQX user for node %s", item["node_id"])
+                    failed += 1
+        try:
+            from app.services.mqtt_ingress_service import mqtt_ingress_service
+
+            await mqtt_ingress_service.probe_bound_clients_once()
+        except Exception:
+            logger.exception("Failed to probe clients after snapshot restore")
+        return {
+            "mqtt_credentials": len(credentials),
+            "mqtt_users_synced": synced,
+            "mqtt_users_failed": failed,
+        }
 
     def import_snapshot(self, path: Path, original_name: str | None = None):
         return snapshot_service.import_snapshot(path, original_name)

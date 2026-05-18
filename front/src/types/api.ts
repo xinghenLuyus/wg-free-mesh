@@ -120,6 +120,15 @@ export interface ConfigRead {
   default_mtu: number | null
   default_dns: string | null
   auto_sync: boolean
+  tunnel_protocol: 'wireguard' | 'amneziawg_2'
+  awg_s1: number | null
+  awg_s2: number | null
+  awg_s3: number | null
+  awg_s4: number | null
+  awg_h1: string | null
+  awg_h2: string | null
+  awg_h3: string | null
+  awg_h4: string | null
   node_count: number
   dynamic_node_count: number
   online_node_count: number
@@ -215,6 +224,18 @@ export interface NodeRead {
   public_key: string
   private_key: string
   tags: string[]
+  pre_up: string[]
+  post_up: string[]
+  pre_down: string[]
+  post_down: string[]
+  awg_jc: number | null
+  awg_jmin: number | null
+  awg_jmax: number | null
+  awg_i1: string | null
+  awg_i2: string | null
+  awg_i3: string | null
+  awg_i4: string | null
+  awg_i5: string | null
   created_at: string
   updated_at: string
 }

@@ -57,6 +57,8 @@ export const api = {
     request<ConfigRead>('/configs', { method: 'POST', data: payload }),
   updateConfig: (configId: string, payload: Record<string, unknown>) =>
     request<ConfigMutationRead>(`/configs/${configId}`, { method: 'PUT', data: payload }),
+  randomAwgConfig: () =>
+    request<Record<string, number | string>>('/configs/awg/random', { method: 'POST' }),
   deleteConfig: (configId: string) =>
     request<{ message: string }>(`/configs/${configId}`, { method: 'DELETE' }),
 
@@ -93,6 +95,8 @@ export const api = {
       data: { virtual_ip },
     }),
   generateKeys: () => request<{ private_key: string; public_key: string }>('/nodes/keys/generate', { method: 'POST' }),
+  randomAwgNode: () =>
+    request<Record<string, number | string | null>>('/nodes/awg/random', { method: 'POST' }),
 
   peerLinks: (configId: string) => request<PeerLinkRead[]>(`/configs/${configId}/peer-links`),
   meshWorkspace: (configId: string, nodeId: string) =>

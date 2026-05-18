@@ -11,7 +11,7 @@ from app.data.schema import metadata
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database)
 
-if config.config_file_name is not None:
+if config.config_file_name is not None and config.attributes.get("configure_logger", True):
     fileConfig(config.config_file_name)
 
 target_metadata = metadata
@@ -42,4 +42,3 @@ if context.is_offline_mode():
     run_migrations_offline()
 else:
     run_migrations_online()
-

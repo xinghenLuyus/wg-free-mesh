@@ -7,11 +7,11 @@
 - `wfmctl bind` 通过 HTTPS 一次性 token 绑定动态节点。
 - `wfmctl unbind` 移除本机绑定文件和本地凭据。
 - `wfmctl install / uninstall / start / stop / restart` 管理系统级后台服务。
-- `wfmctl` 不提供本地 profile 级控制；所有具体 WireGuard 控制动作都由服务端通过 MQTT 下发。
+- `wfmctl` 不提供本地 profile 级控制；所有具体 WireGuard / AmneziaWG 控制动作都由服务端通过 MQTT 下发。
 - `wfm-agent` 读取机器级 profile，连接 EMQX。
 - `wfm-agent` 会发布 `heartbeat`，并上报 `client_online` / `wg_online`。
 - `wfm-agent` 会订阅 `config/push`、`control`、`detect`、`info` 并返回对应 ACK。
-- `info` 当前用于控制台主动请求 `wg show`；命令输出统一通过 `event` topic 回传。
+- `info` 当前用于控制台主动请求诊断输出；客户端根据服务端 payload 中的 `tunnel_protocol` 执行 `wg show` 或 `awg show`，命令输出统一通过 `event` topic 回传。
 
 ## 当前方向
 
@@ -34,6 +34,8 @@
 - heartbeat 每 30 分钟上报一次；服务端同时使用 heartbeat、ACK 和非离线 event 投影在线态
 - 前端存在 SSE 订阅时，服务端每 2 分钟主动发送 `detect`
 - 客户端应以系统服务运行，否则 WireGuard 状态读取和控制可能权限不足
+- 客户端 bind profile 不保存隧道协议。服务端每次下发 `config/push`、`control`、`detect`、`info` 时携带当前协议，客户端按当次 payload 选择 `wg` / `wg-quick` 或 `awg` / `awg-quick`，避免配置协议切换后本地状态漂移。
+- 服务端会保存 bind 时生成的客户端 MQTT 密码，用于快照恢复后重建 EMQX 节点用户。恢复完成后客户端可能经历一次 MQTT 重连，重新连接成功后继续发送在线事件和心跳。
 
 ## 使用方式
 

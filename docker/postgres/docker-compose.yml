@@ -1,4 +1,4 @@
-name: wg-free-mesh
+name: wg-free-mesh-postgres
 
 services:
   app:

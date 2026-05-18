@@ -173,7 +173,8 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 	_ = json.Unmarshal(m.Payload, &env)
 	switch m.Topic {
 	case s.topic("detect"):
-		wgOnline, _ := inspectWireGuard(profile.InterfaceName(s.profile))
+		tunnelProtocol := tunnelProtocolFromPayload(env.Payload)
+		wgOnline, _ := inspectWireGuard(profile.InterfaceName(s.profile), tunnelProtocol)
 		_ = s.publishEvent("detect", "Server detect command received.")
 		_ = s.publish("detect/ack", s.envelope("detect/ack", env.RequestID, map[string]any{
 			"status":        "applied",
@@ -183,11 +184,12 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 			"message":       "Detect completed.",
 		}))
 	case s.topic("info"):
+		tunnelProtocol := tunnelProtocolFromPayload(env.Payload)
 		action := fmt.Sprint(env.Payload["action"])
 		if action == "" || action == "<nil>" {
 			action = "wg_show"
 		}
-		output, err := runWGShow()
+		output, err := runWGShow(tunnelProtocol)
 		level := "info"
 		message := "wg show completed."
 		status := "applied"
@@ -212,12 +214,13 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 		}))
 	case s.topic("control"):
 		action := fmt.Sprint(env.Payload["action"])
+		tunnelProtocol := tunnelProtocolFromPayload(env.Payload)
 		if action == "" || action == "<nil>" {
 			action = "unknown"
 		}
 		status := "applied"
 		message := "Command applied."
-		if err := s.applyControl(action); err != nil {
+		if err := s.applyControlWithProtocol(action, tunnelProtocol); err != nil {
 			status = "failed"
 			message = err.Error()
 			_ = s.publishEvent("control", fmt.Sprintf("Control command failed: %s: %v", action, err))
@@ -247,7 +250,7 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 }
 
 func (s *Session) publishHeartbeat() error {
-	wgOnline, _ := inspectWireGuard(profile.InterfaceName(s.profile))
+	wgOnline, _ := inspectAnyTunnel(profile.InterfaceName(s.profile))
 	return s.publish("heartbeat", s.envelope("heartbeat", "", map[string]any{
 		"client_online": true,
 		"wg_online":     wgOnline,
@@ -263,6 +266,10 @@ func (s *Session) publishEvent(event, message string) error {
 }
 
 func (s *Session) applyControl(action string) error {
+	return s.applyControlWithProtocol(action, "wireguard")
+}
+
+func (s *Session) applyControlWithProtocol(action string, tunnelProtocol string) error {
 	iface := profile.InterfaceName(s.profile)
 	if iface == "" {
 		return fmt.Errorf("interface_name is required")
@@ -273,23 +280,24 @@ func (s *Session) applyControl(action string) error {
 		if err != nil {
 			return err
 		}
-		return startWireGuard(iface, configPath)
+		return startWireGuard(iface, configPath, tunnelProtocol)
 	case "stop":
-		return stopWireGuard(iface)
+		return stopWireGuard(iface, tunnelProtocol)
 	default:
 		return fmt.Errorf("unsupported control action: %s", action)
 	}
 }
 
 func (s *Session) applyConfigPush(payload map[string]any) error {
+	tunnelProtocol := tunnelProtocolFromPayload(payload)
 	configText := fmt.Sprint(payload["config_text"])
 	if configText == "" || configText == "<nil>" {
 		return fmt.Errorf("config_text is required")
 	}
 	currentInterfaceName := profile.InterfaceName(s.profile)
-	wasRunning, _ := inspectWireGuard(currentInterfaceName)
+	wasRunning, _ := inspectWireGuard(currentInterfaceName, tunnelProtocol)
 	if wasRunning {
-		if err := stopWireGuard(currentInterfaceName); err != nil {
+		if err := stopWireGuard(currentInterfaceName, tunnelProtocol); err != nil {
 			return fmt.Errorf("stop running interface before config update failed: %w", err)
 		}
 	}
@@ -306,28 +314,35 @@ func (s *Session) applyConfigPush(payload map[string]any) error {
 		if err != nil {
 			return err
 		}
-		if err := restartWireGuardAfterConfigUpdate(currentInterfaceName, nextInterfaceName, configPath); err != nil {
+		if err := restartWireGuardAfterConfigUpdate(currentInterfaceName, nextInterfaceName, configPath, tunnelProtocol); err != nil {
 			return fmt.Errorf("restart interface after config update failed: %w", err)
 		}
 	}
 	return nil
 }
 
-func inspectWireGuard(interfaceName string) (bool, string) {
-	output, err := runWGShowInterface(interfaceName)
+func inspectWireGuard(interfaceName string, tunnelProtocol string) (bool, string) {
+	output, err := runWGShowInterface(interfaceName, tunnelProtocol)
 	if err != nil {
 		return false, err.Error()
 	}
 	return strings.TrimSpace(output) != "", ""
 }
 
-func runWGShowInterface(interfaceName string) (string, error) {
+func inspectAnyTunnel(interfaceName string) (bool, string) {
+	if running, detail := inspectWireGuard(interfaceName, "wireguard"); running {
+		return true, detail
+	}
+	return inspectWireGuard(interfaceName, "amneziawg_2")
+}
+
+func runWGShowInterface(interfaceName string, tunnelProtocol string) (string, error) {
 	if strings.TrimSpace(interfaceName) == "" {
 		return "", fmt.Errorf("interface_name is required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "wg", "show", interfaceName)
+	cmd := exec.CommandContext(ctx, tunnelTool(tunnelProtocol), "show", interfaceName)
 	output, err := cmd.CombinedOutput()
 	text := string(output)
 	if ctx.Err() != nil {
@@ -342,10 +357,10 @@ func runWGShowInterface(interfaceName string) (string, error) {
 	return text, nil
 }
 
-func runWGShow() (string, error) {
+func runWGShow(tunnelProtocol string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "wg", "show")
+	cmd := exec.CommandContext(ctx, tunnelTool(tunnelProtocol), "show")
 	output, err := cmd.CombinedOutput()
 	text := string(output)
 	if ctx.Err() != nil {
@@ -360,37 +375,43 @@ func runWGShow() (string, error) {
 	return text, nil
 }
 
-func startWireGuard(interfaceName string, configPath string) error {
+func startWireGuard(interfaceName string, configPath string, tunnelProtocol string) error {
 	if _, err := os.Stat(configPath); err != nil {
 		return err
 	}
 	if runtime.GOOS == "windows" {
+		if tunnelProtocol == "amneziawg_2" {
+			return runCommand(tunnelQuickTool(tunnelProtocol), "up", configPath)
+		}
 		return runCommand("wireguard.exe", "/installtunnelservice", configPath)
 	}
-	return runCommand("wg-quick", "up", configPath)
+	return runCommand(tunnelQuickTool(tunnelProtocol), "up", configPath)
 }
 
-func restartWireGuardAfterConfigUpdate(oldInterfaceName string, newInterfaceName string, configPath string) error {
+func restartWireGuardAfterConfigUpdate(oldInterfaceName string, newInterfaceName string, configPath string, tunnelProtocol string) error {
 	if runtime.GOOS == "windows" {
-		if err := waitWireGuardStopped(oldInterfaceName, 15*time.Second); err != nil {
+		if err := waitWireGuardStopped(oldInterfaceName, tunnelProtocol, 15*time.Second); err != nil {
 			return err
 		}
-		return startWireGuard(newInterfaceName, configPath)
+		return startWireGuard(newInterfaceName, configPath, tunnelProtocol)
 	}
-	return startWireGuard(newInterfaceName, configPath)
+	return startWireGuard(newInterfaceName, configPath, tunnelProtocol)
 }
 
-func stopWireGuard(interfaceName string) error {
+func stopWireGuard(interfaceName string, tunnelProtocol string) error {
 	if runtime.GOOS == "windows" {
+		if tunnelProtocol == "amneziawg_2" {
+			return runCommand(tunnelQuickTool(tunnelProtocol), "down", interfaceName)
+		}
 		return runCommand("wireguard.exe", "/uninstalltunnelservice", interfaceName)
 	}
-	return runCommand("wg-quick", "down", interfaceName)
+	return runCommand(tunnelQuickTool(tunnelProtocol), "down", interfaceName)
 }
 
-func waitWireGuardStopped(interfaceName string, timeout time.Duration) error {
+func waitWireGuardStopped(interfaceName string, tunnelProtocol string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for {
-		running, detail := inspectWireGuard(interfaceName)
+		running, detail := inspectWireGuard(interfaceName, tunnelProtocol)
 		if !running {
 			return nil
 		}
@@ -417,6 +438,28 @@ func runCommand(name string, args ...string) error {
 		return fmt.Errorf("%s %s failed: %w", name, strings.Join(args, " "), err)
 	}
 	return nil
+}
+
+func tunnelProtocolFromPayload(payload map[string]any) string {
+	value := strings.TrimSpace(fmt.Sprint(payload["tunnel_protocol"]))
+	if value == "amneziawg_2" {
+		return value
+	}
+	return "wireguard"
+}
+
+func tunnelTool(tunnelProtocol string) string {
+	if tunnelProtocol == "amneziawg_2" {
+		return "awg"
+	}
+	return "wg"
+}
+
+func tunnelQuickTool(tunnelProtocol string) string {
+	if tunnelProtocol == "amneziawg_2" {
+		return "awg-quick"
+	}
+	return "wg-quick"
 }
 
 func (s *Session) publish(kind string, env Envelope) error {

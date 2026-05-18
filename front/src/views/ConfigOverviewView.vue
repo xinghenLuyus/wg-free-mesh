@@ -24,6 +24,8 @@ import { notifyChangeHints } from '@/utils/changeHints'
 import { cidrRule, requiredTextRule } from '@/utils/formRules'
 import { normalizeTags } from '@/utils/nodePayload'
 import { notify } from '@/utils/notify'
+import ConfigProtocolForm from '@/components/config/ConfigProtocolForm.vue'
+import type { ConfigProtocolModel } from '@/components/config/ConfigProtocolForm.vue'
 
 type ViewMode = 'grid' | 'list'
 type SortKey = 'name' | 'virtual_ip' | 'created_at' | 'online' | 'node_type'
@@ -44,6 +46,7 @@ const overview = shallowRef<ConfigOverviewRead | null>(null)
 const fullNodes = shallowRef<NodeRead[]>([])
 const tags = shallowRef<TagRead[]>([])
 const settingsVisible = shallowRef(false)
+const settingsAdvanced = shallowRef(false)
 const createVisible = shallowRef(false)
 const tagVisible = shallowRef(false)
 const configId = computed(() => String(route.params.configId || ''))
@@ -102,6 +105,28 @@ const settingsForm = reactive({
   default_mtu: 1420 as number | null,
   default_dns: '' as string | null,
   auto_sync: true,
+  tunnel_protocol: 'wireguard',
+  awg_s1: null,
+  awg_s2: null,
+  awg_s3: null,
+  awg_s4: null,
+  awg_h1: null,
+  awg_h2: null,
+  awg_h3: null,
+  awg_h4: null,
+} satisfies ConfigProtocolModel & {
+  name: string
+  description: string
+  enabled: boolean
+  virtual_subnet: string
+  default_listen_port: number
+  default_mtu: number | null
+  default_dns: string | null
+  auto_sync: boolean
+})
+const settingsProtocolForm = computed<ConfigProtocolModel>({
+  get: () => settingsForm,
+  set: (next) => Object.assign(settingsForm, next),
 })
 
 const createForm = reactive({
@@ -220,6 +245,15 @@ function fillSettingsForm() {
     default_mtu: overview.value.config.default_mtu,
     default_dns: overview.value.config.default_dns,
     auto_sync: overview.value.config.auto_sync,
+    tunnel_protocol: overview.value.config.tunnel_protocol,
+    awg_s1: overview.value.config.awg_s1,
+    awg_s2: overview.value.config.awg_s2,
+    awg_s3: overview.value.config.awg_s3,
+    awg_s4: overview.value.config.awg_s4,
+    awg_h1: overview.value.config.awg_h1,
+    awg_h2: overview.value.config.awg_h2,
+    awg_h3: overview.value.config.awg_h3,
+    awg_h4: overview.value.config.awg_h4,
   })
 }
 
@@ -242,6 +276,7 @@ function resetCreateForm() {
 
 function openSettings() {
   fillSettingsForm()
+  settingsAdvanced.value = false
   settingsVisible.value = true
 }
 
@@ -347,7 +382,7 @@ async function deleteTag(tag: string) {
 
 async function saveSettings() {
   await actions.run('save-config', async () => {
-    const valid = await settingsFormRef.value?.validate().catch(() => false)
+    const valid = settingsAdvanced.value ? true : await settingsFormRef.value?.validate().catch(() => false)
     if (!valid) return
     try {
       const result = await api.updateConfig(String(route.params.configId), { ...settingsForm })
@@ -749,7 +784,31 @@ watch(
       </div>
     </section>
 
-    <el-dialog v-model="settingsVisible" :title="t('configOverview.configSettings')" width="560px">
+    <el-dialog v-model="settingsVisible" width="560px">
+      <template #header="{ titleId, titleClass }">
+        <div class="settings-dialog-header">
+          <nav class="settings-dialog-tabs" :aria-label="t('configOverview.configSettings')">
+            <button
+              :id="titleId"
+              type="button"
+              :class="['settings-dialog-tab', 'settings-dialog-tab--title', titleClass, { 'settings-dialog-tab--active': !settingsAdvanced }]"
+              :aria-current="!settingsAdvanced ? 'page' : undefined"
+              @click="settingsAdvanced = false"
+            >
+              {{ t('configOverview.configSettings') }}
+            </button>
+            <button
+              type="button"
+              :class="['settings-dialog-tab', 'settings-dialog-tab--title', { 'settings-dialog-tab--active': settingsAdvanced }]"
+              :aria-current="settingsAdvanced ? 'page' : undefined"
+              @click="settingsAdvanced = true"
+            >
+              {{ t('protocol.advancedSettings') }}
+            </button>
+          </nav>
+        </div>
+      </template>
+      <template v-if="!settingsAdvanced">
       <div class="dialog-intro">
         <span class="dialog-intro__icon"><el-icon><Setting /></el-icon></span>
         <div>
@@ -778,6 +837,8 @@ watch(
           <el-switch v-model="settingsForm.auto_sync" />
         </div>
       </el-form>
+      </template>
+      <ConfigProtocolForm v-else v-model="settingsProtocolForm" />
       <div class="settings-danger-zone">
         <div>
           <div class="settings-danger-zone__title">{{ t('configOverview.deleteConfig') }}</div>
@@ -997,6 +1058,12 @@ watch(
 .settings-danger-zone { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; padding: 14px; border: 1px solid var(--app-danger-border); border-radius: 8px; background: color-mix(in srgb, var(--app-danger-border) 12%, var(--app-surface-elevated)); }
 .settings-danger-zone__title { color: var(--app-danger-text); font-weight: 700; }
 .settings-danger-zone__desc { margin-top: 4px; color: var(--app-warning-text); font-size: 13px; }
+.settings-dialog-header { display: flex; align-items: center; padding-right: 42px; }
+.settings-dialog-tabs { display: inline-flex; align-items: center; gap: 18px; }
+.settings-dialog-tab { appearance: none; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--app-muted); cursor: pointer; font: inherit; font-weight: 700; line-height: 1.3; padding: 4px 0 6px; }
+.settings-dialog-tab--title { font-size: 22px; font-weight: 750; }
+.settings-dialog-tab:hover { color: var(--app-primary-strong); }
+.settings-dialog-tab--active { border-bottom-color: var(--app-primary); color: var(--app-text-strong); }
 .dialog-intro { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; padding: 14px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-sunken); }
 .dialog-intro__icon { display: inline-grid; flex: 0 0 auto; place-items: center; width: 42px; height: 42px; border: 1px solid var(--app-border-accent); border-radius: 8px; background: var(--app-primary-soft); color: var(--app-primary); }
 .dialog-intro h3 { margin: 0; color: var(--app-text); }

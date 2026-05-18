@@ -198,7 +198,9 @@ Authorization: Bearer <access_token>
   - `auto_sync`
 - 约束：
   - `virtual_subnet` 必须是合法的 CIDR 网段字符串
-  - `auto_sync` 是新建端点时的默认自动同步开关，不是配置下所有端点的总开关
+- `auto_sync` 是新建端点时的默认自动同步开关，不是配置下所有端点的总开关
+- `tunnel_protocol` 支持 `wireguard` 和 `amneziawg_2`，默认 `wireguard`。
+- `amneziawg_2` 时可传 `awg_s1`-`awg_s4`、`awg_h1`-`awg_h4`；留空由后端随机生成。`H` 字段支持单值或 `start-end` 范围，四组范围不得重叠。
 
 ### `GET /api/v1/configs/{config_id}`
 
@@ -216,7 +218,9 @@ Authorization: Bearer <access_token>
 - `virtual_subnet` 当前仅作为推荐虚拟 IP 的来源，不再作为节点虚拟 IP 的硬性限制边界。
 - 为了保证推荐虚拟 IP 能力稳定可用，`virtual_subnet` 仍必须保存为合法的 CIDR 网段字符串。
 - `auto_sync` 只影响后续新建节点的默认值；已有节点是否自动把系统态写入同步态，由节点自己的 `auto_sync` 决定。
+- 协议从 `wireguard` 切换到 `amneziawg_2` 时，后端会补齐缺失的配置级 AWG 参数和节点级 AWG 本地参数；从 `amneziawg_2` 切回 `wireguard` 时，后端会清空所有 AWG 专属字段，但保留端点 hook 命令。
 - 当 `default_listen_port` 变更导致一批端点需要按默认端口重算时，后端会通过 `change_hints` 返回提示信息。
+- `POST /api/v1/configs/awg/random` 返回一组配置级 AWG 随机参数，供创建配置和配置设置页复用。
 
 ### `DELETE /api/v1/configs/{config_id}`
 
@@ -266,7 +270,9 @@ Authorization: Bearer <access_token>
   - `auto_sync`
   - `public_key`
   - `private_key`
-  - `tags`
+- `tags`
+- `pre_up`、`post_up`、`pre_down`、`post_down`：多条 `wg-quick` / `awg-quick` hook 命令，新建端点页面不展示，端点高级配置页维护。
+- `awg_jc`、`awg_jmin`、`awg_jmax`、`awg_i1`-`awg_i5`：AmneziaWG 2.0 节点本地参数，仅所属配置为 `amneziawg_2` 时参与配置生成；新建端点时由后端随机补齐 J 参数，I 参数默认留空。
 
 说明：
 
@@ -295,6 +301,7 @@ Authorization: Bearer <access_token>
 - 禁用端点不会重置已绑定客户端；后端必须保留 `client_initialized`、MQTT 身份和客户端基础信息。重新启用时，后端不自动恢复历史 Mesh 对，也不要求客户端重新初始化，用户可以在启用端点侧手动启用或删除 Mesh 对。
 - 当公网入口或监听端口变化导致相关 auto Endpoint 重算时，后端会同步清空已失效的 `persistent_keepalive`。
 - 当 `virtual_ip` 变更时，后端不会自动改写 `allowed_ips`，只会返回提示，由用户手工确认。
+- `POST /api/v1/nodes/awg/random` 返回一组节点级 AWG 随机参数，供端点高级配置页复用。
 
 ### `DELETE /api/v1/nodes/{node_id}`
 
@@ -487,7 +494,7 @@ Authorization: Bearer <access_token>
 
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/wg-preview`
 
-- 用途：预览节点 WireGuard 配置
+- 用途：预览节点隧道配置。路径保留 `wg-preview` 以兼容现有前端，内容会根据配置所属协议输出 WireGuard 或 AmneziaWG 2.0 配置。
 - 约束：节点已禁用时返回 `NODE_DISABLED`。
 
 ## 配置生成与应用
@@ -672,12 +679,13 @@ Authorization: Bearer <access_token>
 
 说明：
 
-- `start` / `stop` 通过 `control` topic 下发，只作用于当前节点 profile 对应的 WireGuard 接口。
+- `start` / `stop` 通过 `control` topic 下发，只作用于当前节点 profile 对应的隧道接口。
 - `push_config` 通过 `config/push` topic 下发当前节点同步态配置。客户端 ACK 为 `applied` 后，后端更新 confirmed 下发态。
 - `config/push` 是唯一的“同步态 -> 客户端下发态”通道。控制台手动下发和服务端自动同步态变更后的自动下发都必须走该通道。
 - 客户端收到 `config/push` 时，如果当前 profile 的 WG 接口正在运行，必须执行 stop -> 写配置 -> start；如果未运行，只写配置。
 - `wg_show` 通过 `info` topic 下发。
 - `wg_show` 的 ACK 只表示命令完成；具体 `wg show` 输出由客户端发布到 `event` topic，服务端写入命令行回显日志。
+- 服务端每次 `config/push`、`control`、`detect`、`info` 下发都会在 payload 中携带 `tunnel_protocol`。客户端 bind profile 不保存协议，运行期以当次服务端 payload 为准，避免配置协议切换后本地状态漂移。
 - 节点已禁用时返回 `NODE_DISABLED`。
 
 ### `POST /api/v1/configs/{config_id}/endpoint/probe-batch`
@@ -774,9 +782,10 @@ Authorization: Bearer <access_token>
 
 - 用途：创建快照
 - 请求体：原始字符串 `note`
-- 说明：
+  - 说明：
   - 后端会先登记快照元数据，再打包应用级数据库数据和 WireGuard 目录。
   - 数据库数据写入 `database.json`，不直接复制数据库物理文件。
+  - 应用级数据库包含动态客户端 MQTT 凭据；快照包同时包含 WireGuard 私钥，必须按敏感备份保存。
   - 快照包内会写入 manifest，保存快照 id、创建时间和备注。
 
 ### `GET /api/v1/backups/list`
@@ -797,14 +806,14 @@ Authorization: Bearer <access_token>
 
 ### `POST /api/v1/backups/upload`
 
-- 用途：兼容旧路径导入快照包
+- 用途：导入快照包
 
 ### `POST /api/v1/backups/import`
 
 - 用途：导入快照包
 - 说明：
   - 只导入到快照列表，不自动恢复。
-  - 导入时会校验压缩包结构，要求包含 `database.json`；旧 SQLite 数据库快照包也可作为导入源。
+  - 导入时会校验压缩包结构，要求包含 `database.json`。
 
 ### `POST /api/v1/backups/restore/{snapshot_id}`
 
@@ -812,7 +821,10 @@ Authorization: Bearer <access_token>
 - 说明：
   - 恢复前会清空现有数据库表数据，并删除 `data/wireguard` 下全部数据。
   - 恢复后后端会重新扫描快照目录并重建 `backups` 表索引。
-  - 恢复后后端必须重新执行数据库初始化，补齐当前 schema 所需默认数据，再发布全量实时状态。
+  - 恢复后后端必须重新执行数据库初始化，补齐当前 schema 所需默认数据。
+  - 恢复后不信任快照中的历史在线状态，所有端点运行态先重置为离线等待重新确认。
+  - 恢复后后端会用快照中的客户端 MQTT 凭据重建 EMQX 节点用户，然后主动发起一次 detect 探测，再发布全量实时状态。
+  - 返回 `message` 和 `recovery`，其中 `recovery` 包含 `mqtt_credentials`、`mqtt_users_synced`、`mqtt_users_failed`。
 
 ### `DELETE /api/v1/backups/{snapshot_id}`
 

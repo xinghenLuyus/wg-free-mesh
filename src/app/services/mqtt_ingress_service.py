@@ -240,6 +240,11 @@ class MqttIngressService:
             return
         await asyncio.gather(*(self._probe_target(item["config_id"], item["node_id"]) for item in targets))
 
+    async def probe_bound_clients_once(self) -> None:
+        if not self.is_enabled() or self._client is None:
+            return
+        await self._probe_bound_clients()
+
     async def _probe_target(self, config_id: str, node_id: str) -> None:
         request_id = uuid4().hex
         store.record_detect_sent(config_id, node_id)
@@ -251,7 +256,7 @@ class MqttIngressService:
             "boot_id": "",
             "session_id": "",
             "sent_at": datetime.now(UTC).isoformat(),
-            "payload": {},
+            "payload": {"tunnel_protocol": store.get_config(config_id).tunnel_protocol.value},
         }
         try:
             await self.publish_to_node(config_id=config_id, node_id=node_id, kind="detect", payload=payload)

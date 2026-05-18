@@ -154,6 +154,9 @@ class EmqxService:
 
     def upsert_node_user(self, *, node_id: str, password: str) -> httpx.Response:
         user_id = mqtt_auth_service.node_username(node_id)
+        return self.upsert_user(user_id=user_id, password=password)
+
+    def upsert_user(self, *, user_id: str, password: str) -> httpx.Response:
         create_payload = self.create_user_payload(user_id=user_id, password=password)
         response = self.request("POST", "/api/v5/authentication/password_based:built_in_database/users", json=create_payload)
         if response.status_code == 409:

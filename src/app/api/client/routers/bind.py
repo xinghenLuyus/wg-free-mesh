@@ -50,6 +50,7 @@ async def bind_client(payload: ClientBindRequest) -> ApiResponse[dict[str, Any]]
         node.id,
         username=username,
         client_id=client_id,
+        password=password,
         platform=payload.platform,
         version=payload.client_version,
         hostname=payload.hostname,

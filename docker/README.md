@@ -10,7 +10,12 @@
 - `app`：后端服务，并托管前端静态资源。
 - `emqx`：客户端 MQTT broker。
 
-Compose 项目名固定为 `wg-free-mesh`，不会随 `sqlite/` 或 `postgres/` 目录名变化。
+Compose 项目名按数据库类型区分：
+
+- SQLite：`wg-free-mesh-sqlite`
+- PostgreSQL：`wg-free-mesh-postgres`
+
+两套环境可以避免互相识别 orphan 容器。由于 EMQX 默认占用相同宿主机端口，通常不要同时启动两套完整环境。
 
 默认访问地址：
 
@@ -61,6 +66,7 @@ docker compose up -d
 ## 关键注意事项
 
 - `WFM_APP_PORT` 只控制宿主机端口映射，容器内 app 固定监听 `8000`。
+- App 镜像包含 `alembic.ini` 和 `migrations/`，容器启动时会自动把 SQLite 或 PostgreSQL 数据库升级到当前 schema。
 - `WFM_MQTT_PUBLIC_HOST` 是写入客户端绑定配置的主机名，远程部署时应改成客户端可访问的域名或 IP。
 - `WFM_MQTT_TLS_ENABLED=true` 会启用客户端 TLS listener，并作为客户端绑定默认 TLS 开关；不影响后端连接 EMQX。
 - 后端连接 EMQX 由 `WFM_MQTT_URL` 决定，默认是 Docker 网络内的 `mqtt://emqx:1883`。

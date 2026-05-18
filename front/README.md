@@ -23,7 +23,7 @@
 - 配置设置通过配置头右侧“设置”进入，删除配置放在设置弹窗内
 - 节点卡片点击进入节点页面
 - 节点列表视图仍叫“列表”，视觉使用横向长条卡片，不使用传统表格标题行
-- 节点页面包含公共节点头和三个模板：Mesh 网络 / 配置应用 / 端点控制
+- 节点页面包含公共节点头和四个模板：Mesh 网络 / 高级配置 / 配置应用 / 端点控制
 - 标签管理支持创建标签、删除标签、选择端点批量添加标签、从端点移除标签
 - 工具列表只保留“下载”统一入口，进入后通过两个大卡片分别进入客户端下载和配置批量下载
 - 客户端下载和配置批量下载子页面提供返回下载入口
@@ -32,6 +32,8 @@
 - 节点公网地址分为公网 IPv4 和公网 IPv6，不合并为单个公网端点
 - 公网 IPv4 和公网 IPv6 都可以填写 IP 或域名
 - Mesh 自动 Endpoint 只选择 IPv4 或 IPv6 公网入口；对应入口不存在时自动留空
+- 创建配置和配置设置中的“高级设置”可选择 WireGuard 或 AmneziaWG 2.0；配置级 AWG 参数只展示和提交，随机生成由后端负责
+- 新建端点不展示高级参数；端点高级配置页维护 PreUp/PostUp/PreDown/PostDown 和 AWG 节点本地参数
 
 ## 静态资源
 
@@ -74,6 +76,7 @@
 - `/configs/:configId` 为配置概览
 - `/configs/:configId/nodes/:nodeId` 为节点页，默认进入 Mesh 网络
 - `/configs/:configId/nodes/:nodeId/mesh` 为节点 Mesh 网络
+- `/configs/:configId/nodes/:nodeId/advanced` 为节点高级配置
 - `/configs/:configId/nodes/:nodeId/apply` 为节点配置应用
 - `/configs/:configId/nodes/:nodeId/control` 为节点端点控制
 - `/configs` 重定向到 `/`
