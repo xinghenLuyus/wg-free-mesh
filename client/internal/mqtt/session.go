@@ -17,6 +17,7 @@ import (
 
 	pahomqtt "github.com/eclipse/paho.golang/paho"
 
+	"wfm/client/internal/bind"
 	"wfm/client/internal/profile"
 )
 
@@ -177,11 +178,12 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 		wgOnline, _ := inspectWireGuard(profile.InterfaceName(s.profile), tunnelProtocol)
 		_ = s.publishEvent("detect", "Server detect command received.")
 		_ = s.publish("detect/ack", s.envelope("detect/ack", env.RequestID, map[string]any{
-			"status":        "applied",
-			"client_online": true,
-			"wg_online":     wgOnline,
-			"platform":      runtime.GOOS,
-			"message":       "Detect completed.",
+			"status":         "applied",
+			"client_online":  true,
+			"wg_online":      wgOnline,
+			"platform":       runtime.GOOS,
+			"client_version": bind.Version,
+			"message":        "Detect completed.",
 		}))
 	case s.topic("info"):
 		tunnelProtocol := tunnelProtocolFromPayload(env.Payload)

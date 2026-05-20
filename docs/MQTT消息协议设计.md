@@ -311,6 +311,8 @@
   "status": "applied",
   "client_online": true,
   "wg_online": true,
+  "platform": "windows",
+  "client_version": "0.2.3",
   "message": "Detect completed"
 }
 ```
@@ -320,6 +322,7 @@
 - `detect ack` 是前端实时页面的主动探测状态来源。
 - 服务端发出 `detect` 后，10 秒内未收到 `detect/ack`，视为探测失败。
 - `detect ack` 不允许携带命令行输出。
+- `client_version` 必须来自客户端构建时注入的统一版本号，服务端收到后刷新控制面板中的客户端版本字段。
 - `wg_online` 只表示当前 profile 对应 `interface_name` 的运行状态，不表示主机上任意 WireGuard 接口状态。
 
 ### 9. `info ack`

@@ -17,6 +17,10 @@
   - 下载工具统一入口页，展示客户端下载和配置批量下载两个大卡片。
 - `ClientDownloadView.vue`
 - `ConfigBulkDownloadView.vue`
+- `QuickMeshToolsView.vue`
+  - 快速组网统一入口页，展示网关节点式网络、全连接网络和 Free Mesh 三个大卡片。
+- `QuickMeshGenerateView.vue`
+  - 快速组网子页面，按网关节点式网络、全连接网络或 Free Mesh 删除并重建指定配置的 Mesh 对。
 - `SettingsView.vue`
   - 控制台语言、主题模式、MQTT、密码和快照管理页面。
   - 快照卡片负责创建备注、修改备注、导入、导出、恢复和删除。

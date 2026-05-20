@@ -151,6 +151,217 @@ def test_reset_client_deletes_emqx_user_and_disconnects_client(authenticated_cli
     assert state["mqtt_client_id"] == ""
 
 
+def test_detect_ack_refreshes_client_version(authenticated_client: TestClient) -> None:
+    from app.data.store import store
+
+    config_response = authenticated_client.post(
+        "/api/v1/configs",
+        json={
+            "name": f"mesh_detect_version_{uuid4().hex[:8]}",
+            "description": "detect client version",
+            "virtual_subnet": "10.91.0.0/24",
+            "default_listen_port": 51860,
+            "default_mtu": 1420,
+            "default_dns": "1.1.1.1",
+            "auto_sync": True,
+            "enabled": True,
+        },
+    )
+    assert config_response.status_code == 200
+    config = config_response.json()["data"]
+    node_response = authenticated_client.post(
+        f"/api/v1/configs/{config['id']}/nodes",
+        json={
+            "name": "edge-detect-version",
+            "ipv4_address": "198.51.100.13",
+            "listen_port": 51861,
+            "virtual_ip": "10.91.0.2/32",
+            "node_type": "dynamic",
+            "auto_sync": True,
+        },
+    )
+    assert node_response.status_code == 200
+    node = node_response.json()["data"]
+
+    store.mark_client_bound(
+        config["id"],
+        node["id"],
+        username="u",
+        client_id="c",
+        password="p",
+        platform="windows",
+        version="0.2.2",
+        hostname="host-a",
+    )
+    store.record_detect_ack(
+        config["id"],
+        node["id"],
+        client_online=True,
+        wg_online=False,
+        platform="windows",
+        client_version="0.2.3",
+    )
+
+    state = store.get_client_state(config["id"], node["id"])
+    assert state["client_version"] == "0.2.3"
+    assert state["client_version_label"] == "Windows 0.2.3"
+
+
+def _create_quick_mesh_config(authenticated_client: TestClient, *, ipv6: bool = True) -> tuple[dict, list[dict]]:
+    config_response = authenticated_client.post(
+        "/api/v1/configs",
+        json={
+            "name": f"mesh_quick_{uuid4().hex[:8]}",
+            "description": "quick mesh",
+            "virtual_subnet": "10.92.0.0/24",
+            "default_listen_port": 51870,
+            "default_mtu": 1420,
+            "default_dns": "1.1.1.1",
+            "auto_sync": True,
+            "enabled": True,
+        },
+    )
+    assert config_response.status_code == 200
+    config = config_response.json()["data"]
+    nodes: list[dict] = []
+    for index in range(3):
+        node_response = authenticated_client.post(
+            f"/api/v1/configs/{config['id']}/nodes",
+            json={
+                "name": f"edge-quick-{index + 1}",
+                "ipv4_address": f"198.51.100.{20 + index}",
+                "ipv6_address": f"2001:db8::{20 + index}" if ipv6 else None,
+                "listen_port": 51870 + index,
+                "virtual_ip": f"10.92.0.{index + 2}/32",
+                "node_type": "dynamic",
+                "auto_sync": True,
+            },
+        )
+        assert node_response.status_code == 200
+        nodes.append(node_response.json()["data"])
+    return config, nodes
+
+
+def test_quick_generate_hub_spoke_replaces_mesh_links(authenticated_client: TestClient) -> None:
+    from app.data.store import store
+
+    config, nodes = _create_quick_mesh_config(authenticated_client)
+    store.create_peer_link_group(
+        config["id"],
+        {
+            "forward": store.build_peer_link_draft(config["id"], nodes[1]["id"], nodes[2]["id"], "ipv4")["forward"],
+            "reverse": store.build_peer_link_draft(config["id"], nodes[1]["id"], nodes[2]["id"], "ipv4")["reverse"],
+        },
+    )
+
+    response = authenticated_client.post(
+        f"/api/v1/configs/{config['id']}/mesh/quick-generate",
+        json={"mode": "hub_spoke", "endpoint_ref_family": "ipv4", "hub_node_id": nodes[0]["id"], "use_preshared_key": True},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["generated_groups"] == 2
+    assert data["deleted_links"] == 2
+    links = store.list_peer_links(config["id"])
+    assert len(links) == 4
+    assert {link.local_node_id for link in links if link.direction == "forward"} == {nodes[0]["id"]}
+    hub_to_branch = [link for link in links if link.local_node_id == nodes[0]["id"]]
+    branch_to_hub = [link for link in links if link.peer_node_id == nodes[0]["id"]]
+    assert {link.allowed_ips for link in hub_to_branch} == {nodes[1]["virtual_ip"], nodes[2]["virtual_ip"]}
+    assert {link.allowed_ips for link in branch_to_hub} == {config["virtual_subnet"]}
+    groups: dict[str, set[str | None]] = {}
+    for link in links:
+        groups.setdefault(link.link_group_id, set()).add(link.preshared_key)
+    assert all(len(keys) == 1 and next(iter(keys)) for keys in groups.values())
+
+
+def test_quick_generate_full_mesh_requires_public_address(authenticated_client: TestClient) -> None:
+    config, nodes = _create_quick_mesh_config(authenticated_client, ipv6=False)
+
+    response = authenticated_client.post(
+        f"/api/v1/configs/{config['id']}/mesh/quick-generate",
+        json={"mode": "full_mesh", "endpoint_ref_family": "ipv6", "hub_node_id": nodes[0]["id"]},
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "QUICK_MESH_ENDPOINT_REQUIRED"
+    assert len(body["error"]["detail"]["nodes"]) == 3
+
+
+def test_quick_generate_full_mesh_creates_all_pairs(authenticated_client: TestClient) -> None:
+    from app.data.store import store
+
+    config, _nodes = _create_quick_mesh_config(authenticated_client)
+
+    response = authenticated_client.post(
+        f"/api/v1/configs/{config['id']}/mesh/quick-generate",
+        json={"mode": "full_mesh", "endpoint_ref_family": "ipv4"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["generated_groups"] == 3
+    assert len(store.list_peer_links(config["id"])) == 6
+
+
+def test_quick_generate_free_mesh_routes_gateway_scopes(authenticated_client: TestClient) -> None:
+    from app.data.store import store
+
+    config, nodes = _create_quick_mesh_config(authenticated_client)
+
+    response = authenticated_client.post(
+        f"/api/v1/configs/{config['id']}/mesh/quick-generate",
+        json={
+            "mode": "free_mesh",
+            "endpoint_ref_family": "ipv4",
+            "gateway_node_ids": [nodes[0]["id"], nodes[1]["id"]],
+            "leaf_assignments": {nodes[2]["id"]: nodes[1]["id"]},
+            "use_preshared_key": True,
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["generated_groups"] == 2
+    links = store.list_peer_links(config["id"])
+    assert len(links) == 4
+    gateway_a_to_gateway_b = next(link for link in links if link.local_node_id == nodes[0]["id"] and link.peer_node_id == nodes[1]["id"])
+    gateway_b_to_gateway_a = next(link for link in links if link.local_node_id == nodes[1]["id"] and link.peer_node_id == nodes[0]["id"])
+    gateway_b_to_leaf = next(link for link in links if link.local_node_id == nodes[1]["id"] and link.peer_node_id == nodes[2]["id"])
+    leaf_to_gateway_b = next(link for link in links if link.local_node_id == nodes[2]["id"] and link.peer_node_id == nodes[1]["id"])
+    assert gateway_a_to_gateway_b.allowed_ips == f"{nodes[1]['virtual_ip']},{nodes[2]['virtual_ip']}"
+    assert gateway_b_to_gateway_a.allowed_ips == nodes[0]["virtual_ip"]
+    assert gateway_b_to_leaf.allowed_ips == nodes[2]["virtual_ip"]
+    assert leaf_to_gateway_b.allowed_ips == config["virtual_subnet"]
+    groups: dict[str, set[str | None]] = {}
+    for link in links:
+        groups.setdefault(link.link_group_id, set()).add(link.preshared_key)
+    assert all(len(keys) == 1 and next(iter(keys)) for keys in groups.values())
+
+
+def test_quick_generate_free_mesh_requires_all_nodes_assigned(authenticated_client: TestClient) -> None:
+    config, nodes = _create_quick_mesh_config(authenticated_client)
+
+    response = authenticated_client.post(
+        f"/api/v1/configs/{config['id']}/mesh/quick-generate",
+        json={
+            "mode": "free_mesh",
+            "endpoint_ref_family": "ipv4",
+            "gateway_node_ids": [nodes[0]["id"]],
+            "leaf_assignments": {nodes[1]["id"]: nodes[0]["id"]},
+        },
+    )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["success"] is False
+    assert body["error"]["code"] == "QUICK_MESH_NODE_UNASSIGNED"
+    assert body["error"]["detail"]["node_ids"] == [nodes[2]["id"]]
+
+
 def test_unknown_config_requires_auth(client: TestClient) -> None:
     response = client.get("/api/v1/configs/not-found")
     assert response.status_code == 428

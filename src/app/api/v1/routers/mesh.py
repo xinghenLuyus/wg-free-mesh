@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import Query
 from pydantic import BaseModel, Field, field_validator
@@ -138,6 +138,52 @@ class MeshWorkspaceResponse(BaseModel):
     validation: dict[str, Any]
 
 
+class QuickMeshGenerateRequest(BaseModel):
+    mode: str = Field(pattern="^(hub_spoke|full_mesh|free_mesh)$")
+    endpoint_ref_family: str = Field(default="ipv4", pattern="^(ipv4|ipv6)$")
+    hub_node_id: str | None = None
+    gateway_node_ids: list[str] = Field(default_factory=list)
+    leaf_assignments: dict[str, str] = Field(default_factory=dict)
+    use_preshared_key: bool = False
+
+    @field_validator("hub_node_id", mode="before")
+    @classmethod
+    def normalize_hub_node_id(cls, value: str | None) -> str | None:
+        return strip_optional_text(value)
+
+    @field_validator("gateway_node_ids", mode="before")
+    @classmethod
+    def normalize_gateway_node_ids(cls, value: object) -> list[str]:
+        if value is None:
+            return []
+        if not isinstance(value, list):
+            return []
+        return [item for item in (strip_optional_text(str(item)) for item in value) if item]
+
+    @field_validator("leaf_assignments", mode="before")
+    @classmethod
+    def normalize_leaf_assignments(cls, value: object) -> dict[str, str]:
+        if not isinstance(value, dict):
+            return {}
+        normalized: dict[str, str] = {}
+        for raw_leaf_id, raw_gateway_id in value.items():
+            leaf_id = strip_optional_text(str(raw_leaf_id))
+            gateway_id = strip_optional_text(str(raw_gateway_id))
+            if leaf_id and gateway_id:
+                normalized[leaf_id] = gateway_id
+        return normalized
+
+
+class QuickMeshGenerateResponse(BaseModel):
+    mode: str
+    endpoint_ref_family: str
+    use_preshared_key: bool
+    generated_groups: int
+    deleted_links: int
+    affected_node_ids: list[str]
+    message: str
+
+
 @router.get("/configs/{config_id}/peer-links")
 def list_peer_links(config_id: str) -> ApiResponse[list[dict[str, Any]]]:
     return ok([item.model_dump(mode="json") for item in control_plane_service.list_peer_links(config_id)])
@@ -202,6 +248,16 @@ def generate_preshared_key() -> ApiResponse[dict[str, str]]:
 @router.post("/configs/{config_id}/mesh/validate")
 def validate_mesh(config_id: str) -> ApiResponse[dict[str, object]]:
     return ok(control_plane_service.validate_mesh(config_id))
+
+
+@router.post("/configs/{config_id}/mesh/quick-generate")
+async def quick_generate_mesh(config_id: str, payload: QuickMeshGenerateRequest) -> ApiResponse[QuickMeshGenerateResponse]:
+    result = control_plane_service.quick_generate_mesh(config_id, payload.model_dump())
+    await control_plane_service.schedule_config_refresh(
+        config_id,
+        control_plane_service.plan_for_mesh_change(config_id, set(cast(list[str], result["affected_node_ids"]))),
+    )
+    return ok(QuickMeshGenerateResponse.model_validate(result))
 
 
 @router.get("/configs/{config_id}/nodes/{node_id}/wg-preview")

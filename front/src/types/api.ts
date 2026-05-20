@@ -108,6 +108,19 @@ export interface ConfigBulkPackageRead {
   node_count: number
 }
 
+export type QuickMeshMode = 'hub_spoke' | 'full_mesh' | 'free_mesh'
+export type EndpointRefFamily = 'ipv4' | 'ipv6'
+
+export interface QuickMeshGenerateRead {
+  mode: QuickMeshMode
+  endpoint_ref_family: EndpointRefFamily
+  use_preshared_key: boolean
+  generated_groups: number
+  deleted_links: number
+  affected_node_ids: string[]
+  message: string
+}
+
 export type SessionRead = AuthStateRead
 
 export interface ConfigRead {

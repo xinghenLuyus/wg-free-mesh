@@ -492,6 +492,61 @@ Authorization: Bearer <access_token>
 
 - 只要 `mesh/validate` 返回 `valid=false`，该配置下所有节点的系统态到同步态同步都必须视为阻塞状态。
 
+### `POST /api/v1/configs/{config_id}/mesh/quick-generate`
+
+- 用途：按固定拓扑删除并重建当前配置下所有 Mesh 对
+- 请求体：
+  - `mode`：`hub_spoke`、`full_mesh` 或 `free_mesh`
+  - `endpoint_ref_family`：`ipv4` 或 `ipv6`
+  - `hub_node_id`：网关节点式网络必填，全连接网络和 Free Mesh 忽略
+  - `gateway_node_ids`：Free Mesh 必填，表示参与骨干互联的网关节点集合
+  - `leaf_assignments`：Free Mesh 必填，键为叶子节点 ID，值为其挂载的网关节点 ID
+  - `use_preshared_key`：是否为自动生成的 Mesh 对启用 PSK，默认 `false`
+- 行为：
+  - 后端必须先完成校验，再在同一事务内删除当前配置下全部 `peer_links` 并创建新的双向 Mesh 对。
+  - 生成的 Mesh 对使用 `endpoint_mode=auto`，`endpoint_ref_family` 使用请求中的地址族，`endpoint_port_mode=ref_peer_listen_port`。
+  - `use_preshared_key=true` 时，后端为每一组双向 Mesh 对生成一个 PSK，并写入该组正反向两条 `peer_links`。
+  - 生成后必须刷新配置状态、同步态、配置概览、节点列表、相关 Mesh 工作区和系统状态。
+- 网关节点式网络：
+  - 配置下至少需要 2 个启用端点。
+  - `hub_node_id` 必须属于当前配置且节点启用。
+  - `endpoint_ref_family=ipv4` 时网关节点必须存在 `ipv4_address`。
+  - `endpoint_ref_family=ipv6` 时网关节点必须存在 `ipv6_address`。
+  - 所有参与生成的启用端点必须存在 `virtual_ip`，用于生成对端 `AllowedIPs`。
+  - 其它启用端点不要求公网地址。
+  - 网关节点到分支节点的 `AllowedIPs` 使用分支节点虚拟 IP。
+  - 分支节点到网关节点的 `AllowedIPs` 使用当前配置的 `virtual_subnet`，确保分支间流量能路由到网关节点。
+- 全连接网络：
+  - 配置下至少需要 2 个启用端点。
+  - `endpoint_ref_family=ipv4` 时所有启用端点必须存在 `ipv4_address`。
+  - `endpoint_ref_family=ipv6` 时所有启用端点必须存在 `ipv6_address`。
+  - 所有参与生成的启用端点必须存在 `virtual_ip`，用于生成对端 `AllowedIPs`。
+- Free Mesh：
+  - 配置下至少需要 2 个启用端点。
+  - `gateway_node_ids` 至少包含 1 个启用端点。
+  - 网关节点必须存在当前地址族对应的公网地址。
+  - 叶子节点不要求公网地址；即使存在公网地址，只要被放入 `leaf_assignments`，仍按叶子节点处理。
+  - 每个启用端点必须且只能属于一种角色：网关或叶子。
+  - `leaf_assignments` 中的网关必须出现在 `gateway_node_ids` 中。
+  - 所有参与生成的启用端点必须存在 `virtual_ip`。
+  - 网关节点之间建立全连接；网关与自己下挂的叶子节点建立双向 Mesh 对。
+  - 网关到网关的 `AllowedIPs` 使用对端网关的虚拟 IP 加上对端网关下挂所有叶子节点的虚拟 IP。
+  - 网关到叶子节点的 `AllowedIPs` 使用叶子节点虚拟 IP。
+  - 叶子节点到网关的 `AllowedIPs` 使用当前配置的 `virtual_subnet`，确保叶子节点可访问全网。
+- 响应：
+
+```json
+{
+  "mode": "free_mesh",
+  "endpoint_ref_family": "ipv4",
+  "use_preshared_key": true,
+  "generated_groups": 3,
+  "deleted_links": 4,
+  "affected_node_ids": ["node_a", "node_b", "node_c", "node_d"],
+  "message": "Mesh links regenerated"
+}
+```
+
 ### `GET /api/v1/configs/{config_id}/nodes/{node_id}/wg-preview`
 
 - 用途：预览节点隧道配置。路径保留 `wg-preview` 以兼容现有前端，内容会根据配置所属协议输出 WireGuard 或 AmneziaWG 2.0 配置。

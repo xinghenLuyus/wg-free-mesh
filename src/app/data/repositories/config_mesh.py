@@ -21,6 +21,7 @@ from app.domain.models import (
     WgRuntimeState,
     derive_public_key,
     generate_key_pair,
+    generate_private_key,
     new_id,
     now_utc,
 )
@@ -950,3 +951,185 @@ class ConfigMeshRepositoryMixin:
                 raise AppError("PEER_LINK_NOT_FOUND", "Peer link group not found", 404)
             config_id = row["config_id"]
             connection.execute("DELETE FROM peer_links WHERE link_group_id = ?", (group_id,))
+
+    def quick_generate_mesh(self, config_id: str, payload: dict[str, object]) -> dict[str, object]:
+        config = self.get_config(config_id)
+        mode = str(payload.get("mode") or "").strip()
+        family = str(payload.get("endpoint_ref_family") or "ipv4").strip()
+        if mode not in {"hub_spoke", "full_mesh", "free_mesh"}:
+            raise AppError("INVALID_QUICK_MESH_MODE", "Quick mesh mode is invalid", 400)
+        if family not in {"ipv4", "ipv6"}:
+            raise AppError("INVALID_ENDPOINT_FAMILY", "Endpoint family is invalid", 400)
+        use_preshared_key = bool(payload.get("use_preshared_key", False))
+
+        enabled_nodes = [node for node in self.list_nodes(config_id) if node.enabled]
+        if len(enabled_nodes) < 2:
+            raise AppError("QUICK_MESH_NOT_ENOUGH_NODES", "At least two enabled endpoints are required", 400)
+
+        missing_virtual_ip = [node for node in enabled_nodes if not node.virtual_ip]
+        if missing_virtual_ip:
+            raise AppError(
+                "QUICK_MESH_VIRTUAL_IP_REQUIRED",
+                "All enabled endpoints need virtual IP before quick mesh generation.",
+                400,
+                {"nodes": [node.model_dump(mode="json") for node in missing_virtual_ip]},
+            )
+
+        pairs: list[tuple[Node, Node, str, str]] = []
+        if mode == "hub_spoke":
+            hub_node_id = str(payload.get("hub_node_id") or "").strip()
+            hub = next((node for node in enabled_nodes if node.id == hub_node_id), None)
+            if hub is None:
+                raise AppError("QUICK_MESH_HUB_REQUIRED", "Gateway endpoint is required and must be enabled", 400)
+            if not self._endpoint_host_for_family(hub, family):
+                raise AppError(
+                    "QUICK_MESH_HUB_ENDPOINT_REQUIRED",
+                    f"Gateway endpoint needs public {family.upper()} entry.",
+                    400,
+                    {"nodes": [hub.model_dump(mode="json")], "endpoint_ref_family": family},
+                )
+            pairs = [(hub, node, str(node.virtual_ip), config.virtual_subnet) for node in enabled_nodes if node.id != hub.id]
+        elif mode == "full_mesh":
+            missing_public = [node for node in enabled_nodes if not self._endpoint_host_for_family(node, family)]
+            if missing_public:
+                raise AppError(
+                    "QUICK_MESH_ENDPOINT_REQUIRED",
+                    f"All enabled endpoints need public {family.upper()} entry.",
+                    400,
+                    {"nodes": [node.model_dump(mode="json") for node in missing_public], "endpoint_ref_family": family},
+                )
+            for index, local_node in enumerate(enabled_nodes):
+                for peer_node in enabled_nodes[index + 1:]:
+                    pairs.append((local_node, peer_node, str(peer_node.virtual_ip), str(local_node.virtual_ip)))
+        else:
+            pairs = self._quick_free_mesh_pairs(config.virtual_subnet, enabled_nodes, payload, family)
+
+        now = now_utc().isoformat()
+        affected_node_ids = [node.id for node in enabled_nodes]
+        with connect() as connection:
+            row = connection.execute("SELECT COUNT(*) AS count FROM peer_links WHERE config_id = ?", (config_id,)).fetchone()
+            deleted_links = int(row["count"] if row is not None else 0)
+            connection.execute("DELETE FROM peer_links WHERE config_id = ?", (config_id,))
+            for local_node, peer_node, forward_allowed_ips, reverse_allowed_ips in pairs:
+                group_id = new_id("group")
+                preshared_key = generate_private_key() if use_preshared_key else None
+                link_rows = [
+                    (new_id("plink"), local_node, peer_node, "forward", forward_allowed_ips),
+                    (new_id("plink"), peer_node, local_node, "reverse", reverse_allowed_ips),
+                ]
+                for link_id, source_node, target_node, direction, explicit_allowed_ips in link_rows:
+                    draft = self._peer_link_direction_draft(config, source_node, target_node, family, 25)
+                    allowed_ips = explicit_allowed_ips or str(draft["allowed_ips"])
+                    connection.execute(
+                        """
+                        INSERT INTO peer_links
+                          (id, config_id, local_node_id, peer_node_id, link_group_id, direction, enabled, allowed_ips,
+                           persistent_keepalive, preshared_key, endpoint_mode, endpoint_ref_family, endpoint_manual_host,
+                           endpoint_port_mode, endpoint_manual_port, notes, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            link_id,
+                            config_id,
+                            source_node.id,
+                            target_node.id,
+                            group_id,
+                            direction,
+                            1,
+                            normalize_allowed_ips(allowed_ips),
+                            self._effective_keepalive(config, target_node, draft),
+                            preshared_key,
+                            EndpointMode.auto.value,
+                            family,
+                            None,
+                            EndpointPortMode.ref_peer_listen_port.value,
+                            None,
+                            "",
+                            now,
+                            now,
+                        ),
+                    )
+
+        return {
+            "mode": mode,
+            "endpoint_ref_family": family,
+            "use_preshared_key": use_preshared_key,
+            "generated_groups": len(pairs),
+            "deleted_links": deleted_links,
+            "affected_node_ids": affected_node_ids,
+            "message": "Mesh links regenerated",
+        }
+
+    def _quick_free_mesh_pairs(
+        self,
+        virtual_subnet: str,
+        enabled_nodes: list[Node],
+        payload: dict[str, object],
+        family: str,
+    ) -> list[tuple[Node, Node, str, str]]:
+        nodes_by_id = {node.id: node for node in enabled_nodes}
+        gateway_ids = list(dict.fromkeys(str(item).strip() for item in payload.get("gateway_node_ids", []) if str(item).strip()))
+        leaf_assignments_payload = payload.get("leaf_assignments", {})
+        leaf_assignments = {
+            str(leaf_id).strip(): str(gateway_id).strip()
+            for leaf_id, gateway_id in (leaf_assignments_payload.items() if isinstance(leaf_assignments_payload, dict) else [])
+            if str(leaf_id).strip() and str(gateway_id).strip()
+        }
+
+        if not gateway_ids:
+            raise AppError("QUICK_MESH_GATEWAY_REQUIRED", "At least one gateway endpoint is required", 400)
+
+        unknown_gateway_ids = [node_id for node_id in gateway_ids if node_id not in nodes_by_id]
+        if unknown_gateway_ids:
+            raise AppError("QUICK_MESH_GATEWAY_REQUIRED", "Gateway endpoints must be enabled endpoints", 400, {"node_ids": unknown_gateway_ids})
+
+        gateway_nodes = [nodes_by_id[node_id] for node_id in gateway_ids]
+        missing_gateway_public = [node for node in gateway_nodes if not self._endpoint_host_for_family(node, family)]
+        if missing_gateway_public:
+            raise AppError(
+                "QUICK_MESH_GATEWAY_ENDPOINT_REQUIRED",
+                f"Gateway endpoints need public {family.upper()} entry.",
+                400,
+                {"nodes": [node.model_dump(mode="json") for node in missing_gateway_public], "endpoint_ref_family": family},
+            )
+
+        invalid_leaf_ids = [node_id for node_id in leaf_assignments if node_id not in nodes_by_id]
+        if invalid_leaf_ids:
+            raise AppError("QUICK_MESH_LEAF_INVALID", "Leaf endpoints must be enabled endpoints", 400, {"node_ids": invalid_leaf_ids})
+
+        gateway_id_set = set(gateway_ids)
+        leaf_id_set = set(leaf_assignments)
+        duplicated_roles = sorted(gateway_id_set & leaf_id_set)
+        if duplicated_roles:
+            raise AppError("QUICK_MESH_NODE_ROLE_CONFLICT", "Endpoint cannot be both gateway and leaf", 400, {"node_ids": duplicated_roles})
+
+        invalid_leaf_gateways = sorted({gateway_id for gateway_id in leaf_assignments.values() if gateway_id not in gateway_id_set})
+        if invalid_leaf_gateways:
+            raise AppError("QUICK_MESH_LEAF_GATEWAY_INVALID", "Leaf gateway must be a selected gateway endpoint", 400, {"node_ids": invalid_leaf_gateways})
+
+        covered_node_ids = gateway_id_set | leaf_id_set
+        unassigned_node_ids = [node.id for node in enabled_nodes if node.id not in covered_node_ids]
+        if unassigned_node_ids:
+            raise AppError("QUICK_MESH_NODE_UNASSIGNED", "All enabled endpoints must be assigned as gateway or leaf", 400, {"node_ids": unassigned_node_ids})
+
+        leaves_by_gateway: dict[str, list[Node]] = {node_id: [] for node_id in gateway_ids}
+        for leaf_id, gateway_id in leaf_assignments.items():
+            leaves_by_gateway[gateway_id].append(nodes_by_id[leaf_id])
+
+        gateway_scope: dict[str, str] = {}
+        for gateway in gateway_nodes:
+            scope = [str(gateway.virtual_ip)]
+            scope.extend(str(leaf.virtual_ip) for leaf in leaves_by_gateway[gateway.id])
+            gateway_scope[gateway.id] = normalize_allowed_ips(", ".join(scope))
+
+        pairs: list[tuple[Node, Node, str, str]] = []
+        for index, local_node in enumerate(gateway_nodes):
+            for peer_node in gateway_nodes[index + 1:]:
+                pairs.append((local_node, peer_node, gateway_scope[peer_node.id], gateway_scope[local_node.id]))
+
+        for leaf_id, gateway_id in leaf_assignments.items():
+            gateway = nodes_by_id[gateway_id]
+            leaf = nodes_by_id[leaf_id]
+            pairs.append((gateway, leaf, str(leaf.virtual_ip), virtual_subnet))
+
+        return pairs

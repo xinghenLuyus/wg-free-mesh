@@ -31,6 +31,9 @@ import type {
   DownloadPackageRead,
   ConfigBulkOptionsRead,
   ConfigBulkPackageRead,
+  EndpointRefFamily,
+  QuickMeshGenerateRead,
+  QuickMeshMode,
 } from '@/types/api'
 
 export const api = {
@@ -115,6 +118,15 @@ export const api = {
     request<{ preshared_key: string }>('/peer-links/psk/generate', { method: 'POST' }),
   validateMesh: (configId: string) =>
     request<MeshValidationRead>(`/configs/${configId}/mesh/validate`, { method: 'POST' }),
+  quickGenerateMesh: (configId: string, payload: {
+    mode: QuickMeshMode
+    endpoint_ref_family: EndpointRefFamily
+    hub_node_id?: string
+    gateway_node_ids?: string[]
+    leaf_assignments?: Record<string, string>
+    use_preshared_key: boolean
+  }) =>
+    request<QuickMeshGenerateRead>(`/configs/${configId}/mesh/quick-generate`, { method: 'POST', data: payload, timeout: 120000 }),
   wgPreview: (configId: string, nodeId: string) =>
     request<WgPreviewRead>(`/configs/${configId}/nodes/${nodeId}/wg-preview`),
 

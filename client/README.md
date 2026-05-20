@@ -33,6 +33,7 @@
 - 绑定命令为一次性命令，默认 5 分钟有效
 - heartbeat 每 30 分钟上报一次；服务端同时使用 heartbeat、ACK 和非离线 event 投影在线态
 - 前端存在 SSE 订阅时，服务端每 2 分钟主动发送 `detect`
+- `detect/ack` 会携带当前客户端版本，服务端据此刷新控制面板中的客户端版本字段。
 - 客户端应以系统服务运行，否则 WireGuard 状态读取和控制可能权限不足
 - 客户端 bind profile 不保存隧道协议。服务端每次下发 `config/push`、`control`、`detect`、`info` 时携带当前协议，客户端按当次 payload 选择工具链，避免配置协议切换后本地状态漂移。Linux/macOS 启停隧道使用 `wg-quick` / `awg-quick`，Windows 启停隧道使用 `wireguard.exe` / `amneziawg.exe` 的 tunnel service 命令；状态检查使用 `wg` / `awg`。
 - 服务端会保存 bind 时生成的客户端 MQTT 密码，用于快照恢复后重建 EMQX 节点用户。恢复完成后客户端可能经历一次 MQTT 重连，重新连接成功后继续发送在线事件和心跳。

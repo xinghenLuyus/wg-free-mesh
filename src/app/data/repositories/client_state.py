@@ -742,12 +742,16 @@ class ClientStateRepositoryMixin:
         session_id: str = "",
         client_online: bool = True,
         wg_online: bool = False,
+        platform: str = "",
+        client_version: str = "",
     ) -> dict[str, object]:
         node = self.get_node(node_id)
         if not node.enabled or node.node_type != NodeType.dynamic:
             return self.get_client_state(config_id, node_id)
         now = now_utc().isoformat()
         self._ensure_client_state(config_id, node_id)
+        client_platform = self._normalize_client_text(platform)
+        normalized_client_version = self._normalize_client_text(client_version)
         with connect() as connection:
             connection.execute(
                 """
@@ -755,12 +759,14 @@ class ClientStateRepositoryMixin:
                 SET client_presence_state = 'online',
                     boot_id = COALESCE(NULLIF(?, ''), boot_id),
                     session_id = COALESCE(NULLIF(?, ''), session_id),
+                    client_platform = COALESCE(NULLIF(?, ''), client_platform),
+                    client_version = COALESCE(NULLIF(?, ''), client_version),
                     last_detect_ack_at = ?,
                     last_reachable_at = ?,
                     updated_at = ?
                 WHERE config_id = ? AND node_id = ?
                 """,
-                (boot_id, session_id, now, now, now, config_id, node_id),
+                (boot_id, session_id, client_platform, normalized_client_version, now, now, now, config_id, node_id),
             )
             connection.execute(
                 """

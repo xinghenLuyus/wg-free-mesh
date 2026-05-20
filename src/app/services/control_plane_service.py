@@ -447,6 +447,10 @@ class ControlPlaneService:
         self.invalidate_config_projection(config_id)
         store.delete_peer_link_group(group_id)
 
+    def quick_generate_mesh(self, config_id: str, payload: dict[str, object]) -> dict[str, object]:
+        self.invalidate_config_projection(config_id)
+        return store.quick_generate_mesh(config_id, payload)
+
     def validate_mesh(self, config_id: str) -> dict[str, object]:
         return store._validate_mesh_payload(config_id)
 

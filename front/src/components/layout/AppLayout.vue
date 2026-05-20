@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Download, Files, House, InfoFilled, Setting, SwitchButton } from '@element-plus/icons-vue'
+import { Connection, Download, Files, House, InfoFilled, Setting, SwitchButton } from '@element-plus/icons-vue'
 import { computed, onMounted, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterView, useRoute, useRouter } from 'vue-router'
@@ -100,6 +100,7 @@ const topItems = computed(() => [
 ])
 const toolItems = computed(() => [
   { path: '/tools/download', label: t('layout.download'), icon: Download },
+  { path: '/tools/quick-mesh', label: t('layout.quickMesh'), icon: Connection },
 ])
 
 const currentPath = computed(() => route.path)

@@ -13,6 +13,8 @@ const DownloadToolsView = () => import('@/views/DownloadToolsView.vue')
 const EndpointsView = () => import('@/views/EndpointsView.vue')
 const HelpView = () => import('@/views/HelpView.vue')
 const HomeView = () => import('@/views/HomeView.vue')
+const QuickMeshGenerateView = () => import('@/views/QuickMeshGenerateView.vue')
+const QuickMeshToolsView = () => import('@/views/QuickMeshToolsView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const MeshView = () => import('@/views/MeshView.vue')
 const NodeAdvancedView = () => import('@/views/NodeAdvancedView.vue')
@@ -63,6 +65,10 @@ export const router = createRouter({
         { path: 'tools/download', component: DownloadToolsView },
         { path: 'tools/download/client', component: ClientDownloadView },
         { path: 'tools/download/configs', component: ConfigBulkDownloadView },
+        { path: 'tools/quick-mesh', component: QuickMeshToolsView },
+        { path: 'tools/quick-mesh/hub-spoke', component: QuickMeshGenerateView, props: { mode: 'hub_spoke' } },
+        { path: 'tools/quick-mesh/full-mesh', component: QuickMeshGenerateView, props: { mode: 'full_mesh' } },
+        { path: 'tools/quick-mesh/free-mesh', component: QuickMeshGenerateView, props: { mode: 'free_mesh' } },
       ],
     },
   ],

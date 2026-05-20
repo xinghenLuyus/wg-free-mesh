@@ -22,6 +22,12 @@ def _bool_payload(body: dict[str, Any], key: str, default: bool) -> bool:
     return str(value).strip().lower() in {"1", "true", "yes", "online", "running"}
 
 
+def _text_payload(body: dict[str, Any], key: str) -> str:
+    payload = _payload(body)
+    value = payload.get(key, body.get(key, ""))
+    return str(value or "").strip()
+
+
 class NodeRuntimeService:
     async def apply_heartbeat(self, config_id: str, node_id: str, body: dict[str, Any], *, boot_id: str = "", session_id: str = "") -> None:
         store.record_client_heartbeat(
@@ -66,7 +72,16 @@ class NodeRuntimeService:
     async def apply_detect_ack(self, config_id: str, node_id: str, body: dict[str, Any], *, boot_id: str = "", session_id: str = "") -> None:
         client_online = _bool_payload(body, "client_online", True)
         wg_online = _bool_payload(body, "wg_online", False)
-        store.record_detect_ack(config_id, node_id, boot_id=boot_id, session_id=session_id, client_online=client_online, wg_online=wg_online)
+        store.record_detect_ack(
+            config_id,
+            node_id,
+            boot_id=boot_id,
+            session_id=session_id,
+            client_online=client_online,
+            wg_online=wg_online,
+            platform=_text_payload(body, "platform"),
+            client_version=_text_payload(body, "client_version"),
+        )
         await self._publish_runtime_scope(config_id, node_id)
 
     async def apply_generic_ack(self, config_id: str, node_id: str, *, boot_id: str = "", session_id: str = "") -> None:
