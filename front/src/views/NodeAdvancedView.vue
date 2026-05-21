@@ -62,6 +62,10 @@ function fillForm(nextNode: NodeRead) {
   })
 }
 
+function warnManagedHookDelete() {
+  notify.warning(t('nodeAdvanced.managedDeleteHint'))
+}
+
 async function load() {
   loadError.value = ''
   try {
@@ -166,10 +170,13 @@ onMounted(load)
           </div>
         </div>
         <div class="hook-grid">
-          <HookListEditor v-model="form.pre_up" label="PreUp" :help="t('protocol.help.pre_up')" :applying="savingHooks" @apply="saveHooks" />
-          <HookListEditor v-model="form.post_up" label="PostUp" :help="t('protocol.help.post_up')" :applying="savingHooks" @apply="saveHooks" />
-          <HookListEditor v-model="form.pre_down" label="PreDown" :help="t('protocol.help.pre_down')" :applying="savingHooks" @apply="saveHooks" />
-          <HookListEditor v-model="form.post_down" label="PostDown" :help="t('protocol.help.post_down')" :applying="savingHooks" @apply="saveHooks" />
+          <HookListEditor v-model="form.pre_up" label="PreUp" :help="t('protocol.help.pre_up')" :managed="node?.managed_hooks.pre_up" @managed-delete="warnManagedHookDelete" />
+          <HookListEditor v-model="form.post_up" label="PostUp" :help="t('protocol.help.post_up')" :managed="node?.managed_hooks.post_up" @managed-delete="warnManagedHookDelete" />
+          <HookListEditor v-model="form.pre_down" label="PreDown" :help="t('protocol.help.pre_down')" :managed="node?.managed_hooks.pre_down" @managed-delete="warnManagedHookDelete" />
+          <HookListEditor v-model="form.post_down" label="PostDown" :help="t('protocol.help.post_down')" :managed="node?.managed_hooks.post_down" @managed-delete="warnManagedHookDelete" />
+        </div>
+        <div class="node-param-section__actions">
+          <el-button type="primary" :loading="savingHooks" @click="saveHooks">{{ t('common.save') }}</el-button>
         </div>
       </section>
 

@@ -33,14 +33,18 @@ class SyncSettingsRepositoryMixin:
         effective_mtu = node.mtu or config.default_mtu
         if effective_mtu:
             lines.append(f"MTU = {effective_mtu}")
-        for key, commands in (
-            ("PreUp", node.pre_up),
-            ("PostUp", node.post_up),
-            ("PreDown", node.pre_down),
-            ("PostDown", node.post_down),
+        for key, commands, managed_key in (
+            ("PreUp", node.pre_up, "pre_up"),
+            ("PostUp", node.post_up, "post_up"),
+            ("PreDown", node.pre_down, "pre_down"),
+            ("PostDown", node.post_down, "post_down"),
         ):
             for command in commands:
                 lines.append(f"{key} = {command}")
+            for managed in node.managed_hooks.get(managed_key, []):
+                managed_command = managed.get("command")
+                if managed_command:
+                    lines.append(f"{key} = {managed_command}")
         if config.tunnel_protocol == TunnelProtocol.amneziawg_2:
             for key, value in (
                 ("Jc", node.awg_jc),

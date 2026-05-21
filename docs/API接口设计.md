@@ -622,7 +622,7 @@ Authorization: Bearer <access_token>
 - 请求字段：
   - `source`：`github_release` 或 `local_build`
   - `goos`：`windows`、`linux`、`darwin`
-  - `goarch`：`amd64`、`arm64`
+  - `goarch`：`windows` 支持 `amd64`、`arm64`、`386`；`linux` 和 `darwin` 支持 `amd64`、`arm64`
 - 响应字段：
   - `artifact_id`
   - `filename`
@@ -667,6 +667,40 @@ Authorization: Bearer <access_token>
 
 - 用途：下载配置批量 zip
 - 鉴权：后台会话令牌
+
+## 端口转发工具接口
+
+### `GET /api/v1/tools/port-forwards/configs/{config_id}`
+
+- 用途：列出当前配置下由端口转发工具托管的规则
+- 鉴权：后台会话令牌
+- 响应字段：规则字段外附带 `from_node`、`to_node` 摘要，前端直接展示 From / To 端点名和虚拟 IP
+
+### `POST /api/v1/tools/port-forwards/configs/{config_id}`
+
+- 用途：创建一条受管端口转发规则，并刷新 To 端点配置
+- 鉴权：后台会话令牌
+- 请求字段：
+  - `from_node_id`：服务存在端点
+  - `from_port`：服务端口
+  - `to_node_id`：暴露转发入口并执行生命周期命令的端点
+  - `to_port`：转发入口端口
+  - `to_platform`：`linux` 或 `darwin`
+  - `protocol`：`tcp`、`udp` 或 `all`；`all` 表示同一受管规则同时生成 TCP 与 UDP 转发
+- 约束：From 与 To 必须是当前配置下启用且带 IPv4 虚拟 IP 的不同端点；同一 To 端点的同一协议端口只允许被一条受管规则占用
+- 说明：后端根据 `to_platform` 生成 To 端点的受管 `PostUp` / `PreDown` 生命周期命令。规则本身不写入普通 hook 字段，端点高级配置只读展示生成命令。
+
+### `DELETE /api/v1/tools/port-forwards/{rule_id}`
+
+- 用途：删除端口转发工具托管的规则，并刷新 To 端点配置
+- 鉴权：后台会话令牌
+- 约束：受管规则只允许通过该接口删除，端点高级配置页不能直接删除对应命令
+
+### `PUT /api/v1/tools/port-forwards/{rule_id}/enabled`
+
+- 用途：临时启用或关闭一条端口转发规则
+- 请求字段：`enabled`
+- 说明：关闭后规则仍保留并继续在工具页展示，但后端不再为目的端点生成对应受管 hook；重新启用后恢复生成
 
 ### `POST /api/v1/configs/{config_id}/nodes/{node_id}/sync`
 

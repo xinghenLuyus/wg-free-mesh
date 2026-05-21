@@ -96,6 +96,22 @@ peer_links = Table(
     Column("updated_at", String, nullable=False),
 )
 
+port_forward_rules = Table(
+    "port_forward_rules",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("config_id", String, ForeignKey("configs.id", ondelete="CASCADE"), nullable=False, index=True),
+    Column("from_node_id", String, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False),
+    Column("from_port", Integer, nullable=False),
+    Column("to_node_id", String, ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False),
+    Column("to_port", Integer, nullable=False),
+    Column("to_platform", String, nullable=False),
+    Column("protocol", String, nullable=False, default="tcp", server_default="tcp"),
+    Column("enabled", Integer, nullable=False, default=True, server_default="1"),
+    Column("created_at", String, nullable=False),
+    Column("updated_at", String, nullable=False),
+)
+
 node_config_state = Table(
     "node_config_state",
     metadata,

@@ -12,6 +12,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 TARGETS = (
     ("windows", "amd64"),
     ("windows", "arm64"),
+    ("windows", "386"),
     ("linux", "amd64"),
     ("linux", "arm64"),
     ("darwin", "amd64"),

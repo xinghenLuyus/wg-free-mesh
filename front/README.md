@@ -90,6 +90,8 @@
 - `/tools/quick-mesh/hub-spoke` 为网关节点式网络快速生成
 - `/tools/quick-mesh/full-mesh` 为全连接网络快速生成
 - `/tools/quick-mesh/free-mesh` 为多网关 Free Mesh 快速生成
+- `/tools/other` 为其它工具统一入口
+- `/tools/other/port-forward` 为受管端口转发规则管理
 
 ## 手动运行
 

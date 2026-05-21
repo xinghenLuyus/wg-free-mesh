@@ -362,6 +362,109 @@ def test_quick_generate_free_mesh_requires_all_nodes_assigned(authenticated_clie
     assert body["error"]["detail"]["node_ids"] == [nodes[2]["id"]]
 
 
+def test_port_forward_rule_generates_managed_hooks_on_to_endpoint(authenticated_client: TestClient) -> None:
+    config, nodes = _create_quick_mesh_config(authenticated_client)
+
+    response = authenticated_client.post(
+        f"/api/v1/tools/port-forwards/configs/{config['id']}",
+        json={
+            "from_node_id": nodes[0]["id"],
+            "from_port": 3000,
+            "to_node_id": nodes[1]["id"],
+            "to_port": 8443,
+            "to_platform": "linux",
+            "protocol": "tcp",
+        },
+    )
+
+    assert response.status_code == 200
+    rule = response.json()["data"]
+    assert rule["from_node"]["name"] == nodes[0]["name"]
+    assert rule["to_node"]["name"] == nodes[1]["name"]
+
+    from_node = authenticated_client.get(f"/api/v1/nodes/{nodes[0]['id']}").json()["data"]
+    to_node = authenticated_client.get(f"/api/v1/nodes/{nodes[1]['id']}").json()["data"]
+    assert from_node["managed_hooks"]["post_up"] == []
+    assert to_node["managed_hooks"]["post_up"][0]["source_id"] == rule["id"]
+    assert "DNAT" in to_node["managed_hooks"]["post_up"][0]["command"]
+    assert "sysctl" not in to_node["managed_hooks"]["post_up"][0]["command"]
+
+    preview = authenticated_client.get(
+        f"/api/v1/configs/{config['id']}/nodes/{nodes[1]['id']}/wg-preview"
+    ).json()["data"]["content"]
+    assert f"PostUp = {to_node['managed_hooks']['post_up'][0]['command']}" in preview
+    assert f"PreDown = {to_node['managed_hooks']['pre_down'][0]['command']}" in preview
+
+
+def test_port_forward_rule_rejects_duplicate_to_port(authenticated_client: TestClient) -> None:
+    config, nodes = _create_quick_mesh_config(authenticated_client)
+    payload = {
+        "from_node_id": nodes[0]["id"],
+        "from_port": 8080,
+        "to_node_id": nodes[1]["id"],
+        "to_port": 8081,
+        "to_platform": "darwin",
+        "protocol": "tcp",
+    }
+
+    assert authenticated_client.post(f"/api/v1/tools/port-forwards/configs/{config['id']}", json=payload).status_code == 200
+    response = authenticated_client.post(
+        f"/api/v1/tools/port-forwards/configs/{config['id']}",
+        json={**payload, "from_node_id": nodes[2]["id"], "from_port": 8082},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "PORT_FORWARD_TO_PORT_IN_USE"
+
+
+def test_port_forward_rule_generates_all_protocol_hooks(authenticated_client: TestClient) -> None:
+    config, nodes = _create_quick_mesh_config(authenticated_client)
+
+    response = authenticated_client.post(
+        f"/api/v1/tools/port-forwards/configs/{config['id']}",
+        json={
+            "from_node_id": nodes[0]["id"],
+            "from_port": 5353,
+            "to_node_id": nodes[1]["id"],
+            "to_port": 15353,
+            "to_platform": "darwin",
+            "protocol": "all",
+        },
+    )
+
+    assert response.status_code == 200
+    rule = response.json()["data"]
+    assert rule["protocol"] == "all"
+    to_node = authenticated_client.get(f"/api/v1/nodes/{nodes[1]['id']}").json()["data"]
+    assert "proto tcp" in to_node["managed_hooks"]["post_up"][0]["command"]
+    assert "proto udp" in to_node["managed_hooks"]["post_up"][0]["command"]
+
+
+def test_port_forward_rule_can_be_temporarily_disabled(authenticated_client: TestClient) -> None:
+    config, nodes = _create_quick_mesh_config(authenticated_client)
+    create_response = authenticated_client.post(
+        f"/api/v1/tools/port-forwards/configs/{config['id']}",
+        json={
+            "from_node_id": nodes[0]["id"],
+            "from_port": 9000,
+            "to_node_id": nodes[1]["id"],
+            "to_port": 19000,
+            "to_platform": "linux",
+            "protocol": "tcp",
+        },
+    )
+    rule = create_response.json()["data"]
+
+    response = authenticated_client.put(f"/api/v1/tools/port-forwards/{rule['id']}/enabled", json={"enabled": False})
+
+    assert response.status_code == 200
+    assert response.json()["data"]["enabled"] is False
+    to_node = authenticated_client.get(f"/api/v1/nodes/{nodes[1]['id']}").json()["data"]
+    assert to_node["managed_hooks"]["post_up"] == []
+    listed = authenticated_client.get(f"/api/v1/tools/port-forwards/configs/{config['id']}").json()["data"]
+    assert listed[0]["enabled"] is False
+
+
 def test_unknown_config_requires_auth(client: TestClient) -> None:
     response = client.get("/api/v1/configs/not-found")
     assert response.status_code == 428

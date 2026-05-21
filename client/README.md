@@ -47,7 +47,7 @@ cd D:\wenjian\stepsave\project\wg-free-mesh\client
 python build_release.py
 ```
 
-发布构建会读取 [src/pyproject.toml](D:/wenjian/stepsave/project/wg-free-mesh/src/pyproject.toml) 中的 `[project].version`，并通过 Go `ldflags` 注入 `wfmctl` / `wfm-agent`。构建产物输出到 `client/dist/`。
+发布构建会读取 [src/pyproject.toml](D:/wenjian/stepsave/project/wg-free-mesh/src/pyproject.toml) 中的 `[project].version`，并通过 Go `ldflags` 注入 `wfmctl` / `wfm-agent`。构建产物输出到 `client/dist/`。Windows 发布目标额外包含 32 位 `windows/386`，Linux 与 macOS 仍只发布 64 位目标。
 
 只构建单个平台：
 
@@ -57,7 +57,7 @@ python build_release.py --target windows/amd64
 
 ### 2. 安装并启动客户端
 
-`install` 在三端语义一致：安装系统服务、设置开机自启、立即启动服务，并把当前 `wfmctl` 所在目录加入全局命令路径。安装成功后会输出客户端终端标识，并执行 `wg -v`、`awg -v` 检查；检查结果只用于提示，不阻断安装流程。若缺少 WireGuard 或 AmneziaWG 工具链，按提示到服务端下载页面下载对应内核或工具链。`start` 仍然保留，用于服务已安装但当前未运行时手动启动。
+`install` 在三端语义一致：安装系统服务、设置开机自启、立即启动服务，并把当前 `wfmctl` 所在目录加入全局命令路径。安装成功后会输出客户端终端标识，并执行 `wg -v`、`awg -v` 检查；检查结果只用于提示，不阻断安装流程。若缺少 WireGuard 或 AmneziaWG 工具链，按提示到服务端下载页面下载对应内核或工具链。`start` 仍然保留，用于服务已安装但当前未运行时手动启动。Linux 安装还会尝试写入项目自有 sysctl 配置并启用 IPv4 forwarding；macOS 安装会尝试启用 IPv4 forwarding，供受管端口转发生命周期命令使用。两端 forwarding 启用失败时只输出一行错误，不中断安装流程。
 
 如果安装后移动了 `wfmctl` 所在目录，全局命令路径会失效。此时在新目录重新执行安装命令即可修复。
 

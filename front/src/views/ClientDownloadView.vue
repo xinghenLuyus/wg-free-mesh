@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ArrowLeft, Download, Finished, SetUp } from '@element-plus/icons-vue'
-import { computed, onMounted, shallowRef } from 'vue'
+import { computed, onMounted, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
@@ -22,6 +22,10 @@ const loadError = shallowRef('')
 const statusState = shallowRef<'idle' | 'building' | 'downloading' | 'done' | 'failed'>('idle')
 
 const selectedSource = computed(() => options.value?.sources.find((item) => item.value === source.value))
+const architectureOptions = computed(() => {
+  if (!options.value) return []
+  return options.value.architectures[goos.value as keyof ClientDownloadOptionsRead['architectures']] || []
+})
 const sourceAvailable = computed(() => selectedSource.value?.available !== false)
 const sourceLabel = computed(() => translateDownloadOption(selectedSource.value?.value, selectedSource.value?.label || source.value))
 const statusTitle = computed(() => t(`tools.clientDownload.status.${statusState.value}.title`))
@@ -93,6 +97,12 @@ function backToDownloadTools() {
   void router.push('/tools/download')
 }
 
+watch(architectureOptions, (items) => {
+  if (!items.some((item) => item.value === goarch.value)) {
+    goarch.value = items[0]?.value || ''
+  }
+})
+
 onMounted(() => {
   void loadOptions()
 })
@@ -140,7 +150,7 @@ onMounted(() => {
             <el-segmented v-model="goos" :options="options.systems" />
           </el-form-item>
           <el-form-item :label="t('tools.clientDownload.architecture')">
-            <el-segmented v-model="goarch" :options="options.architectures" />
+            <el-segmented v-model="goarch" :options="architectureOptions" />
           </el-form-item>
         </el-form>
 

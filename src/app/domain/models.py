@@ -40,6 +40,10 @@ def generate_key_pair() -> tuple[str, str]:
     return private_key, derive_public_key(private_key)
 
 
+def default_managed_hooks() -> dict[str, list[dict[str, str]]]:
+    return {"pre_up": [], "post_up": [], "pre_down": [], "post_down": []}
+
+
 class NodeType(StrEnum):
     dynamic = "dynamic"
     static = "static"
@@ -163,6 +167,7 @@ class Node(BaseModel):
     awg_i3: str | None = None
     awg_i4: str | None = None
     awg_i5: str | None = None
+    managed_hooks: dict[str, list[dict[str, str]]] = Field(default_factory=default_managed_hooks)
     created_at: datetime = Field(default_factory=now_utc)
     updated_at: datetime = Field(default_factory=now_utc)
 
@@ -184,6 +189,20 @@ class PeerLink(BaseModel):
     endpoint_port_mode: EndpointPortMode = EndpointPortMode.ref_peer_listen_port
     endpoint_manual_port: int | None = None
     notes: str = ""
+    created_at: datetime = Field(default_factory=now_utc)
+    updated_at: datetime = Field(default_factory=now_utc)
+
+
+class PortForwardRule(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("pf"))
+    config_id: str
+    from_node_id: str
+    from_port: int
+    to_node_id: str
+    to_port: int
+    to_platform: str
+    protocol: str = "tcp"
+    enabled: bool = True
     created_at: datetime = Field(default_factory=now_utc)
     updated_at: datetime = Field(default_factory=now_utc)
 

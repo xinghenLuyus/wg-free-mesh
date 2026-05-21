@@ -13,6 +13,7 @@ from app.domain.models import (
     Node,
     NodeConfigState,
     PeerLink,
+    PortForwardRule,
     SnapshotInfo,
     now_utc,
 )
@@ -137,6 +138,22 @@ def peer_link_from_row(row: Any) -> PeerLink:
         endpoint_port_mode=row["endpoint_port_mode"],
         endpoint_manual_port=row["endpoint_manual_port"],
         notes=row["notes"],
+        created_at=parse_datetime(row["created_at"]) or now_utc(),
+        updated_at=parse_datetime(row["updated_at"]) or now_utc(),
+    )
+
+
+def port_forward_rule_from_row(row: Any) -> PortForwardRule:
+    return PortForwardRule(
+        id=row["id"],
+        config_id=row["config_id"],
+        from_node_id=row["from_node_id"],
+        from_port=row["from_port"],
+        to_node_id=row["to_node_id"],
+        to_port=row["to_port"],
+        to_platform=row["to_platform"],
+        protocol=row["protocol"],
+        enabled=bool_value(row["enabled"]) if "enabled" in row.keys() else True,
         created_at=parse_datetime(row["created_at"]) or now_utc(),
         updated_at=parse_datetime(row["updated_at"]) or now_utc(),
     )

@@ -53,11 +53,11 @@ export interface DownloadOptionRead {
 export interface ClientDownloadOptionsRead {
   sources: DownloadOptionRead[]
   systems: DownloadOptionRead[]
-  architectures: DownloadOptionRead[]
+  architectures: Record<'windows' | 'linux' | 'darwin', DownloadOptionRead[]>
   defaults: {
     source: 'local_build' | 'github_release'
     goos: 'windows' | 'linux' | 'darwin'
-    goarch: 'amd64' | 'arm64'
+    goarch: 'amd64' | 'arm64' | '386'
   }
   version: string
 }
@@ -68,7 +68,7 @@ export interface ClientArtifactRead {
   download_path: string
   source: 'local_build' | 'github_release'
   goos: 'windows' | 'linux' | 'darwin'
-  goarch: 'amd64' | 'arm64'
+  goarch: 'amd64' | 'arm64' | '386'
   version: string
   cached: boolean
 }
@@ -241,6 +241,7 @@ export interface NodeRead {
   post_up: string[]
   pre_down: string[]
   post_down: string[]
+  managed_hooks: Record<'pre_up' | 'post_up' | 'pre_down' | 'post_down', ManagedHookRead[]>
   awg_jc: number | null
   awg_jmin: number | null
   awg_jmax: number | null
@@ -249,6 +250,29 @@ export interface NodeRead {
   awg_i3: string | null
   awg_i4: string | null
   awg_i5: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ManagedHookRead {
+  source: 'port_forward'
+  source_id: string
+  command: string
+  label: string
+}
+
+export interface PortForwardRuleRead {
+  id: string
+  config_id: string
+  from_node_id: string
+  from_port: number
+  to_node_id: string
+  to_port: number
+  to_platform: 'linux' | 'darwin'
+  protocol: 'tcp' | 'udp' | 'all'
+  enabled: boolean
+  from_node: Pick<NodeRead, 'id' | 'name' | 'virtual_ip' | 'enabled'>
+  to_node: Pick<NodeRead, 'id' | 'name' | 'virtual_ip' | 'enabled'>
   created_at: string
   updated_at: string
 }

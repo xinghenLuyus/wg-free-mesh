@@ -54,6 +54,7 @@ func Install() error {
 	if err := installPath(); err != nil {
 		return err
 	}
+	enableIPv4Forwarding()
 	if err := os.WriteFile(plistPath, []byte(plist), 0o644); err != nil {
 		return err
 	}
@@ -246,4 +247,10 @@ func uninstallPath() error {
 		return err
 	}
 	return nil
+}
+
+func enableIPv4Forwarding() {
+	if err := run("sysctl", "-w", "net.inet.ip.forwarding=1"); err != nil {
+		fmt.Printf("[error] IPv4 forwarding setup failed: %s\n", firstLine(err.Error()))
+	}
 }

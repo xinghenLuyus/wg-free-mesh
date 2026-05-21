@@ -451,6 +451,23 @@ class ControlPlaneService:
         self.invalidate_config_projection(config_id)
         return store.quick_generate_mesh(config_id, payload)
 
+    def list_port_forward_rules(self, config_id: str) -> list[dict[str, object]]:
+        return store.list_port_forward_rules(config_id)
+
+    def create_port_forward_rule(self, config_id: str, payload: dict[str, object]) -> dict[str, object]:
+        self.invalidate_config_projection(config_id)
+        return store.create_port_forward_rule(config_id, payload)
+
+    def update_port_forward_rule_enabled(self, rule_id: str, enabled: bool) -> dict[str, object]:
+        result = store.update_port_forward_rule_enabled(rule_id, enabled)
+        self.invalidate_config_projection(str(result["config_id"]))
+        return result
+
+    def delete_port_forward_rule(self, rule_id: str) -> dict[str, str]:
+        result = store.delete_port_forward_rule(rule_id)
+        self.invalidate_config_projection(result["config_id"])
+        return result
+
     def validate_mesh(self, config_id: str) -> dict[str, object]:
         return store._validate_mesh_payload(config_id)
 

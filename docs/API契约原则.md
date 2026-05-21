@@ -128,6 +128,13 @@
 - `POST /api/v1/tools/download/config-bulk/package`
 - `GET /api/v1/tools/download/config-bulk/{package_id}`
 
+### Port Forward Tool
+
+- `GET /api/v1/tools/port-forwards/configs/{config_id}`
+- `POST /api/v1/tools/port-forwards/configs/{config_id}`
+- `DELETE /api/v1/tools/port-forwards/{rule_id}`
+- `PUT /api/v1/tools/port-forwards/{rule_id}/enabled`
+
 ### Client And Internal
 
 - `POST /api/client/v1/bind`

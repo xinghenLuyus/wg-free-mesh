@@ -343,14 +343,19 @@ class ConfigMeshRepositoryMixin:
         self.get_config(config_id)
         with connect() as connection:
             rows = connection.execute("SELECT * FROM nodes WHERE config_id = ? ORDER BY created_at ASC", (config_id,)).fetchall()
-        return [_node_from_row(row) for row in rows]
+        nodes = [_node_from_row(row) for row in rows]
+        for node in nodes:
+            node.managed_hooks = self.managed_hooks_for_node(config_id, node)
+        return nodes
 
     def get_node(self, node_id: str) -> Node:
         with connect() as connection:
             row = connection.execute("SELECT * FROM nodes WHERE id = ?", (node_id,)).fetchone()
         if row is None:
             raise AppError("NODE_NOT_FOUND", "Node not found", 404, {"node_id": node_id})
-        return _node_from_row(row)
+        node = _node_from_row(row)
+        node.managed_hooks = self.managed_hooks_for_node(node.config_id, node)
+        return node
 
     def suggest_virtual_ip(self, config_id: str) -> str:
         config = self.get_config(config_id)

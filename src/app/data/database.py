@@ -45,6 +45,11 @@ def _infer_existing_revision(inspector) -> str:
     config_columns = _column_names(inspector, "configs")
     node_columns = _column_names(inspector, "nodes")
     client_columns = _column_names(inspector, "node_client_state")
+    port_forward_columns = _column_names(inspector, "port_forward_rules")
+    if "enabled" in port_forward_columns:
+        return "0005_port_forward_enabled"
+    if inspector.has_table("port_forward_rules"):
+        return "0004_port_forward_rules"
     if "mqtt_password" in client_columns:
         return "0003_mqtt_password"
     if "tunnel_protocol" in config_columns and "pre_up_json" in node_columns:
@@ -70,6 +75,8 @@ def _revision_rank(revision: str) -> int:
         "0001_initial_schema": 1,
         "0002_tunnel_protocol_awg": 2,
         "0003_mqtt_password": 3,
+        "0004_port_forward_rules": 4,
+        "0005_port_forward_enabled": 5,
     }
     return ranks.get(revision, 0)
 

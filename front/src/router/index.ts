@@ -20,6 +20,8 @@ const MeshView = () => import('@/views/MeshView.vue')
 const NodeAdvancedView = () => import('@/views/NodeAdvancedView.vue')
 const NodeWorkspaceLayout = () => import('@/views/NodeWorkspaceLayout.vue')
 const NodesView = () => import('@/views/NodesView.vue')
+const OtherToolsView = () => import('@/views/OtherToolsView.vue')
+const PortForwardView = () => import('@/views/PortForwardView.vue')
 const SettingsView = () => import('@/views/SettingsView.vue')
 const SetupView = () => import('@/views/SetupView.vue')
 const SystemView = () => import('@/views/SystemView.vue')
@@ -69,6 +71,8 @@ export const router = createRouter({
         { path: 'tools/quick-mesh/hub-spoke', component: QuickMeshGenerateView, props: { mode: 'hub_spoke' } },
         { path: 'tools/quick-mesh/full-mesh', component: QuickMeshGenerateView, props: { mode: 'full_mesh' } },
         { path: 'tools/quick-mesh/free-mesh', component: QuickMeshGenerateView, props: { mode: 'free_mesh' } },
+        { path: 'tools/other', component: OtherToolsView },
+        { path: 'tools/other/port-forward', component: PortForwardView },
       ],
     },
   ],

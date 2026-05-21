@@ -22,9 +22,15 @@ SUPPORTED_CLIENT_SYSTEMS = {
     "linux": "Linux",
     "darwin": "macOS",
 }
-SUPPORTED_CLIENT_ARCHES = {
+SUPPORTED_CLIENT_ARCH_LABELS = {
     "amd64": "x86_64 / amd64",
     "arm64": "ARM64",
+    "386": "x86 / 32-bit",
+}
+SUPPORTED_CLIENT_ARCHES = {
+    "windows": ("amd64", "arm64", "386"),
+    "linux": ("amd64", "arm64"),
+    "darwin": ("amd64", "arm64"),
 }
 CLIENT_DOWNLOAD_SOURCES = [
     {
@@ -74,7 +80,10 @@ class DownloadToolsService:
         return {
             "sources": CLIENT_DOWNLOAD_SOURCES,
             "systems": [{"value": value, "label": label} for value, label in SUPPORTED_CLIENT_SYSTEMS.items()],
-            "architectures": [{"value": value, "label": label} for value, label in SUPPORTED_CLIENT_ARCHES.items()],
+            "architectures": {
+                system: [{"value": arch, "label": SUPPORTED_CLIENT_ARCH_LABELS[arch]} for arch in arches]
+                for system, arches in SUPPORTED_CLIENT_ARCHES.items()
+            },
             "defaults": {"source": "local_build", "goos": "windows", "goarch": "amd64"},
             "version": settings.app_version,
         }
@@ -86,7 +95,7 @@ class DownloadToolsService:
             raise AppError("DOWNLOAD_SOURCE_UNAVAILABLE", "GitHub release source is not available yet", 501)
         if goos not in SUPPORTED_CLIENT_SYSTEMS:
             raise AppError("INVALID_CLIENT_SYSTEM", "Client system is invalid", 400)
-        if goarch not in SUPPORTED_CLIENT_ARCHES:
+        if goarch not in SUPPORTED_CLIENT_ARCHES[goos]:
             raise AppError("INVALID_CLIENT_ARCH", "Client architecture is invalid", 400)
 
     def _client_source_hash(self) -> str:

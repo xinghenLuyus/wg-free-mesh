@@ -32,6 +32,7 @@ import type {
   ConfigBulkOptionsRead,
   ConfigBulkPackageRead,
   EndpointRefFamily,
+  PortForwardRuleRead,
   QuickMeshGenerateRead,
   QuickMeshMode,
 } from '@/types/api'
@@ -154,6 +155,21 @@ export const api = {
     request<ConfigBulkPackageRead>('/tools/download/config-bulk/package', { method: 'POST', data: payload }),
   downloadConfigBulkPackage: (packageId: string) =>
     request<Blob>(`/tools/download/config-bulk/${packageId}`, { responseType: 'blob' }),
+  portForwardRules: (configId: string) =>
+    request<PortForwardRuleRead[]>(`/tools/port-forwards/configs/${configId}`),
+  createPortForwardRule: (configId: string, payload: {
+    from_node_id: string
+    from_port: number
+    to_node_id: string
+    to_port: number
+    to_platform: 'linux' | 'darwin'
+    protocol: 'tcp' | 'udp' | 'all'
+  }) =>
+    request<PortForwardRuleRead>(`/tools/port-forwards/configs/${configId}`, { method: 'POST', data: payload }),
+  deletePortForwardRule: (ruleId: string) =>
+    request<{ message: string }>(`/tools/port-forwards/${ruleId}`, { method: 'DELETE' }),
+  updatePortForwardRuleEnabled: (ruleId: string, enabled: boolean) =>
+    request<PortForwardRuleRead>(`/tools/port-forwards/${ruleId}/enabled`, { method: 'PUT', data: { enabled } }),
   saveAppliedConf: (configId: string, nodeId: string, content: string) =>
     request<SyncStatusRead>(`/configs/${configId}/nodes/${nodeId}/applied-conf`, {
       method: 'PUT',

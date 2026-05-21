@@ -10,6 +10,7 @@ import (
 )
 
 const systemdUnit = `/etc/systemd/system/wfm-agent.service`
+const ipv4ForwardSysctl = `/etc/sysctl.d/99-wg-free-mesh.conf`
 
 func Install() error {
 	if err := requireRoot(); err != nil {
@@ -47,6 +48,7 @@ WantedBy=multi-user.target
 	if err := installPath(); err != nil {
 		return err
 	}
+	enableIPv4Forwarding()
 	if err := os.WriteFile(systemdUnit, []byte(unit), 0o644); err != nil {
 		return err
 	}
@@ -70,6 +72,7 @@ func Uninstall() error {
 	_ = Stop()
 	_ = run("systemctl", "disable", "wfm-agent.service")
 	_ = uninstallPath()
+	_ = os.Remove(ipv4ForwardSysctl)
 	_ = os.Remove(systemdUnit)
 	return run("systemctl", "daemon-reload")
 }
@@ -218,4 +221,14 @@ func uninstallPath() error {
 		return err
 	}
 	return nil
+}
+
+func enableIPv4Forwarding() {
+	if err := os.WriteFile(ipv4ForwardSysctl, []byte("net.ipv4.ip_forward = 1\n"), 0o644); err != nil {
+		fmt.Printf("[error] IPv4 forwarding setup failed: %s\n", firstLine(err.Error()))
+		return
+	}
+	if err := run("sysctl", "-w", "net.ipv4.ip_forward=1"); err != nil {
+		fmt.Printf("[error] IPv4 forwarding setup failed: %s\n", firstLine(err.Error()))
+	}
 }
