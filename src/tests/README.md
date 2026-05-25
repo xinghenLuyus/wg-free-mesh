@@ -6,6 +6,7 @@
 
 - `conftest.py`：隔离测试环境，使用内存 SQLite，关闭 MQTT 后台服务，并提供认证客户端夹具。
 - `test_health.py`：健康检查接口测试。
+- `test_mcp_access.py`：MCP Token 生命周期和调用审计测试。
 - `test_auth.py`：初始化、登录、鉴权和开发重置接口测试。
 - `test_configs_and_nodes.py`：配置、节点、同步状态和鉴权错误测试。
 - `test_settings.py`：UI 设置与客户端 MQTT 接入地址重置测试。

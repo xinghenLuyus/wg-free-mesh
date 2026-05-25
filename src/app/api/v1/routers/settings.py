@@ -5,6 +5,8 @@ from typing import Any
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.v1.routing import SessionProtectedAPIRouter
+from app.core.errors import AppError
+from app.core.config import settings
 from app.core.responses import ApiResponse, ok
 from app.core.validation import strip_optional_text, strip_required_text
 from app.schemas.auth import TokenSessionRead
@@ -76,6 +78,11 @@ def _ui_settings_payload() -> dict[str, str]:
     return {"locale": locale, "theme_mode": theme_mode}
 
 
+def _require_mqtt_enabled() -> None:
+    if not settings.enable_mqtt_services:
+        raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
+
+
 @router.get("/ui")
 def ui_settings() -> ApiResponse[dict[str, str]]:
     return ok(_ui_settings_payload())
@@ -90,6 +97,7 @@ def update_ui_settings(payload: UiSettingsRequest) -> ApiResponse[dict[str, str]
 
 @router.get("/mqtt")
 def mqtt_settings() -> ApiResponse[dict[str, Any]]:
+    _require_mqtt_enabled()
     return ok(control_plane_service.mqtt_settings())
 
 
@@ -97,6 +105,7 @@ def mqtt_settings() -> ApiResponse[dict[str, Any]]:
 async def update_mqtt_settings(payload: MqttSettingsRequest) -> ApiResponse[dict[str, Any]]:
     from app.services.mqtt_ingress_service import mqtt_ingress_service
 
+    _require_mqtt_enabled()
     result = control_plane_service.update_mqtt_settings(payload.model_dump())
     await mqtt_ingress_service.reconcile()
     await control_plane_service.publish_mqtt_settings()
@@ -108,6 +117,7 @@ async def update_mqtt_settings(payload: MqttSettingsRequest) -> ApiResponse[dict
 async def reset_mqtt_settings() -> ApiResponse[dict[str, Any]]:
     from app.services.mqtt_ingress_service import mqtt_ingress_service
 
+    _require_mqtt_enabled()
     result = control_plane_service.reset_mqtt_settings()
     await mqtt_ingress_service.reconcile()
     await control_plane_service.publish_mqtt_settings()
@@ -117,6 +127,7 @@ async def reset_mqtt_settings() -> ApiResponse[dict[str, Any]]:
 
 @router.post("/mqtt/test")
 async def test_mqtt(payload: MqttSettingsRequest) -> ApiResponse[dict[str, Any]]:
+    _require_mqtt_enabled()
     return ok(await control_plane_service.test_mqtt_settings(payload.model_dump()))
 
 

@@ -6,6 +6,7 @@ import tempfile
 from typing import Annotated
 
 from fastapi import Body, File, UploadFile
+from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse
 
 from app.api.v1.routing import SessionProtectedAPIRouter
@@ -13,6 +14,15 @@ from app.core.responses import ApiResponse, ok
 from app.services.control_plane_service import control_plane_service
 
 router = SessionProtectedAPIRouter(prefix="/backups", tags=["backups"])
+
+
+class SnapshotCreateRequest(BaseModel):
+    note: str = ""
+    password: str = Field(min_length=1)
+
+
+class SnapshotRestoreRequest(BaseModel):
+    password: str = Field(min_length=1)
 
 
 async def _import_snapshot_file(file: UploadFile) -> dict[str, object]:
@@ -27,8 +37,8 @@ async def _import_snapshot_file(file: UploadFile) -> dict[str, object]:
 
 
 @router.post("/snapshot")
-async def create_snapshot(note: Annotated[str, Body()] = "") -> ApiResponse[dict[str, object]]:
-    snapshot = control_plane_service.create_snapshot(note).model_dump(mode="json")
+async def create_snapshot(payload: SnapshotCreateRequest) -> ApiResponse[dict[str, object]]:
+    snapshot = control_plane_service.create_snapshot(payload.note, payload.password).model_dump(mode="json")
     await control_plane_service.publish_snapshots()
     return ok(snapshot)
 
@@ -51,8 +61,8 @@ def export_snapshot(snapshot_id: str) -> FileResponse:
 
 
 @router.post("/restore/{snapshot_id}")
-async def restore_snapshot(snapshot_id: str) -> ApiResponse[dict[str, object]]:
-    control_plane_service.restore_snapshot(snapshot_id)
+async def restore_snapshot(snapshot_id: str, payload: SnapshotRestoreRequest) -> ApiResponse[dict[str, object]]:
+    control_plane_service.restore_snapshot(snapshot_id, payload.password)
     recovery = await control_plane_service.recover_after_snapshot_restore()
     await control_plane_service.publish_full_state()
     return ok({"message": "Snapshot restored", "recovery": recovery})

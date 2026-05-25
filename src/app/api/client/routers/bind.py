@@ -12,6 +12,7 @@ from app.domain.models import Config, Node
 from app.data.repositories.naming import node_config_interface_name
 from app.services.control_plane_service import control_plane_service
 from app.services.emqx_service import emqx_service
+from app.services.emqx_reconcile_service import emqx_reconcile_service
 from app.services.mqtt_auth_service import mqtt_auth_service
 
 router = APIRouter(tags=["client-bind"])
@@ -36,15 +37,6 @@ async def bind_client(payload: ClientBindRequest) -> ApiResponse[dict[str, Any]]
     client_id = mqtt_auth_service.node_client_id(node.id)
 
     emqx_service.ensure_client_tls_ready()
-    response = emqx_service.upsert_node_user(node_id=node.id, password=password)
-    if response.status_code >= 400:
-        raise AppError(
-            "EMQX_USER_SYNC_FAILED",
-            "Failed to create MQTT credentials",
-            502,
-            {"status_code": response.status_code, "body": response.text},
-        )
-
     control_plane_service.mark_client_bound(
         config.id,
         node.id,
@@ -55,6 +47,7 @@ async def bind_client(payload: ClientBindRequest) -> ApiResponse[dict[str, Any]]
         version=payload.client_version,
         hostname=payload.hostname,
     )
+    emqx_reconcile_service.sync_node_user(user_id=username, password=password)
     await control_plane_service.publish_runtime(config.id, node.id)
     desired = control_plane_service.read_applied_conf(config.id, node.id)
     return ok(

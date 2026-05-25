@@ -96,7 +96,8 @@ class EmqxService:
         }
 
     def user_resource(self, username: str) -> str:
-        return f"{self._base_url}/api/v5/authentication/password_based:built_in_database/users/{username}"
+        quoted_username = quote(username, safe="")
+        return f"{self._base_url}/api/v5/authentication/password_based:built_in_database/users/{quoted_username}"
 
     def users_resource(self) -> str:
         return f"{self._base_url}/api/v5/authentication/password_based:built_in_database/users"
@@ -158,18 +159,20 @@ class EmqxService:
         return self.upsert_user(user_id=user_id, password=password)
 
     def upsert_user(self, *, user_id: str, password: str) -> httpx.Response:
+        quoted_user_id = quote(user_id, safe="")
         create_payload = self.create_user_payload(user_id=user_id, password=password)
         response = self.request("POST", "/api/v5/authentication/password_based:built_in_database/users", json=create_payload)
         if response.status_code == 409:
             update_payload = self.update_user_payload(password=password)
             return self.request(
                 "PUT",
-                f"/api/v5/authentication/password_based:built_in_database/users/{user_id}",
+                f"/api/v5/authentication/password_based:built_in_database/users/{quoted_user_id}",
                 json=update_payload,
             )
         return response
 
     def upsert_server_user(self) -> httpx.Response:
+        quoted_user_id = quote(settings.emqx_username, safe="")
         create_payload = self.create_user_payload(
             user_id=settings.emqx_username,
             password=settings.emqx_password,
@@ -180,14 +183,44 @@ class EmqxService:
             update_payload = self.update_user_payload(password=settings.emqx_password, is_superuser=True)
             return self.request(
                 "PUT",
-                f"/api/v5/authentication/password_based:built_in_database/users/{settings.emqx_username}",
+                f"/api/v5/authentication/password_based:built_in_database/users/{quoted_user_id}",
                 json=update_payload,
             )
         return response
 
     def delete_node_user(self, *, node_id: str) -> httpx.Response:
         user_id = mqtt_auth_service.node_username(node_id)
-        return self.request("DELETE", f"/api/v5/authentication/password_based:built_in_database/users/{user_id}")
+        return self.delete_user(user_id=user_id)
+
+    def delete_user(self, *, user_id: str) -> httpx.Response:
+        quoted_user_id = quote(user_id, safe="")
+        return self.request("DELETE", f"/api/v5/authentication/password_based:built_in_database/users/{quoted_user_id}")
+
+    def list_user_ids(self) -> list[str]:
+        user_ids: list[str] = []
+        limit = 100
+        page = 1
+        while True:
+            response = self.request(
+                "GET",
+                "/api/v5/authentication/password_based:built_in_database/users",
+                params={"page": page, "limit": limit},
+            )
+            if response.status_code >= 400:
+                response.raise_for_status()
+            body = response.json()
+            data = body.get("data") if isinstance(body, dict) else body
+            rows = data if isinstance(data, list) else []
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                user_id = row.get("user_id")
+                if isinstance(user_id, str) and user_id:
+                    user_ids.append(user_id)
+            if len(rows) < limit:
+                break
+            page += 1
+        return user_ids
 
     def disconnect_node_client(self, *, node_id: str) -> httpx.Response:
         client_id = quote(mqtt_auth_service.node_client_id(node_id), safe="")

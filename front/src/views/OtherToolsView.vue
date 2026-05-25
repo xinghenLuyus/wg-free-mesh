@@ -1,10 +1,17 @@
 <script setup lang="ts">
-import { Connection, SetUp } from '@element-plus/icons-vue'
+import { Connection, Key, SetUp } from '@element-plus/icons-vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const entries = computed(() => [
+  {
+    path: '/tools/other/mcp-access',
+    title: t('tools.other.mcpAccessTitle'),
+    description: t('tools.other.mcpAccessDescription'),
+    action: t('tools.other.mcpAccessAction'),
+    icon: Key,
+  },
   {
     path: '/tools/other/port-forward',
     title: t('tools.other.portForwardTitle'),

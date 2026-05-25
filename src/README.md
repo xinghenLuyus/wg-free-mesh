@@ -18,6 +18,7 @@
 - 系统状态聚合
 - 工具下载，包含客户端本地源码构建和配置批量下载
 - 客户端绑定、MQTT 账号授权、心跳、事件、命令 ACK 和重置客户端
+- MCP 只读/写工具入口、AI 接入 Token 管理和 MCP 调用审计
 
 ## 认证初始化
 
@@ -46,12 +47,12 @@
 
 ```powershell
 WFM_DEBUG=true
-WFM_CORS_ORIGINS=["http://localhost:5173","http://localhost:8080"]
+WFM_PUBLIC_ORIGIN=
+WFM_EXTRA_ALLOWED_ORIGINS=["http://localhost:5173","http://localhost:8080"]
 WFM_DATABASE=sqlite:///./data/wg_free_mesh.db
 WFM_AUTH_TOKEN_EXPIRE_MINUTES=1440
 WFM_ENABLE_MQTT_SERVICES=true
 WFM_MQTT_URL=mqtt://127.0.0.1:1883
-WFM_MQTT_PUBLIC_HOST=localhost
 WFM_MQTT_PUBLIC_PORT=1883
 WFM_MQTT_PUBLIC_TLS_PORT=8883
 WFM_MQTT_TLS_ENABLED=false
@@ -65,18 +66,29 @@ WFM_ENABLE_DEV_TEST_API=false
 
 环境变量示例文件放在 [`.env.example`](D:/wenjian/stepsave/project/wg-free-mesh/src/.env.example)，实际本地配置文件应放到 `src/.env`。后端配置不会再从项目根目录读取 `.env`。
 `src/.env` 只负责本地 dev 后端启动所需配置；其中需要的字段必须都能在 [docker/.env](D:/wenjian/stepsave/project/wg-free-mesh/docker/.env) 中找到对应项。  
-`docker/.env` 是容器 / 生产场景的完整环境变量注入源；在 Docker 场景下，`app` 与 `emqx` 都以它为准。  
-也就是说：`src/.env` 应是 `docker/.env` 的可运行子集，而不是另一套并行配置体系。
+Docker 的 SQLite 与 PostgreSQL 启动目录各自提供 `.env.example`，该目录下 `.env` 是对应容器部署的完整环境变量注入源；在 Docker 场景下，`gateway`、`app` 与按 profile 启用的 `emqx` 都以它为准。
+也就是说：`src/.env` 应是 Docker 环境变量集合的可运行子集，而不是另一套并行配置体系。
 时间存储仍统一使用 UTC，控制台默认显示时区由 `WFM_TIMEZONE` 控制，默认值为北京时间 `Asia/Shanghai`。
 `WFM_ENABLE_DEV_TEST_API` 默认关闭；只有显式设为 `true` 时，`/api/v0` 开发测试接口才会注册。
+该开关同时表示开发例外模式：正式模式下设置 `WFM_PUBLIC_ORIGIN` 后，后端只接受该来源 Host 的外部请求；带 `Origin` 的请求还必须命中 `WFM_PUBLIC_ORIGIN` 或 `WFM_EXTRA_ALLOWED_ORIGINS`。无 `Origin` 的 CLI/MCP/curl 请求也必须走主来源 Host，额外允许来源不会扩大 Host 白名单。
 
 数据库连接由 `WFM_DATABASE` 控制，默认 `sqlite:///./data/wg_free_mesh.db`。Docker SQLite 与 PostgreSQL 启动目录分别提供自己的 `.env.example`，本地开发通常继续使用 SQLite。  
-客户端对外可见的 MQTT 默认 `host`、`port` 与 `tls` 来自 `WFM_MQTT_PUBLIC_HOST`、`WFM_MQTT_PUBLIC_PORT`、`WFM_MQTT_PUBLIC_TLS_PORT` 和 `WFM_MQTT_TLS_ENABLED`，前端设置页可以覆盖保存给后续绑定使用；客户端 MQTT 能力是否启用只由 `WFM_ENABLE_MQTT_SERVICES` 这个部署环境变量控制，不暴露给前端设置页。EMQX 容器侧的 TLS listener、证书路径、回查地址等容器专用参数由 `docker/.env` 控制。  
-`WFM_MQTT_PUBLIC_HOST` 只是客户端 MQTT 引导默认主机，可以填写服务主机的域名或 IP，不参与后端连接 EMQX 的内部通信。  
+客户端对外可见的 MQTT 默认 `host` 来自 `WFM_PUBLIC_ORIGIN` 的主机部分；`port` 与 `tls` 来自 `WFM_MQTT_PUBLIC_PORT`、`WFM_MQTT_PUBLIC_TLS_PORT` 和 `WFM_MQTT_TLS_ENABLED`。前端设置页可以覆盖保存给后续绑定使用；客户端 MQTT 能力是否启用只由 `WFM_ENABLE_MQTT_SERVICES` 这个部署环境变量控制，不暴露给前端设置页。EMQX 容器侧的 TLS listener、证书路径、回查地址等容器专用参数由 Docker 启动目录的 `.env` 控制。
+本地开发未设置 `WFM_PUBLIC_ORIGIN` 时，客户端 MQTT 默认主机回退为 `localhost`；该主机不参与后端连接 EMQX 的内部通信。
 TLS 开启时，后端从项目相对路径 `docker/emqx/certs/ca.crt` 读取 CA，并在客户端绑定时下发给客户端；客户端会校验 CA 和 MQTT 主机名。Docker 模式下该目录以只读方式挂载到 app 容器。  
 `WFM_APP_PORT` 只用于 Docker Compose 宿主机端口映射，后端本地运行不读取该变量。  
 EMQX 统一账号密码为 `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD`，本地手动运行后端且修改过 Docker 默认值时，需要让本地后端读取到同一组值。  
-`WFM_ENABLE_MQTT_SERVICES=false` 时，后端不会启动 MQTT 入口服务，所有客户端绑定和远程控制能力都会被禁用。
+`WFM_ENABLE_MQTT_SERVICES=false` 时，后端不会启动 MQTT 入口服务，所有客户端绑定和远程控制能力都会被禁用；Docker 部署还要关闭 `mqtt` profile，避免创建 EMQX 容器。
+
+## MCP
+
+后端在安装官方 Python MCP SDK 后挂载 `POST /mcp` Streamable HTTP 入口。接入凭据在前端 `工具列表 -> 其它 -> AI 接入` 创建，MCP 请求使用：
+
+```http
+Authorization: Bearer <mcp-token>
+```
+
+Token 只分 `read` 和 `write`。所有 MCP 写工具会通过 MCP 标准 elicitation 向客户端请求交互确认；客户端不支持该交互或用户拒绝时，服务端不执行写动作。读写调用都会写入 MCP 审计表，并在 AI 接入页展示。当前首批 MCP 能力覆盖系统状态、配置、节点、Mesh、端点状态/日志、端口转发、快照元数据，以及配置/节点/Mesh/同步/远程控制/端口转发写操作。
 
 ## 手动运行
 
@@ -86,6 +98,8 @@ EMQX 统一账号密码为 `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD`，本地手
 cd src
 python -m pip install -e .[dev]
 ```
+
+该命令会安装 FastAPI、数据库迁移、快照加密和 MCP SDK 等后端声明依赖。仓库自动化助手不得代替维护者修改本机 Python 环境。
 
 开发启动后端：
 

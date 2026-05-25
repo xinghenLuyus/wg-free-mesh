@@ -19,7 +19,7 @@ from app.events.realtime_publisher import RealtimePublisher
 from app.data.repositories.naming import node_config_interface_name
 from app.data.store import store
 from app.services.config_projection_service import ConfigProjectionSnapshot, config_projection_service
-from app.services.emqx_service import emqx_service
+from app.services.emqx_reconcile_service import emqx_reconcile_service
 from app.services.realtime_service import realtime_service
 from app.services.snapshot_service import snapshot_service
 from app.services.system_projection_service import system_projection_service
@@ -329,11 +329,16 @@ class ControlPlaneService:
         return store.create_config(payload)
 
     def update_config(self, config_id: str, payload: dict[str, object]):
+        previous = store.get_config(config_id)
         self.invalidate_config_projection(config_id)
-        return store.update_config(config_id, payload)
+        result = store.update_config(config_id, payload)
+        if previous.enabled != bool(result.get("enabled", previous.enabled)):
+            emqx_reconcile_service.reconcile_all()
+        return result
 
     def delete_config(self, config_id: str) -> None:
         store.delete_config(config_id)
+        emqx_reconcile_service.reconcile_all()
         self.invalidate_config_projection(config_id)
 
     def list_configs(self):
@@ -362,15 +367,15 @@ class ControlPlaneService:
         self.invalidate_config_projection(previous.config_id)
         result = store.update_node(node_id, payload)
         current = store.get_node(node_id)
-        if previous.node_type != current.node_type:
-            if current.node_type == NodeType.static:
-                from app.services.emqx_service import emqx_service
-
-                try:
-                    emqx_service.delete_node_user(node_id=node_id)
-                except Exception:
-                    pass
-            store.reconcile_node_operational_state(current.config_id, current.id)
+        node_type_changed = previous.node_type != current.node_type
+        enabled_changed = previous.enabled != current.enabled
+        if node_type_changed or enabled_changed:
+            if current.node_type == NodeType.static or not current.enabled:
+                emqx_reconcile_service.revoke_node_user(node_id=node_id)
+            else:
+                emqx_reconcile_service.reconcile_all()
+            if node_type_changed:
+                store.reconcile_node_operational_state(current.config_id, current.id)
         return result
 
     def list_tags(self, config_id: str):
@@ -402,6 +407,8 @@ class ControlPlaneService:
         node = store.get_node(node_id)
         self.invalidate_config_projection(node.config_id)
         store.delete_node(node_id)
+        if node.node_type == NodeType.dynamic:
+            emqx_reconcile_service.revoke_node_user(node_id=node_id)
 
     def suggest_virtual_ip(self, config_id: str):
         return store.suggest_virtual_ip(config_id)
@@ -467,6 +474,41 @@ class ControlPlaneService:
         result = store.delete_port_forward_rule(rule_id)
         self.invalidate_config_projection(result["config_id"])
         return result
+
+    def list_mcp_tokens(self) -> list[dict[str, object]]:
+        return store.list_mcp_tokens()
+
+    def create_mcp_token(self, payload: dict[str, object]) -> dict[str, object]:
+        return store.create_mcp_token(payload)
+
+    def revoke_mcp_token(self, token_id: str) -> dict[str, object]:
+        return store.revoke_mcp_token(token_id)
+
+    def find_active_mcp_token(self, token: str) -> dict[str, object] | None:
+        return store.find_active_mcp_token(token)
+
+    def list_mcp_audit_logs(
+        self,
+        limit: int = 100,
+        *,
+        created_from: str | None = None,
+        created_to: str | None = None,
+        token_name: str = "",
+        target_name: str = "",
+    ) -> list[dict[str, object]]:
+        return store.list_mcp_audit_logs(
+            limit,
+            created_from=created_from,
+            created_to=created_to,
+            token_name=token_name,
+            target_name=target_name,
+        )
+
+    def delete_mcp_audit_logs(self, *, created_from: str, created_to: str) -> dict[str, object]:
+        return store.delete_mcp_audit_logs(created_from=created_from, created_to=created_to)
+
+    def create_mcp_audit_log(self, payload: dict[str, object]) -> dict[str, object]:
+        return store.create_mcp_audit_log(payload)
 
     def validate_mesh(self, config_id: str) -> dict[str, object]:
         return store._validate_mesh_payload(config_id)
@@ -554,24 +596,9 @@ class ControlPlaneService:
         )
 
     def reset_client_state(self, config_id: str, node_id: str) -> dict[str, object]:
-        if self.mqtt_service_enabled():
-            delete_response = emqx_service.delete_node_user(node_id=node_id)
-            if delete_response.status_code not in {200, 204, 404}:
-                raise AppError(
-                    "EMQX_USER_DELETE_FAILED",
-                    "Failed to delete MQTT credentials",
-                    502,
-                    {"status_code": delete_response.status_code, "body": delete_response.text},
-                )
-            disconnect_response = emqx_service.disconnect_node_client(node_id=node_id)
-            if disconnect_response.status_code not in {200, 204, 404}:
-                raise AppError(
-                    "EMQX_CLIENT_DISCONNECT_FAILED",
-                    "Failed to disconnect MQTT client",
-                    502,
-                    {"status_code": disconnect_response.status_code, "body": disconnect_response.text},
-                )
-        return store.reset_client_state(config_id, node_id)
+        state = store.reset_client_state(config_id, node_id)
+        emqx_reconcile_service.revoke_node_user(node_id=node_id)
+        return state
 
     def endpoint_logs(self, config_id: str, node_id: str):
         return [item.model_dump(mode="json") for item in store.list_endpoint_logs(config_id, node_id)]
@@ -682,6 +709,8 @@ class ControlPlaneService:
     async def probe_batch(self, config_id: str, node_ids: list[str]):
         from app.services.mqtt_ingress_service import mqtt_ingress_service
 
+        if not self.mqtt_service_enabled():
+            raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
         dispatched: list[dict[str, str]] = []
         for node in store.list_nodes(config_id):
             if not node.enabled or node.node_type != "dynamic":
@@ -782,8 +811,8 @@ class ControlPlaneService:
     def update_password(self, current_password: str, new_password: str) -> None:
         store.update_password(current_password, new_password)
 
-    def create_snapshot(self, note: str):
-        return snapshot_service.create_snapshot(note)
+    def create_snapshot(self, note: str, password: str):
+        return snapshot_service.create_snapshot(note, password)
 
     def list_snapshots(self):
         return snapshot_service.list_snapshots()
@@ -800,29 +829,12 @@ class ControlPlaneService:
     def update_snapshot_note(self, snapshot_id: str, note: str):
         return snapshot_service.update_snapshot_note(snapshot_id, note)
 
-    def restore_snapshot(self, snapshot_id: str) -> None:
-        snapshot_service.restore_snapshot(snapshot_id)
+    def restore_snapshot(self, snapshot_id: str, password: str) -> None:
+        snapshot_service.restore_snapshot(snapshot_id, password)
 
     async def recover_after_snapshot_restore(self) -> dict[str, int]:
         store.prepare_runtime_after_snapshot_restore()
-        credentials = store.list_restorable_mqtt_credentials()
-        synced = 0
-        failed = 0
-        if self.mqtt_service_enabled():
-            for item in credentials:
-                try:
-                    response = await asyncio.to_thread(
-                        emqx_service.upsert_user,
-                        user_id=item["username"],
-                        password=item["password"],
-                    )
-                    if response.status_code >= 400:
-                        failed += 1
-                    else:
-                        synced += 1
-                except Exception:
-                    logger.exception("Failed to restore EMQX user for node %s", item["node_id"])
-                    failed += 1
+        result = await asyncio.to_thread(emqx_reconcile_service.reconcile_all)
         try:
             from app.services.mqtt_ingress_service import mqtt_ingress_service
 
@@ -830,9 +842,11 @@ class ControlPlaneService:
         except Exception:
             logger.exception("Failed to probe clients after snapshot restore")
         return {
-            "mqtt_credentials": len(credentials),
-            "mqtt_users_synced": synced,
-            "mqtt_users_failed": failed,
+            "mqtt_credentials": int(result.mqtt_credentials),
+            "mqtt_users_synced": int(result.node_users_synced),
+            "mqtt_users_failed": int(result.node_users_failed),
+            "mqtt_users_deleted": int(result.node_users_deleted),
+            "mqtt_users_delete_failed": int(result.node_users_delete_failed),
         }
 
     def import_snapshot(self, path: Path, original_name: str | None = None):

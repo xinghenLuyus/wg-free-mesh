@@ -26,6 +26,7 @@
   - 生成或轮换节点专属 MQTT 用户名与密码
   - 将节点专属 MQTT 密码写入应用数据库，作为应用级快照的一部分，用于恢复后重建 EMQX 节点用户
   - 调 EMQX 管理 API 创建、更新、删除账号
+  - 在后端启动、MQTT 入口重连和快照恢复后，以数据库中的客户端凭据为唯一真相重建 EMQX 节点账号
   - 对 EMQX 的 pub/sub 回查请求返回 allow / deny
   - 在 bind 响应中下发 MQTT 连接参数
 - EMQX
@@ -66,7 +67,7 @@
 - `WFM_MQTT_TLS_ENABLED=true`
   - EMQX 启用 TLS listener
   - 客户端默认拿到 8883
-  - EMQX 启动脚本会在证书缺失时根据 `WFM_MQTT_PUBLIC_HOST` 自动生成 `docker/emqx/certs/` 下的 CA 和服务端证书
+  - EMQX 启动脚本会在证书缺失时根据 `WFM_PUBLIC_ORIGIN` 的主机自动生成 `docker/emqx/certs/` 下的 CA 和服务端证书
 - `WFM_EMQX_AUTHZ_URL`
   - 开发期默认回查本机后端 `http://host.docker.internal:8000/api/internal/emqx/authz`
 - `WFM_MQTT_TLS_ENABLED`
@@ -88,9 +89,10 @@
 说明：
 
 - `WFM_ENABLE_MQTT_SERVICES=false` 时，后端不会启动 MQTT 入口服务，客户端绑定、远程控制和 MQTT 状态检查全部禁用。
+- Docker 场景下 `WFM_ENABLE_MQTT_SERVICES` 还必须和 compose 的 `mqtt` profile 对齐；关闭时不创建 EMQX 容器。
 - `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD` 是唯一 EMQX 账号密码，同时用于 Dashboard、REST 管理 API bootstrap key 与服务端 MQTT 超级用户。
-- 客户端可见的 MQTT `host / port / tls` 由前端设置页维护
-- MQTT 客户端能力是否启用只由部署环境变量 `WFM_ENABLE_MQTT_SERVICES` 控制，不暴露给前端设置页
+- 客户端可见的 MQTT `host / port / tls` 由前端设置页维护；环境默认 host 来自 `WFM_PUBLIC_ORIGIN` 的主机，本地未设置时回退为 `localhost`
+- MQTT 客户端能力是否启用只由部署环境变量 `WFM_ENABLE_MQTT_SERVICES` 控制；关闭时前端不进入端点控制页，设置页 MQTT 区块只展示不可用状态
 - Docker 只负责 EMQX 容器层的 TLS listener 与 AuthZ 回查地址
 - `docker/.env` 负责 compose 与容器之间的连接参数
 - 在 Docker 正式部署中，`docker/.env` 也负责给 `app` 注入完整运行参数
@@ -146,7 +148,9 @@
 - 用户名默认使用 `node_id`
 - `client_id` 默认使用 `wfm-{node_id}`
 - topic 权限按 `config_id + node_id` 收口
-- 端点执行客户端重置时，服务端必须删除对应 EMQX 用户，并调用 EMQX Clients API 踢出 `wfm-{node_id}` 当前连接；404 视为用户或连接已不存在
+- 端点执行客户端重置时，服务端先清空数据库中的客户端状态，再尽力删除对应 EMQX 用户并调用 EMQX Clients API 踢出 `wfm-{node_id}` 当前连接；404 视为用户或连接已不存在
+- EMQX 是数据库状态的运行时投影。EMQX 临时不可用时，数据库写入仍然生效，旧凭据会被 AuthZ 回查拒绝；EMQX 恢复后由全量协调补齐新增账号并清理 WFM 管理范围内的旧节点账号。
+- 全量协调只清理用户名符合 WFM 节点 ID 规则的账号，不清理 EMQX 中其它外部账号。
 
 允许订阅：
 
@@ -173,10 +177,10 @@
 - `EmqxService` 管理 API 封装骨架
 - `MqttAuthService` 节点级 topic ACL 判断
 - `/api/internal/emqx/authz` 内部回查接口
-- 节点 bind 时创建或轮换 EMQX 账号
+- 节点 bind 时先写入数据库中的 MQTT 凭据，再同步 EMQX；EMQX 临时不可用时由后续全量协调补齐
 - 节点 bind 时在 TLS 模式下下发 CA 证书，客户端据此校验 EMQX 服务端证书
-- 重置客户端时删除 EMQX 节点账号，并在 AuthZ 回查中校验 `client_initialized` 与登记的 MQTT 身份，避免旧凭据继续发布或订阅
-- 快照恢复时清空历史在线运行态，使用快照中的 MQTT 密码重建 EMQX 节点账号，并主动触发 detect
+- 重置客户端时先清空数据库状态，再删除 EMQX 节点账号并踢出连接；即使 EMQX 临时不可用，AuthZ 回查也会因为数据库状态变化拒绝旧凭据继续发布或订阅
+- 快照恢复时清空历史在线运行态，使用快照中的 MQTT 密码重建 EMQX 节点账号，并主动触发 detect；EMQX 不在线时后续后台协调会自动补齐
 - Go 客户端 bind 后保存本地 profile 并连接 MQTT
 - 服务端作为高权限 MQTT 客户端订阅上行 topic
 - MQTT 服务启停状态纳入系统检查，并由 `WFM_ENABLE_MQTT_SERVICES` 作为部署级开关统一控制客户端相关能力

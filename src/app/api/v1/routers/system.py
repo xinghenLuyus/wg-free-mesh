@@ -44,6 +44,7 @@ def health() -> ApiResponse[dict[str, object]]:
             "timestamp": now_utc().isoformat(),
             "timezone": settings.timezone,
             "dev_test_api_enabled": settings.dev_test_api_enabled,
+            "mqtt_services_enabled": settings.enable_mqtt_services,
         }
     )
 

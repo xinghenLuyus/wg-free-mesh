@@ -872,12 +872,15 @@ Authorization: Bearer <access_token>
 ### `POST /api/v1/backups/snapshot`
 
 - 用途：创建快照
-- 请求体：原始字符串 `note`
-  - 说明：
-  - 后端会先登记快照元数据，再打包应用级数据库数据和 WireGuard 目录。
-  - 数据库数据写入 `database.json`，不直接复制数据库物理文件。
-  - 应用级数据库包含动态客户端 MQTT 凭据；快照包同时包含 WireGuard 私钥，必须按敏感备份保存。
-  - 快照包内会写入 manifest，保存快照 id、创建时间和备注。
+- 请求体：
+  - `note`
+  - `password`：当前管理员密码，后端校验后用于派生本次快照加密密钥。
+- 说明：
+  - 后端会先登记快照元数据，再把应用级数据库数据和 WireGuard 目录写入加密载荷。
+  - 快照外层只保留 `snapshot_manifest.json` 和加密载荷 `snapshot_payload.bin`。
+  - manifest 保存快照 id、创建时间、备注、快照格式版本、系统版本和解密参数。
+  - 数据库内除管理员密码哈希外的应用数据全部进入快照，包括 MCP Token、MCP 审计、系统设置和客户端凭据。
+  - 部署环境变量不属于数据库应用数据，不进入快照。
 
 ### `GET /api/v1/backups/list`
 
@@ -904,15 +907,18 @@ Authorization: Bearer <access_token>
 - 用途：导入快照包
 - 说明：
   - 只导入到快照列表，不自动恢复。
-  - 导入时会校验压缩包结构，要求包含 `database.json`。
+  - 导入时会校验加密快照外层结构，要求包含 manifest 与加密载荷。
 
 ### `POST /api/v1/backups/restore/{snapshot_id}`
 
 - 用途：恢复快照
+- 请求体：
+  - `password`：该快照创建时使用的加密密码。
 - 说明：
   - 恢复前会清空现有数据库表数据，并删除 `data/wireguard` 下全部数据。
   - 恢复后后端会重新扫描快照目录并重建 `backups` 表索引。
   - 恢复后后端必须重新执行数据库初始化，补齐当前 schema 所需默认数据。
+  - 当前部署管理员密码保留，不从快照覆盖；其它数据库应用数据按快照覆盖。
   - 恢复后不信任快照中的历史在线状态，所有端点运行态先重置为离线等待重新确认。
   - 恢复后后端会用快照中的客户端 MQTT 凭据重建 EMQX 节点用户，然后主动发起一次 detect 探测，再发布全量实时状态。
   - 返回 `message` 和 `recovery`，其中 `recovery` 包含 `mqtt_credentials`、`mqtt_users_synced`、`mqtt_users_failed`。
@@ -1045,3 +1051,39 @@ Authorization: Bearer <access_token>
 - `x-wfm-internal-key` 必须与 `WFM_EMQX_AUTHZ_SHARED_KEY` 一致
 - 配置下发与控制命令必须依赖 ACK 才算服务端成功完成
 - 状态上报与事件日志属于单向消息，不走 ACK
+
+## MCP 与 AI 接入
+
+### `GET /api/v1/mcp-access/tokens`
+
+- 鉴权：管理员会话
+- 说明：列出 AI 接入页可查看和复制的 MCP Token。
+
+### `POST /api/v1/mcp-access/tokens`
+
+- 鉴权：管理员会话
+- 请求体：
+  - `name`
+  - `permission`：`read` 或 `write`
+  - `expires_at`：带时区的过期时间
+- 说明：创建 MCP Token。Token 明文按产品约定保存到数据库，后续仍可在 AI 接入页复制。
+
+### `POST /api/v1/mcp-access/tokens/{token_id}/revoke`
+
+- 鉴权：管理员会话
+- 说明：吊销 Token；已吊销 Token 不可继续访问 MCP。
+
+### `GET /api/v1/mcp-access/audit`
+
+- 鉴权：管理员会话
+- 说明：列出 MCP Resource / Tool 调用审计。
+
+### `/mcp`
+
+- 协议：MCP Streamable HTTP
+- 鉴权：`Authorization: Bearer <mcp-token>`
+- 说明：
+  - `/mcp` 和 `/mcp/` 都会进入同一个 MCP 协议入口。
+  - 与控制台共用正式 Host / Origin 访问边界。
+  - `read` Token 可读取首批系统状态、配置、节点、Mesh、端点、端口转发和快照元数据能力。
+  - `write` Token 访问写工具时仍必须完成 MCP 标准 elicitation 交互确认；客户端不支持确认或用户拒绝时，写动作不执行。

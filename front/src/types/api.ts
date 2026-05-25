@@ -277,6 +277,45 @@ export interface PortForwardRuleRead {
   updated_at: string
 }
 
+export interface McpTokenRead {
+  id: string
+  name: string
+  token: string
+  permission: 'read' | 'write'
+  expires_at: string
+  revoked_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface McpAuditRead {
+  id: string
+  token_id: string | null
+  token_name: string
+  permission: string
+  target_kind: string
+  target_name: string
+  summary: string
+  impact: string
+  confirmation_required: boolean
+  confirmation_result: string
+  result: string
+  error_code: string
+  created_at: string
+}
+
+export interface McpAuditQuery {
+  limit?: number
+  created_from?: string
+  created_to?: string
+  token_name?: string
+  target_name?: string
+}
+
+export interface McpAuditDeleteResult {
+  deleted_count: number
+}
+
 export interface NodeMutationRead extends NodeRead {
   change_hints: ChangeHintRead[]
   affected_node_ids: string[]
@@ -546,6 +585,7 @@ export interface HealthRead {
   timestamp: string
   timezone: string
   dev_test_api_enabled: boolean
+  mqtt_services_enabled: boolean
 }
 
 export interface SystemStatusRead {

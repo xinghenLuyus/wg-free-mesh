@@ -24,6 +24,7 @@ const config = shallowRef<ConfigRead | null>(null)
 const nodes = shallowRef<NodeRead[]>([])
 const dialogVisible = shallowRef(false)
 const editingNodeId = shallowRef('')
+const mqttServicesEnabled = shallowRef(true)
 const form = reactive({
   name: '',
   ipv4_address: '',
@@ -48,8 +49,9 @@ function nodeTypeLabel(type: NodeRead['node_type']) {
 
 async function loadNodes() {
   const configId = String(route.params.configId)
-  const configs = await api.configs()
+  const [configs, health] = await Promise.all([api.configs(), api.health()])
   config.value = configs.find((item) => item.id === configId) ?? null
+  mqttServicesEnabled.value = health.mqtt_services_enabled
   nodes.value = await api.nodes(configId)
 }
 
@@ -224,6 +226,13 @@ onMounted(async () => {
           ]"
         />
       </el-form-item>
+      <el-alert
+        v-if="form.node_type === 'dynamic' && !mqttServicesEnabled"
+        :title="t('nodeWorkspace.dynamicClientUnavailable')"
+        type="warning"
+        :closable="false"
+        show-icon
+      />
       <el-form-item :label="t('nodeWorkspace.publicIpv4')">
         <el-input v-model="form.ipv4_address" :placeholder="t('nodeWorkspace.ipOrDomain')" />
       </el-form-item>

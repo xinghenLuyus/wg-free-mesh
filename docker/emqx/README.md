@@ -13,7 +13,7 @@
   - 在 plain 配置基础上额外打开 8883 TLS listener
 - `start-emqx.sh`
   - 按 `WFM_MQTT_TLS_ENABLED` 在两套配置之间切换
-  - TLS 开启且证书缺失时，根据 `WFM_MQTT_PUBLIC_HOST` 自动生成 CA 和服务端证书
+  - TLS 开启且证书缺失时，根据 `WFM_PUBLIC_ORIGIN` 的主机自动生成 CA 和服务端证书
   - 启动前写入 `WFM_EMQX_AUTHZ_URL` 与 `WFM_EMQX_AUTHZ_SHARED_KEY`
   - 启动前生成 `wfm-api-keys.conf`，将统一账号密码写成 EMQX REST API bootstrap key
 - `certs/`
@@ -45,5 +45,5 @@
   - `ca.crt`
   - `server.crt`
   - `server.key`
-- 证书已存在时不会覆盖；修改 `WFM_MQTT_PUBLIC_HOST` 后如需更新证书 SAN，删除旧证书并重启 EMQX。
+- 证书已存在时不会覆盖；修改 `WFM_PUBLIC_ORIGIN` 的主机后如需更新证书 SAN，删除旧证书并重启 EMQX。
 - `data/` 与 `log/` 仅用于容器本地持久化，不参与版本管理。

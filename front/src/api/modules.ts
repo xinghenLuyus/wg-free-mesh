@@ -35,7 +35,22 @@ import type {
   PortForwardRuleRead,
   QuickMeshGenerateRead,
   QuickMeshMode,
+  McpAuditDeleteResult,
+  McpAuditQuery,
+  McpAuditRead,
+  McpTokenRead,
 } from '@/types/api'
+
+function toQueryString(query: object) {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(query) as Array<[string, string | number | undefined]>) {
+    if (value !== undefined && value !== '') {
+      params.set(key, String(value))
+    }
+  }
+  const text = params.toString()
+  return text ? `?${text}` : ''
+}
 
 export const api = {
   authState: () => request<AuthStateRead>('/auth/state'),
@@ -170,6 +185,15 @@ export const api = {
     request<{ message: string }>(`/tools/port-forwards/${ruleId}`, { method: 'DELETE' }),
   updatePortForwardRuleEnabled: (ruleId: string, enabled: boolean) =>
     request<PortForwardRuleRead>(`/tools/port-forwards/${ruleId}/enabled`, { method: 'PUT', data: { enabled } }),
+  mcpTokens: () => request<McpTokenRead[]>('/mcp-access/tokens'),
+  createMcpToken: (payload: { name: string; permission: 'read' | 'write'; expires_at: string }) =>
+    request<McpTokenRead>('/mcp-access/tokens', { method: 'POST', data: payload }),
+  revokeMcpToken: (tokenId: string) =>
+    request<McpTokenRead>(`/mcp-access/tokens/${tokenId}/revoke`, { method: 'POST' }),
+  mcpAudit: (query: McpAuditQuery = {}) =>
+    request<McpAuditRead[]>(`/mcp-access/audit${toQueryString(query)}`),
+  clearMcpAudit: (payload: { created_from: string; created_to: string }) =>
+    request<McpAuditDeleteResult>('/mcp-access/audit', { method: 'DELETE', data: payload }),
   saveAppliedConf: (configId: string, nodeId: string, content: string) =>
     request<SyncStatusRead>(`/configs/${configId}/nodes/${nodeId}/applied-conf`, {
       method: 'PUT',
@@ -220,8 +244,8 @@ export const api = {
       data: payload,
     }),
 
-  createSnapshot: (note: string) =>
-    request<SnapshotRead>('/backups/snapshot', { method: 'POST', data: note }),
+  createSnapshot: (note: string, password: string) =>
+    request<SnapshotRead>('/backups/snapshot', { method: 'POST', data: { note, password } }),
   snapshots: () => request<SnapshotRead[]>('/backups/list'),
   exportSnapshot: (snapshotId: string) =>
     request<Blob>(`/backups/export/${snapshotId}`, { responseType: 'blob' }),
@@ -230,8 +254,8 @@ export const api = {
     data.append('file', file)
     return request<SnapshotRead>('/backups/import', { method: 'POST', data })
   },
-  restoreSnapshot: (snapshotId: string) =>
-    request<{ message: string }>(`/backups/restore/${snapshotId}`, { method: 'POST' }),
+  restoreSnapshot: (snapshotId: string, password: string) =>
+    request<{ message: string }>(`/backups/restore/${snapshotId}`, { method: 'POST', data: { password } }),
   deleteSnapshot: (snapshotId: string) =>
     request<{ message: string }>(`/backups/${snapshotId}`, { method: 'DELETE' }),
   updateSnapshotNote: (snapshotId: string, note: string) =>

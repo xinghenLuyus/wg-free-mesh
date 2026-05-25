@@ -19,6 +19,7 @@
 - `application_snapshot.py`
   - 导出应用级数据库快照。
   - 恢复应用级快照。
+  - 快照包含数据库内除管理员密码哈希外的全部应用数据。
   - 快照包含动态客户端 MQTT 凭据，用于恢复后重建 EMQX 节点用户。
 - `paths.py`
   - 运行数据目录、备份目录、WireGuard 目录定位。
@@ -32,4 +33,5 @@
 - 业务服务只依赖 `app.data.store.store`，不直接依赖具体数据库。
 - 数据库结构只在 `schema.py` 和 Alembic migration 中维护。
 - 备份包使用应用级 `database.json`，不直接复制数据库物理文件。
+- 应用级快照只排除管理员密码哈希；其它数据库内容必须随快照迁移。
 - `infrastructure/database.py` 只保留兼容 re-export，不再承载数据库实现。

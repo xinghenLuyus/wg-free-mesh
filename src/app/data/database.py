@@ -77,6 +77,7 @@ def _revision_rank(revision: str) -> int:
         "0003_mqtt_password": 3,
         "0004_port_forward_rules": 4,
         "0005_port_forward_enabled": 5,
+        "0006_mcp_access": 6,
     }
     return ranks.get(revision, 0)
 

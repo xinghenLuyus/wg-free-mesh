@@ -1,31 +1,43 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime
+import hashlib
+from io import BytesIO
 import json
 from pathlib import Path
+import secrets
 import shutil
 import tempfile
 from zipfile import ZIP_DEFLATED, BadZipFile, ZipFile
 
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+from app.core.config import settings
 from app.core.errors import AppError
 from app.data.application_snapshot import (
     SNAPSHOT_DATA_ENTRY,
-    archive_has_database,
     export_database_payload,
     import_database_from_archive,
 )
 from app.domain.models import SnapshotInfo, new_id, now_utc
 from app.data.database import backups_dir, data_dir, init_database, wireguard_dir
 from app.data.repositories.snapshots import snapshot_repository
+from app.services.auth_service import auth_service
 
 SNAPSHOT_MANIFEST = "snapshot_manifest.json"
+SNAPSHOT_PAYLOAD = "snapshot_payload.bin"
+SNAPSHOT_ARCHIVE_FORMAT = "wfm-encrypted-snapshot"
+SNAPSHOT_ENCRYPTION_VERSION = 1
+SNAPSHOT_KDF_ITERATIONS = 390_000
 
 
 class SnapshotService:
     def list_snapshots(self) -> list[SnapshotInfo]:
         return self.rebuild_index_from_disk()
 
-    def create_snapshot(self, note: str) -> SnapshotInfo:
+    def create_snapshot(self, note: str, password: str) -> SnapshotInfo:
+        auth_service.verify_admin_password(password)
         created_at = now_utc()
         snapshot = SnapshotInfo(
             id=new_id("snap"),
@@ -38,7 +50,7 @@ class SnapshotService:
         snapshot_path = backups_dir() / snapshot.name
         snapshot.path = str(snapshot_path)
         snapshot_repository.upsert_snapshot(snapshot)
-        self._write_archive(snapshot_path, snapshot)
+        self._write_archive(snapshot_path, snapshot, password)
         finalized = snapshot.model_copy(update={"size": snapshot_path.stat().st_size})
         snapshot_repository.upsert_snapshot(finalized)
         return finalized
@@ -65,17 +77,19 @@ class SnapshotService:
         self._rewrite_manifest(Path(snapshot.path), normalized_note)
         return snapshot_repository.update_snapshot_note(snapshot_id, normalized_note)
 
-    def restore_snapshot(self, snapshot_id: str) -> None:
+    def restore_snapshot(self, snapshot_id: str, password: str) -> None:
         snapshot = snapshot_repository.get_snapshot(snapshot_id)
-        self.restore_snapshot_archive(Path(snapshot.path))
+        self.restore_snapshot_archive(Path(snapshot.path), password)
 
-    def restore_snapshot_archive(self, path: Path) -> None:
+    def restore_snapshot_archive(self, path: Path, password: str) -> None:
         archive_path = Path(path)
         self._validate_archive(archive_path)
-        self._clear_wireguard_dir()
         with ZipFile(archive_path, "r") as archive:
-            import_database_from_archive(archive)
-            self._safe_extract(archive, Path.cwd())
+            payload = self._decrypt_payload(archive, password)
+        self._clear_wireguard_dir()
+        with ZipFile(BytesIO(payload), "r") as inner_archive:
+            import_database_from_archive(inner_archive)
+            self._safe_extract(inner_archive, Path.cwd())
         init_database()
         self.rebuild_index_from_disk()
 
@@ -125,13 +139,23 @@ class SnapshotService:
             index += 1
         return candidate
 
-    def _write_archive(self, snapshot_path: Path, snapshot: SnapshotInfo) -> None:
+    def _write_archive(self, snapshot_path: Path, snapshot: SnapshotInfo, password: str) -> None:
+        salt = secrets.token_bytes(16)
+        nonce = secrets.token_bytes(12)
+        inner_payload = self._payload_archive_bytes()
+        encrypted_payload = AESGCM(self._derive_snapshot_key(password, salt)).encrypt(nonce, inner_payload, None)
         with ZipFile(snapshot_path, "w", compression=ZIP_DEFLATED) as archive:
+            archive.writestr(SNAPSHOT_PAYLOAD, encrypted_payload)
+            archive.writestr(SNAPSHOT_MANIFEST, self._manifest_text(snapshot, salt=salt, nonce=nonce))
+
+    def _payload_archive_bytes(self) -> bytes:
+        output = BytesIO()
+        with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
             archive.writestr(SNAPSHOT_DATA_ENTRY, export_database_payload())
             for file in wireguard_dir().rglob("*"):
                 if file.is_file():
                     archive.write(file, arcname=str(file.relative_to(Path.cwd())))
-            archive.writestr(SNAPSHOT_MANIFEST, self._manifest_text(snapshot))
+        return output.getvalue()
 
     def _clear_wireguard_dir(self) -> None:
         target = wireguard_dir().resolve()
@@ -150,11 +174,12 @@ class SnapshotService:
             temp_path = Path(temp_file.name)
         try:
             with ZipFile(archive_path, "r") as source, ZipFile(temp_path, "w", compression=ZIP_DEFLATED) as target:
+                manifest = self._read_manifest_from_archive(source)
                 for info in source.infolist():
                     if info.filename == SNAPSHOT_MANIFEST:
                         continue
                     target.writestr(info, source.read(info.filename))
-                target.writestr(SNAPSHOT_MANIFEST, self._manifest_text(updated))
+                target.writestr(SNAPSHOT_MANIFEST, self._manifest_text(updated, manifest=manifest))
             temp_path.replace(archive_path)
         finally:
             temp_path.unlink(missing_ok=True)
@@ -188,14 +213,35 @@ class SnapshotService:
             candidate = new_id("snap")
         return candidate
 
-    def _manifest_text(self, snapshot: SnapshotInfo) -> str:
+    def _manifest_text(
+        self,
+        snapshot: SnapshotInfo,
+        *,
+        salt: bytes | None = None,
+        nonce: bytes | None = None,
+        manifest: dict[str, object] | None = None,
+    ) -> str:
+        crypto = manifest.get("crypto") if manifest else None
+        if not isinstance(crypto, dict):
+            if salt is None or nonce is None:
+                raise AppError("SNAPSHOT_INVALID_ARCHIVE", "Snapshot archive is invalid", 400)
+            crypto = {
+                "algorithm": "aes-256-gcm",
+                "kdf": "pbkdf2-sha256",
+                "iterations": SNAPSHOT_KDF_ITERATIONS,
+                "salt": self._encode_binary(salt),
+                "nonce": self._encode_binary(nonce),
+            }
         return json.dumps(
             {
-                "version": 1,
+                "format": SNAPSHOT_ARCHIVE_FORMAT,
+                "version": SNAPSHOT_ENCRYPTION_VERSION,
                 "id": snapshot.id,
                 "name": snapshot.name,
                 "created_at": snapshot.created_at.isoformat(),
                 "note": snapshot.note,
+                "system_version": settings.app_version,
+                "crypto": crypto,
             },
             ensure_ascii=False,
             indent=2,
@@ -238,15 +284,16 @@ class SnapshotService:
             raise AppError("SNAPSHOT_NOT_FOUND", "Snapshot package not found", 404)
         try:
             with ZipFile(path, "r") as archive:
-                has_database = archive_has_database(archive)
+                manifest = self._read_manifest_from_archive(archive)
+                has_payload = SNAPSHOT_PAYLOAD in archive.namelist()
         except BadZipFile as exc:
             raise AppError("SNAPSHOT_INVALID_ARCHIVE", "Snapshot archive is invalid", 400) from exc
-        if not has_database:
+        if not has_payload or not self._manifest_crypto(manifest):
             raise AppError("SNAPSHOT_INVALID_ARCHIVE", "Snapshot archive is invalid", 400)
 
     def _safe_extract(self, archive: ZipFile, destination: Path) -> None:
         root = destination.resolve()
-        skipped = {SNAPSHOT_MANIFEST, SNAPSHOT_DATA_ENTRY}
+        skipped = {SNAPSHOT_DATA_ENTRY}
         members = [
             member
             for member in archive.infolist()
@@ -257,6 +304,59 @@ class SnapshotService:
             if target_path != root and root not in target_path.parents:
                 raise AppError("SNAPSHOT_INVALID_ARCHIVE", "Snapshot archive is invalid", 400)
         archive.extractall(root, members=members)
+
+    def _decrypt_payload(self, archive: ZipFile, password: str) -> bytes:
+        manifest = self._read_manifest_from_archive(archive)
+        crypto = self._manifest_crypto(manifest)
+        if not crypto:
+            raise AppError("SNAPSHOT_INVALID_ARCHIVE", "Snapshot archive is invalid", 400)
+        try:
+            salt = self._decode_binary(str(crypto["salt"]))
+            nonce = self._decode_binary(str(crypto["nonce"]))
+            payload = archive.read(SNAPSHOT_PAYLOAD)
+            return AESGCM(self._derive_snapshot_key(password, salt, int(crypto["iterations"]))).decrypt(nonce, payload, None)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AppError("SNAPSHOT_INVALID_ARCHIVE", "Snapshot archive is invalid", 400) from exc
+        except Exception as exc:
+            raise AppError("SNAPSHOT_PASSWORD_INVALID", "Snapshot password is invalid", 401) from exc
+
+    def _manifest_crypto(self, manifest: dict[str, object] | None) -> dict[str, object] | None:
+        if not manifest or manifest.get("format") != SNAPSHOT_ARCHIVE_FORMAT:
+            return None
+        try:
+            version = int(str(manifest.get("version") or 0))
+        except ValueError:
+            return None
+        if version != SNAPSHOT_ENCRYPTION_VERSION:
+            return None
+        crypto = manifest.get("crypto")
+        if not isinstance(crypto, dict):
+            return None
+        required = {"algorithm", "kdf", "iterations", "salt", "nonce"}
+        if not required.issubset(crypto):
+            return None
+        if crypto["algorithm"] != "aes-256-gcm" or crypto["kdf"] != "pbkdf2-sha256":
+            return None
+        return crypto
+
+    def _read_manifest_from_archive(self, archive: ZipFile) -> dict[str, object] | None:
+        try:
+            parsed = json.loads(archive.read(SNAPSHOT_MANIFEST).decode("utf-8"))
+        except (KeyError, UnicodeDecodeError, json.JSONDecodeError):
+            return None
+        return parsed if isinstance(parsed, dict) else None
+
+    @staticmethod
+    def _derive_snapshot_key(password: str, salt: bytes, iterations: int = SNAPSHOT_KDF_ITERATIONS) -> bytes:
+        return hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations, dklen=32)
+
+    @staticmethod
+    def _encode_binary(value: bytes) -> str:
+        return base64.urlsafe_b64encode(value).decode("ascii")
+
+    @staticmethod
+    def _decode_binary(value: str) -> bytes:
+        return base64.urlsafe_b64decode(value.encode("ascii"))
 
 
 snapshot_service = SnapshotService()

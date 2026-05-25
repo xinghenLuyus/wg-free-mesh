@@ -1,7 +1,10 @@
-import json
 from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
+
+from app.data.store import store
+
+TEST_PASSWORD = "test-password-123"
 
 
 def test_snapshot_restore_roundtrip_uses_application_database(authenticated_client: TestClient) -> None:
@@ -9,7 +12,10 @@ def test_snapshot_restore_roundtrip_uses_application_database(authenticated_clie
     assert created.status_code == 200
     config_id = created.json()["data"]["id"]
 
-    snapshot_response = authenticated_client.post("/api/v1/backups/snapshot", content="before delete")
+    snapshot_response = authenticated_client.post(
+        "/api/v1/backups/snapshot",
+        json={"note": "before delete", "password": TEST_PASSWORD},
+    )
     assert snapshot_response.status_code == 200
     snapshot = snapshot_response.json()["data"]
 
@@ -17,7 +23,9 @@ def test_snapshot_restore_roundtrip_uses_application_database(authenticated_clie
     assert export_response.status_code == 200
     archive_path = snapshot["path"]
     with ZipFile(archive_path) as archive:
-        assert "database.json" in archive.namelist()
+        assert "snapshot_payload.bin" in archive.namelist()
+        assert "snapshot_manifest.json" in archive.namelist()
+        assert "database.json" not in archive.namelist()
         assert "data/wg_free_mesh.db" not in archive.namelist()
 
     deleted = authenticated_client.delete(f"/api/v1/configs/{config_id}")
@@ -25,7 +33,7 @@ def test_snapshot_restore_roundtrip_uses_application_database(authenticated_clie
     missing = authenticated_client.get(f"/api/v1/configs/{config_id}")
     assert missing.status_code == 404
 
-    restored = authenticated_client.post(f"/api/v1/backups/restore/{snapshot['id']}")
+    restored = authenticated_client.post(f"/api/v1/backups/restore/{snapshot['id']}", json={"password": TEST_PASSWORD})
     assert restored.status_code == 200
     loaded = authenticated_client.get(f"/api/v1/configs/{config_id}")
     assert loaded.status_code == 200
@@ -33,8 +41,6 @@ def test_snapshot_restore_roundtrip_uses_application_database(authenticated_clie
 
 
 def test_snapshot_restore_preserves_client_mqtt_password(authenticated_client: TestClient) -> None:
-    from app.data.store import store
-
     config_response = authenticated_client.post("/api/v1/configs", json={"name": "snapshot_mqtt"})
     assert config_response.status_code == 200
     config = config_response.json()["data"]
@@ -57,14 +63,15 @@ def test_snapshot_restore_preserves_client_mqtt_password(authenticated_client: T
         client_id=f"wfm-{node['id']}",
         password="snapshot-secret",
     )
-    snapshot_response = authenticated_client.post("/api/v1/backups/snapshot", content="mqtt credentials")
+    snapshot_response = authenticated_client.post(
+        "/api/v1/backups/snapshot",
+        json={"note": "mqtt credentials", "password": TEST_PASSWORD},
+    )
     assert snapshot_response.status_code == 200
     snapshot = snapshot_response.json()["data"]
 
     with ZipFile(snapshot["path"]) as archive:
-        database_payload = json.loads(archive.read("database.json").decode("utf-8"))
-    client_rows = database_payload["tables"]["node_client_state"]
-    assert any(row["node_id"] == node["id"] and row["mqtt_password"] == "snapshot-secret" for row in client_rows)
+        assert "database.json" not in archive.namelist()
 
     store.mark_client_bound(
         config["id"],
@@ -73,7 +80,7 @@ def test_snapshot_restore_preserves_client_mqtt_password(authenticated_client: T
         client_id=f"wfm-{node['id']}",
         password="changed-secret",
     )
-    restored = authenticated_client.post(f"/api/v1/backups/restore/{snapshot['id']}")
+    restored = authenticated_client.post(f"/api/v1/backups/restore/{snapshot['id']}", json={"password": TEST_PASSWORD})
     assert restored.status_code == 200
     recovery = restored.json()["data"]["recovery"]
     assert recovery["mqtt_credentials"] == 1
@@ -88,3 +95,54 @@ def test_snapshot_restore_preserves_client_mqtt_password(authenticated_client: T
             "password": "snapshot-secret",
         }
     ]
+
+
+def test_snapshot_restore_includes_mcp_access_data(authenticated_client: TestClient) -> None:
+    token = store.create_mcp_token(
+        {
+            "name": "Snapshot MCP",
+            "permission": "write",
+            "expires_at": "2099-01-01T00:00:00+00:00",
+        }
+    )
+    audit = store.create_mcp_audit_log(
+        {
+            "token_id": token["id"],
+            "token_name": token["name"],
+            "permission": token["permission"],
+            "target_kind": "tool",
+            "target_name": "snapshot_test",
+            "summary": "Snapshot includes MCP data",
+            "result": "succeeded",
+        }
+    )
+    snapshot_response = authenticated_client.post(
+        "/api/v1/backups/snapshot",
+        json={"note": "mcp data", "password": TEST_PASSWORD},
+    )
+    assert snapshot_response.status_code == 200
+    snapshot = snapshot_response.json()["data"]
+
+    store.revoke_mcp_token(token["id"])
+    store.create_mcp_audit_log(
+        {
+            "token_id": token["id"],
+            "token_name": token["name"],
+            "permission": token["permission"],
+            "target_kind": "tool",
+            "target_name": "after_snapshot",
+            "summary": "Should be replaced",
+            "result": "succeeded",
+        }
+    )
+
+    restored = authenticated_client.post(f"/api/v1/backups/restore/{snapshot['id']}", json={"password": TEST_PASSWORD})
+    assert restored.status_code == 200
+
+    tokens = store.list_mcp_tokens()
+    assert [item["id"] for item in tokens] == [token["id"]]
+    assert tokens[0]["token"] == token["token"]
+    assert not tokens[0]["revoked_at"]
+    audit_logs = store.list_mcp_audit_logs(limit=10)
+    assert [item["id"] for item in audit_logs] == [audit["id"]]
+    assert audit_logs[0]["target_name"] == "snapshot_test"

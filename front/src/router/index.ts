@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory } from 'vue-router'
 
+import { api } from '@/api/modules'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 
@@ -17,6 +18,7 @@ const QuickMeshGenerateView = () => import('@/views/QuickMeshGenerateView.vue')
 const QuickMeshToolsView = () => import('@/views/QuickMeshToolsView.vue')
 const LoginView = () => import('@/views/LoginView.vue')
 const MeshView = () => import('@/views/MeshView.vue')
+const McpAccessView = () => import('@/views/McpAccessView.vue')
 const NodeAdvancedView = () => import('@/views/NodeAdvancedView.vue')
 const NodeWorkspaceLayout = () => import('@/views/NodeWorkspaceLayout.vue')
 const NodesView = () => import('@/views/NodesView.vue')
@@ -72,6 +74,7 @@ export const router = createRouter({
         { path: 'tools/quick-mesh/full-mesh', component: QuickMeshGenerateView, props: { mode: 'full_mesh' } },
         { path: 'tools/quick-mesh/free-mesh', component: QuickMeshGenerateView, props: { mode: 'free_mesh' } },
         { path: 'tools/other', component: OtherToolsView },
+        { path: 'tools/other/mcp-access', component: McpAccessView },
         { path: 'tools/other/port-forward', component: PortForwardView },
       ],
     },
@@ -96,6 +99,14 @@ router.beforeEach(async (to) => {
   if (authStore.authenticated && isLoginPage) {
     const redirect = typeof to.query.redirect === 'string' ? to.query.redirect : '/'
     return redirect
+  }
+  if (authStore.authenticated && to.path.endsWith('/control')) {
+    const health = await api.health()
+    if (!health.mqtt_services_enabled) {
+      const configId = String(to.params.configId)
+      const nodeId = String(to.params.nodeId)
+      return { path: `/configs/${configId}/nodes/${nodeId}/mesh`, query: { mqtt: 'disabled' } }
+    }
   }
   return true
 })

@@ -35,6 +35,7 @@ const testingMqtt = actions.isPending('test-mqtt')
 const creatingSnapshot = actions.isPending('create-snapshot')
 const importingSnapshot = actions.isPending('import-snapshot')
 const restoringSnapshot = shallowRef(false)
+const mqttServicesEnabled = shallowRef(true)
 const mqttForm = reactive({
   host: '',
   port: 8883,
@@ -110,9 +111,13 @@ const realtime = useRealtime((event: RealtimeEvent) => {
 
 async function load() {
   const uiSettings = await preferencesStore.load()
+  const health = await api.health()
   selectedLocale.value = uiSettings.locale
   selectedThemeMode.value = uiSettings.theme_mode
-  Object.assign(mqttForm, await api.mqttSettings())
+  mqttServicesEnabled.value = health.mqtt_services_enabled
+  if (mqttServicesEnabled.value) {
+    Object.assign(mqttForm, await api.mqttSettings())
+  }
   snapshots.value = await api.snapshots()
 }
 
@@ -220,9 +225,11 @@ async function savePassword() {
 async function createSnapshot() {
   const note = await promptSnapshotNote('')
   if (note === null) return
+  const password = await promptSnapshotPassword(t('settings.snapshotCreatePasswordPrompt'))
+  if (password === null) return
   await actions.run('create-snapshot', async () => {
     try {
-      await api.createSnapshot(note)
+      await api.createSnapshot(note, password)
       notify.success(t('settings.snapshotCreated'))
     } catch (error) {
       notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotCreateFailed'))
@@ -278,9 +285,11 @@ async function handleSnapshotImport(event: Event) {
 }
 
 async function restoreSnapshot(snapshotId: string) {
+  const password = await promptSnapshotPassword(t('settings.snapshotRestorePasswordPrompt'))
+  if (password === null) return
   restoringSnapshot.value = true
   try {
-    await api.restoreSnapshot(snapshotId)
+    await api.restoreSnapshot(snapshotId, password)
     notify.success(t('settings.snapshotRestored'))
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('settings.snapshotRestoreFailed'))
@@ -323,6 +332,24 @@ async function promptSnapshotNote(initialValue: string) {
       },
     )
     return result.value.trim()
+  } catch (error) {
+    if (isDialogCancel(error)) {
+      return null
+    }
+    throw error
+  }
+}
+
+async function promptSnapshotPassword(prompt: string) {
+  try {
+    const result = await ElMessageBox.prompt(prompt, t('settings.snapshotPasswordTitle'), {
+      inputType: 'password',
+      inputPattern: /.+/,
+      inputErrorMessage: t('validation.required', { field: t('fields.currentPassword') }),
+      confirmButtonText: t('common.confirm'),
+      cancelButtonText: t('common.cancel'),
+    })
+    return result.value
   } catch (error) {
     if (isDialogCancel(error)) {
       return null
@@ -452,7 +479,11 @@ onMounted(async () => {
         </div>
       </div>
 
-      <el-form ref="mqttFormRef" :model="mqttForm" :rules="mqttRules" class="settings-form" label-position="top">
+      <div v-if="!mqttServicesEnabled" class="settings-unavailable">
+        {{ t('settings.mqttUnavailable') }}
+      </div>
+
+      <el-form v-else ref="mqttFormRef" :model="mqttForm" :rules="mqttRules" class="settings-form" label-position="top">
         <div class="form-grid">
           <el-form-item label="Host" prop="host" required>
             <el-input v-model="mqttForm.host" placeholder="broker.example.com" />

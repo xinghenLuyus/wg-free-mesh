@@ -12,7 +12,7 @@ import aiomqtt
 
 from app.core.config import settings
 from app.data.store import store
-from app.services.emqx_service import emqx_service
+from app.services.emqx_reconcile_service import emqx_reconcile_service
 from app.services.node_runtime_service import node_runtime_service
 from app.services.realtime_service import realtime_service
 
@@ -113,16 +113,8 @@ class MqttIngressService:
                 await self._apply_status(connected=False, last_error="")
                 return
             try:
-                try:
-                    response = await asyncio.to_thread(emqx_service.upsert_server_user)
-                    if response.status_code >= 400:
-                        await self._apply_status(
-                            connected=False,
-                            last_error=f"Failed to sync MQTT server user ({response.status_code})",
-                        )
-                        await asyncio.sleep(5)
-                        continue
-                except Exception:
+                result = await asyncio.to_thread(emqx_reconcile_service.reconcile_all)
+                if result.server_users_failed:
                     await self._apply_status(connected=False, last_error="Failed to sync MQTT server user")
                     await asyncio.sleep(5)
                     continue

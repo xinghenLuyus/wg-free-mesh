@@ -22,10 +22,11 @@ def client(tmp_path: Path, monkeypatch) -> Iterator[TestClient]:
     monkeypatch.setenv("WFM_DATABASE", database_url)
     from app.core.config import settings
     from app.data.database import reset_engine
-    from app.main import app
+    from app.main import create_app
 
     settings.database = database_url
     reset_engine()
+    app = create_app()
     with TestClient(app) as test_client:
         yield test_client
     reset_engine()

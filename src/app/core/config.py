@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 from pydantic import field_validator, model_validator
@@ -20,10 +21,10 @@ class Settings(BaseSettings):
     debug: bool = True
     api_v1_prefix: str = "/api/v1"
     api_v0_prefix: str = "/api/v0"
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+    public_origin: str = ""
+    extra_allowed_origins: list[str] = Field(default_factory=list)
     database_url: str = "sqlite:///./data/wg_free_mesh.db"
     mqtt_url: str = "mqtt://localhost:1883"
-    mqtt_public_host: str = "localhost"
     mqtt_public_port: int = 1883
     mqtt_public_tls_port: int = 8883
     mqtt_tls_enabled: bool = False
@@ -70,6 +71,21 @@ class Settings(BaseSettings):
     @property
     def mqtt_bind_port(self) -> int:
         return self.mqtt_public_tls_port if self.mqtt_tls_enabled else self.mqtt_public_port
+
+    @property
+    def allowed_origins(self) -> list[str]:
+        ordered = [self.public_origin, *self.extra_allowed_origins]
+        return list(dict.fromkeys(origin.strip().rstrip("/") for origin in ordered if origin.strip()))
+
+    @property
+    def public_origin_host(self) -> str:
+        parsed = urlparse(self.public_origin.strip())
+        return parsed.netloc.lower()
+
+    @property
+    def mqtt_public_host(self) -> str:
+        parsed = urlparse(self.public_origin.strip())
+        return parsed.hostname or "localhost"
 
 
 @lru_cache

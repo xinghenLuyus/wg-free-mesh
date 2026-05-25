@@ -15,29 +15,36 @@ from app.api.v0.router import api_v0_router
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.errors import install_exception_handlers
+from app.core.mcp_path import McpPathNormalizeMiddleware
+from app.core.public_source_guard import PublicSourceGuardMiddleware
 from app.data.database import init_database
 from app.data.store import store
+from app.mcp.server import create_mcp_server, mcp_http_app, mcp_session_lifespan
 from app.services.control_plane_service import control_plane_service
 from app.services.mqtt_ingress_service import mqtt_ingress_service
 from app.services.realtime_service import realtime_service
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-    init_database()
-    store.reconcile_runtime_integrity()
-    realtime_service.startup()
-    control_plane_service.startup()
-    mqtt_ingress_service.startup()
-    try:
-        yield
-    finally:
-        await mqtt_ingress_service.shutdown()
-        await control_plane_service.shutdown()
-        await realtime_service.shutdown()
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    async with mcp_session_lifespan(getattr(app.state, "mcp_server", None)):
+        init_database()
+        store.reconcile_runtime_integrity()
+        realtime_service.startup()
+        control_plane_service.startup()
+        if settings.enable_mqtt_services:
+            mqtt_ingress_service.startup()
+        try:
+            yield
+        finally:
+            if settings.enable_mqtt_services:
+                await mqtt_ingress_service.shutdown()
+            await control_plane_service.shutdown()
+            await realtime_service.shutdown()
 
 
 def create_app() -> FastAPI:
+    mcp_server = create_mcp_server()
     app = FastAPI(
         title=settings.app_name,
         version=settings.app_version,
@@ -45,19 +52,25 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.debug else None,
         lifespan=lifespan,
     )
+    app.state.mcp_server = mcp_server
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
+        allow_origins=settings.allowed_origins,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(PublicSourceGuardMiddleware)
+    app.add_middleware(McpPathNormalizeMiddleware)
     install_exception_handlers(app)
     if settings.dev_test_api_enabled:
         app.include_router(api_v0_router)
     app.include_router(internal_router)
     app.include_router(client_router)
     app.include_router(api_router)
+    mcp_app = mcp_http_app(mcp_server)
+    if mcp_app is not None:
+        app.mount("/mcp", mcp_app)
 
     dist_dir = Path.cwd().parent / "front" / "dist"
     if dist_dir.exists():

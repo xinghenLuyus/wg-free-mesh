@@ -57,6 +57,7 @@ const selectedTagForAssignment = shallowRef('')
 const selectedNodeIds = shallowRef<string[]>([])
 const loading = shallowRef(false)
 const loadError = shallowRef('')
+const mqttServicesEnabled = shallowRef(true)
 let loadTicket = 0
 let lastRealtimeVersion = 0
 const realtime = useRealtime((event: RealtimeEvent) => {
@@ -217,14 +218,16 @@ async function load() {
   loadError.value = ''
   const configId = String(route.params.configId)
   try {
-    const [nextOverview, nextTags] = await Promise.all([
+    const [nextOverview, nextTags, health] = await Promise.all([
       api.configOverview(configId),
       api.tags(configId),
+      api.health(),
     ])
     if (ticket !== loadTicket) return
     overview.value = nextOverview
     fullNodes.value = nextOverview.nodes
     tags.value = nextTags
+    mqttServicesEnabled.value = health.mqtt_services_enabled
   } catch (error) {
     if (ticket !== loadTicket) return
     loadError.value = error instanceof ApiClientError ? error.message : t('configOverview.loadFailed')
@@ -871,6 +874,13 @@ watch(
             ]"
           />
         </el-form-item>
+        <el-alert
+          v-if="createForm.node_type === 'dynamic' && !mqttServicesEnabled"
+          :title="t('nodeWorkspace.dynamicClientUnavailable')"
+          type="warning"
+          :closable="false"
+          show-icon
+        />
         <div class="form-grid">
           <el-form-item :label="t('nodeWorkspace.publicIpv4')"><el-input v-model="createForm.ipv4_address" :placeholder="t('nodeWorkspace.ipOrDomain')" /></el-form-item>
           <el-form-item :label="t('nodeWorkspace.publicIpv6')"><el-input v-model="createForm.ipv6_address" :placeholder="t('nodeWorkspace.ipOrDomain')" /></el-form-item>

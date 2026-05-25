@@ -1,21 +1,38 @@
 name: wg-free-mesh-sqlite
 
 services:
+  gateway:
+    image: nginx:1.27-alpine
+    env_file:
+      - ./.env
+    environment:
+      NGINX_ENVSUBST_OUTPUT_DIR: /etc/nginx
+      NGINX_ENVSUBST_FILTER: WFM_
+      WFM_GATEWAY_CLIENT_MAX_BODY_SIZE: ${WFM_GATEWAY_CLIENT_MAX_BODY_SIZE:-512m}
+      WFM_MQTT_PUBLIC_PORT: ${WFM_MQTT_PUBLIC_PORT:-1883}
+      WFM_MQTT_PUBLIC_TLS_PORT: ${WFM_MQTT_PUBLIC_TLS_PORT:-8883}
+    ports:
+      - "${WFM_APP_PORT:-8000}:80"
+      - "${WFM_MQTT_PUBLIC_PORT:-1883}:${WFM_MQTT_PUBLIC_PORT:-1883}"
+      - "${WFM_MQTT_PUBLIC_TLS_PORT:-8883}:${WFM_MQTT_PUBLIC_TLS_PORT:-8883}"
+    volumes:
+      - ../gateway/nginx.conf.template:/etc/nginx/templates/nginx.conf.template:ro
+    depends_on:
+      - app
+
   app:
     build:
       context: ../..
       dockerfile: docker/app/backend.Dockerfile
     env_file:
       - ./.env
-    ports:
-      - "${WFM_APP_PORT:-8000}:8000"
     volumes:
       - ../../src/data:/app/data
       - ../emqx/certs:/app/docker/emqx/certs:ro
-    depends_on:
-      - emqx
 
   emqx:
+    profiles:
+      - mqtt
     image: emqx/emqx:5.8.5
     env_file:
       - ./.env
@@ -25,11 +42,9 @@ services:
       EMQX_NODE__COOKIE: ${WFM_EMQX_NODE_COOKIE}
       EMQX_DASHBOARD__DEFAULT_USERNAME: ${WFM_EMQX_USERNAME}
       EMQX_DASHBOARD__DEFAULT_PASSWORD: ${WFM_EMQX_PASSWORD}
-    ports:
-      - "${WFM_MQTT_PUBLIC_PORT:-1883}:1883"
-      - "${WFM_MQTT_PUBLIC_TLS_PORT:-8883}:8883"
-      # EMQX Dashboard/API is disabled by default. Uncomment only when local administration is needed.
-      - "18083:18083"
+    # EMQX Dashboard/API is disabled by default. Uncomment only when local administration is needed.
+    # ports:
+    #   - "18083:18083"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

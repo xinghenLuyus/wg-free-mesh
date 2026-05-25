@@ -90,6 +90,12 @@ class AuthService:
         self._write_token_secret(generate_token_secret())
         return self._token_session()
 
+    def verify_admin_password(self, password: str) -> None:
+        if self.setup_required():
+            raise AppError("AUTH_SETUP_REQUIRED", "Initial administrator password is required", 428)
+        if not verify_password(password, self._read_password_hash()):
+            raise AppError("AUTH_FAILED", "Current password is incorrect", 401)
+
     def require_user(self, token: str | None) -> CurrentUser:
         if self.setup_required():
             raise AppError("AUTH_SETUP_REQUIRED", "Initial administrator password is required", 428)

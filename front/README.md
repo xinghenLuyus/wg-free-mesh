@@ -92,6 +92,7 @@
 - `/tools/quick-mesh/free-mesh` 为多网关 Free Mesh 快速生成
 - `/tools/other` 为其它工具统一入口
 - `/tools/other/port-forward` 为受管端口转发规则管理
+- 当部署关闭 MQTT 服务时，端点控制路由会回退到节点 Mesh 页面，设置页 MQTT 区块只展示不可用状态；动态端点仍可创建，但创建表单必须提示客户端能力不可用
 
 ## 手动运行
 

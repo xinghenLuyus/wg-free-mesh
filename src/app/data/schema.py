@@ -212,6 +212,37 @@ endpoint_control_logs = Table(
     Column("updated_at", String, nullable=False),
 )
 
+mcp_tokens = Table(
+    "mcp_tokens",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("name", String, nullable=False),
+    Column("token", Text, nullable=False, unique=True),
+    Column("permission", String, nullable=False),
+    Column("expires_at", String, nullable=False),
+    Column("revoked_at", String),
+    Column("created_at", String, nullable=False),
+    Column("updated_at", String, nullable=False),
+)
+
+mcp_audit_logs = Table(
+    "mcp_audit_logs",
+    metadata,
+    Column("id", String, primary_key=True),
+    Column("token_id", String, ForeignKey("mcp_tokens.id", ondelete="SET NULL"), nullable=True, index=True),
+    Column("token_name", String, nullable=False, default="", server_default=""),
+    Column("permission", String, nullable=False, default="", server_default=""),
+    Column("target_kind", String, nullable=False),
+    Column("target_name", String, nullable=False),
+    Column("summary", Text, nullable=False, default="", server_default=""),
+    Column("impact", Text, nullable=False, default="", server_default=""),
+    Column("confirmation_required", Integer, nullable=False, default=False, server_default="0"),
+    Column("confirmation_result", String, nullable=False, default="", server_default=""),
+    Column("result", String, nullable=False),
+    Column("error_code", String, nullable=False, default="", server_default=""),
+    Column("created_at", String, nullable=False),
+)
+
 system_settings = Table(
     "system_settings",
     metadata,

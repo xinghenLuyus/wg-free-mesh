@@ -21,11 +21,15 @@
   - 同一节点对允许存在多组历史 Peer 连接，但不允许多组连接同时启用；重复启用会直接进入拓扑校验失败。
 - `emqx_service.py`
   - `EmqxService`：集中管理 EMQX 管理 API 地址、节点 MQTT 凭据写入 / 删除、客户端连接踢出请求格式和 bind 时下发给客户端的 broker 参数。
+- `emqx_reconcile_service.py`
+  - `EmqxReconcileService`：把 EMQX 视为数据库的运行时投影，按数据库中的客户端 MQTT 凭据全量重建节点用户，并清理 WFM 管理范围内已不再存在的节点账号。
+  - 应用启动、MQTT 入口重连、快照恢复、客户端绑定和客户端重置都通过同一套协调逻辑收口；EMQX 临时不可用时不改变数据库真相，等待后续协调补齐。
 - `mqtt_auth_service.py`
   - `MqttAuthService`：统一管理节点 MQTT 用户名、client_id、topic ACL 和 EMQX AuthZ 授权判断。
 - `mqtt_ingress_service.py`
   - `MqttIngressService`：服务端高权限 MQTT 客户端，订阅所有客户端上行 topic，把 `heartbeat`、`event` 和 ACK 交给节点运行态服务统一处理。
   - 对已经切换为静态节点的 MQTT 上行消息直接忽略，防止旧客户端把静态节点重新写回在线。
+  - 连接 EMQX 前先触发 EMQX 全量协调；EMQX 晚启动或临时不可用时后台持续重试，非 MQTT 业务不受影响。
   - `status_summary()`：统一返回 MQTT 服务是否被环境变量启用、是否已连接、最近错误和最近连接时间，供系统状态页和端点能力开关复用。
   - `reconcile()`：按 `WFM_ENABLE_MQTT_SERVICES` 重新协调 MQTT 入口服务；设置页只更新客户端公网连接参数，不再控制启停。
 - `node_runtime_service.py`

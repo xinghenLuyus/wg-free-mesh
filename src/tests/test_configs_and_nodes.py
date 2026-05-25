@@ -1,5 +1,4 @@
 from fastapi.testclient import TestClient
-import httpx
 from uuid import uuid4
 
 
@@ -131,21 +130,17 @@ def test_reset_client_deletes_emqx_user_and_disconnects_client(authenticated_cli
     node = node_response.json()["data"]
     calls: list[tuple[str, str]] = []
 
-    class FakeEmqxService:
-        def delete_node_user(self, *, node_id: str) -> httpx.Response:
-            calls.append(("delete", node_id))
-            return httpx.Response(204)
-
-        def disconnect_node_client(self, *, node_id: str) -> httpx.Response:
-            calls.append(("disconnect", node_id))
-            return httpx.Response(204)
+    class FakeEmqxReconcileService:
+        def revoke_node_user(self, *, node_id: str) -> dict[str, bool]:
+            calls.append(("revoke", node_id))
+            return {"deleted": True, "disconnected": True}
 
     monkeypatch.setattr(settings, "enable_mqtt_services", True)
-    monkeypatch.setattr(control_plane_module, "emqx_service", FakeEmqxService())
+    monkeypatch.setattr(control_plane_module, "emqx_reconcile_service", FakeEmqxReconcileService())
 
     state = control_plane_module.control_plane_service.reset_client_state(config["id"], node["id"])
 
-    assert calls == [("delete", node["id"]), ("disconnect", node["id"])]
+    assert calls == [("revoke", node["id"])]
     assert state["client_initialized"] is False
     assert state["mqtt_username"] == ""
     assert state["mqtt_client_id"] == ""
