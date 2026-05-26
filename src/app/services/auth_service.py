@@ -21,6 +21,8 @@ SESSION_TOKEN_KIND = "session"
 DOWNLOAD_TOKEN_KIND = "download"
 GLOBAL_PERMISSION = "*"
 DOWNLOAD_PERMISSION = "config.node.download"
+FILE_DOWNLOAD_PERMISSION = "file.download"
+FILE_DOWNLOAD_KINDS = frozenset({"client_artifact", "config_bulk_package", "snapshot_export"})
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -44,6 +46,13 @@ class DownloadGrant(TokenGrant):
     username: str
     config_id: str
     node_id: str
+
+
+@dataclass(frozen=True, kw_only=True)
+class FileDownloadGrant(TokenGrant):
+    username: str
+    kind: str
+    resource_id: str
 
 
 class AuthService:
@@ -128,6 +137,29 @@ class AuthService:
             "expires_at": expires_at.isoformat(),
         }
 
+    def create_file_download_token(self, *, kind: str, resource_id: str, subject: str = ADMIN_USERNAME) -> dict[str, object]:
+        normalized_kind = kind.strip()
+        normalized_resource_id = resource_id.strip()
+        if normalized_kind not in FILE_DOWNLOAD_KINDS or not normalized_resource_id:
+            raise AppError("INVALID_DOWNLOAD_RESOURCE", "Download resource is invalid", 400)
+        token, expires_at = create_access_token(
+            subject=subject.strip() or ADMIN_USERNAME,
+            secret=self._read_token_secret(),
+            expires_delta=timedelta(minutes=settings.auth_download_token_expire_minutes),
+            claims={
+                "kind": DOWNLOAD_TOKEN_KIND,
+                "permissions": [FILE_DOWNLOAD_PERMISSION],
+                "resource": {"kind": normalized_kind, "resource_id": normalized_resource_id},
+            },
+        )
+        return {
+            "access_token": token,
+            "token_type": "download",
+            "expires_at": expires_at.isoformat(),
+            "kind": normalized_kind,
+            "resource_id": normalized_resource_id,
+        }
+
     def reset_bootstrap_state(self) -> dict[str, object]:
         for key in (
             self.password_key,
@@ -163,6 +195,31 @@ class AuthService:
             username=str(payload.get("sub") or ADMIN_USERNAME),
             config_id=grant_config_id,
             node_id=grant_node_id,
+        )
+
+    def require_file_download_grant(self, token: str | None, *, kind: str, resource_id: str) -> FileDownloadGrant:
+        if not token:
+            raise AppError("DOWNLOAD_TOKEN_REQUIRED", "Download token required", 401)
+        payload = decode_access_token(token, self._read_token_secret())
+        if payload.get("kind") != DOWNLOAD_TOKEN_KIND:
+            raise AppError("INVALID_DOWNLOAD_TOKEN", "Invalid download token", 401)
+        permissions = self._permissions_from_payload(payload)
+        if FILE_DOWNLOAD_PERMISSION not in permissions:
+            raise AppError("INVALID_DOWNLOAD_TOKEN", "Invalid download token", 401)
+        resource = payload.get("resource")
+        if not isinstance(resource, dict):
+            raise AppError("INVALID_DOWNLOAD_TOKEN", "Invalid download token", 401)
+        grant_kind = str(resource.get("kind") or "")
+        grant_resource_id = str(resource.get("resource_id") or "")
+        if grant_kind != kind or grant_resource_id != resource_id:
+            raise AppError("DOWNLOAD_TOKEN_SCOPE_MISMATCH", "Download token scope mismatch", 403)
+        return FileDownloadGrant(
+            token_kind=DOWNLOAD_TOKEN_KIND,
+            permissions=frozenset(permissions),
+            expires_at=datetime.fromtimestamp(int(payload["exp"]), UTC),
+            username=str(payload.get("sub") or ADMIN_USERNAME),
+            kind=grant_kind,
+            resource_id=grant_resource_id,
         )
 
     def _read_password_hash(self) -> str | None:

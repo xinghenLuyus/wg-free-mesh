@@ -5,15 +5,17 @@ import tempfile
 
 from typing import Annotated
 
-from fastapi import Body, File, UploadFile
+from fastapi import APIRouter, Body, File, Header, Query, UploadFile
 from pydantic import BaseModel, Field
 from fastapi.responses import FileResponse
 
 from app.api.v1.routing import SessionProtectedAPIRouter
+from app.api.v1.deps import require_file_download_or_user
 from app.core.responses import ApiResponse, ok
 from app.services.control_plane_service import control_plane_service
 
 router = SessionProtectedAPIRouter(prefix="/backups", tags=["backups"])
+download_router = APIRouter(prefix="/backups", tags=["backups"])
 
 
 class SnapshotCreateRequest(BaseModel):
@@ -48,14 +50,24 @@ def list_snapshots() -> ApiResponse[list[dict[str, object]]]:
     return ok([item.model_dump(mode="json") for item in control_plane_service.list_snapshots()])
 
 
-@router.get("/download/{snapshot_id}")
-def download_snapshot(snapshot_id: str) -> FileResponse:
+@download_router.get("/download/{snapshot_id}")
+def download_snapshot(
+    snapshot_id: str,
+    authorization: Annotated[str | None, Header()] = None,
+    download_token: Annotated[str | None, Query()] = None,
+) -> FileResponse:
+    require_file_download_or_user("snapshot_export", snapshot_id, authorization, download_token)
     path = control_plane_service.export_snapshot(snapshot_id)
     return FileResponse(path=str(path), filename=path.name, media_type="application/octet-stream")
 
 
-@router.get("/export/{snapshot_id}")
-def export_snapshot(snapshot_id: str) -> FileResponse:
+@download_router.get("/export/{snapshot_id}")
+def export_snapshot(
+    snapshot_id: str,
+    authorization: Annotated[str | None, Header()] = None,
+    download_token: Annotated[str | None, Query()] = None,
+) -> FileResponse:
+    require_file_download_or_user("snapshot_export", snapshot_id, authorization, download_token)
     path = control_plane_service.export_snapshot(snapshot_id)
     return FileResponse(path=str(path), filename=path.name, media_type="application/octet-stream")
 

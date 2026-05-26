@@ -2,17 +2,19 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import Body, Query
+from fastapi import APIRouter, Body, Header, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.v1.routing import SessionProtectedAPIRouter
+from app.api.v1.deps import require_file_download_or_user
 from app.core.responses import ApiResponse, ok
 from app.core.validation import strip_required_text
 from app.services.control_plane_service import control_plane_service
 from app.services.download_tools_service import download_tools_service
 
 router = SessionProtectedAPIRouter(prefix="/tools", tags=["tools"])
+download_router = APIRouter(prefix="/tools", tags=["tools"])
 
 
 class PortForwardRuleRequest(BaseModel):
@@ -49,8 +51,13 @@ def build_client_artifact(payload: Annotated[dict[str, Any], Body()]) -> ApiResp
     )
 
 
-@router.get("/download/client-artifacts/{artifact_id}")
-def download_client_artifact(artifact_id: str) -> FileResponse:
+@download_router.get("/download/client-artifacts/{artifact_id}")
+def download_client_artifact(
+    artifact_id: str,
+    authorization: Annotated[str | None, Header()] = None,
+    download_token: Annotated[str | None, Query()] = None,
+) -> FileResponse:
+    require_file_download_or_user("client_artifact", artifact_id, authorization, download_token)
     path, filename = download_tools_service.client_artifact_file(artifact_id)
     return FileResponse(path=str(path), filename=filename, media_type="application/zip")
 
@@ -71,8 +78,13 @@ def create_config_bulk_package(payload: Annotated[dict[str, Any], Body()]) -> Ap
     )
 
 
-@router.get("/download/config-bulk/{package_id}")
-def download_config_bulk_package(package_id: str) -> FileResponse:
+@download_router.get("/download/config-bulk/{package_id}")
+def download_config_bulk_package(
+    package_id: str,
+    authorization: Annotated[str | None, Header()] = None,
+    download_token: Annotated[str | None, Query()] = None,
+) -> FileResponse:
+    require_file_download_or_user("config_bulk_package", package_id, authorization, download_token)
     path = download_tools_service.config_bulk_file(package_id)
     return FileResponse(path=str(path), filename=path.name, media_type="application/zip")
 

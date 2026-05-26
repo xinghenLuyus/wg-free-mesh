@@ -27,7 +27,10 @@ Authorization: Bearer <access_token>
 后台会话令牌与下载令牌分开：
 
 - `session` 令牌：登录后签发，拥有后台全局业务权限。
-- `download` 令牌：仅用于下载某个配置下某个节点的同步态配置，默认 5 分钟有效，不能用于创建、修改、删除或其它业务接口。
+- `download` 令牌：仅用于下载绑定的单个文件，默认 5 分钟有效，不能用于创建、修改、删除或其它业务接口。
+  - 节点配置下载令牌绑定 `config_id + node_id`。
+  - 文件下载令牌绑定 `kind + resource_id`，当前支持 `client_artifact`、`config_bulk_package`、`snapshot_export`。
+  - 下载令牌只校验对应下载接口，不具备后台会话权限。
 
 ### `GET /api/v1/auth/state`
 
@@ -111,9 +114,12 @@ Authorization: Bearer <access_token>
 ### 令牌类型
 
 - `session`：管理员后台会话令牌，权限视为 `["*"]`。
-- `download`：下载专用令牌，权限视为 `["config.node.download"]`，并绑定：
+- `download`：下载专用令牌。节点配置下载权限视为 `["config.node.download"]`，并绑定：
   - `config_id`
   - `node_id`
+- 文件下载权限视为 `["file.download"]`，并绑定：
+  - `kind`
+  - `resource_id`
 
 ### 认证错误码
 
@@ -638,7 +644,7 @@ Authorization: Bearer <access_token>
 ### `GET /api/v1/tools/download/client-artifacts/{artifact_id}`
 
 - 用途：下载客户端压缩包
-- 鉴权：后台会话令牌
+- 鉴权：后台会话令牌，或绑定 `kind=client_artifact`、`resource_id=artifact_id` 的 5 分钟下载令牌
 
 ### `GET /api/v1/tools/download/config-bulk/options?config_id=...`
 
@@ -666,7 +672,7 @@ Authorization: Bearer <access_token>
 ### `GET /api/v1/tools/download/config-bulk/{package_id}`
 
 - 用途：下载配置批量 zip
-- 鉴权：后台会话令牌
+- 鉴权：后台会话令牌，或绑定 `kind=config_bulk_package`、`resource_id=package_id` 的 5 分钟下载令牌
 
 ## 端口转发工具接口
 
@@ -892,11 +898,13 @@ Authorization: Bearer <access_token>
 ### `GET /api/v1/backups/download/{snapshot_id}`
 
 - 用途：下载快照
+- 鉴权：后台会话令牌，或绑定 `kind=snapshot_export`、`resource_id=snapshot_id` 的 5 分钟下载令牌
 
 ### `GET /api/v1/backups/export/{snapshot_id}`
 
 - 用途：导出快照
-- 说明：与 `download/{snapshot_id}` 等价，前端统一使用导出语义。
+- 鉴权：后台会话令牌，或绑定 `kind=snapshot_export`、`resource_id=snapshot_id` 的 5 分钟下载令牌
+- 说明：与 `download/{snapshot_id}` 等价，前端统一使用导出语义。MCP 只允许导出已有快照并返回短期下载 URL，不允许创建、导入、恢复或删除快照。
 
 ### `POST /api/v1/backups/upload`
 
@@ -1087,3 +1095,84 @@ Authorization: Bearer <access_token>
   - 与控制台共用正式 Host / Origin 访问边界。
   - `read` Token 可读取首批系统状态、配置、节点、Mesh、端点、端口转发和快照元数据能力。
   - `write` Token 访问写工具时仍必须完成 MCP 标准 elicitation 交互确认；客户端不支持确认或用户拒绝时，写动作不执行。
+
+### MCP Resource
+
+MCP Resource 用于给 AI 客户端提供系统上下文、工具目录和常见调用示例。Resource 本身也会进入 MCP 调用审计。
+
+- `wfm://help/overview`
+  - 作用：说明 WG Free Mesh MCP 的用途、入口、Token 认证方式、read/write 权限和写入确认规则。
+  - 推荐：AI 客户端首次接入或不确定能力边界时先读取。
+- `wfm://help/tool-index`
+  - 作用：按业务场景汇总所有 MCP tools，包括系统、配置、节点、Mesh、端点控制、同步、下载、端口转发和快照。
+  - 推荐：AI 需要把用户意图映射到具体工具时读取。
+- `wfm://help/workflows`
+  - 作用：提供常见工作流示例，例如系统巡检、端点离线诊断、快速组网、端口转发、备份恢复。
+  - 推荐：AI 执行多步任务前读取，避免跳过必要的只读检查。
+- `wfm://schema/payloads`
+  - 作用：说明高频写入工具 payload 的业务语义和注意事项。
+  - 推荐：AI 组装 `write_create_config`、`write_update_node`、`write_quick_generate_mesh`、`write_create_port_forward_rule` 等 payload 前读取。
+- `wfm://system/status`
+  - 作用：读取系统状态资源，等价于 MCP 资源形式的系统状态。
+- `wfm://configs`
+  - 作用：读取配置列表资源。
+
+### MCP Tool 分组
+
+MCP tools 保持稳定命名：只读能力统一以 `read_` 开头，写入能力统一以 `write_` 开头。写入工具必须同时满足：
+
+- MCP Token 权限为 `write`
+- MCP 客户端支持 elicitation 交互确认
+- 用户在确认窗口中接受本次操作
+
+部分工具在参数缺失时会先通过 MCP elicitation 追问补齐参数，再进入最终写入确认：
+
+- `write_build_client_artifact`：可追问下载源、目标系统和架构。
+- `write_create_config_bulk_package`：可追问配置 ID 和要打包的端点 ID 列表。
+- `write_export_snapshot`：可追问要导出的快照 ID。
+- 追问只用于补齐参数，不代表用户已经同意执行；真正执行前仍必须再次进行写入确认。
+
+只读工具：
+
+- `read_system_status`：读取系统状态、拓扑摘要、同步摘要和 MQTT 状态。
+- `read_configs`：读取全部 Mesh 配置列表。
+- `read_config`：读取单个配置对象。
+- `read_config_overview`：读取配置页聚合投影，适合修改前获取上下文。
+- `read_nodes`：读取配置下端点列表。
+- `read_node_workspace`：读取端点详情工作区。
+- `read_mesh_workspace`：读取某端点视角下的 Mesh 连接和校验上下文。
+- `read_mesh_validation`：校验配置拓扑，不修改数据。
+- `read_endpoint_status`：读取动态端点运行态、客户端态、MQTT 状态和配置态。
+- `read_endpoint_logs`：读取端点控制日志。
+- `read_port_forward_rules`：读取受管端口转发规则。
+- `read_snapshots`：读取加密快照元数据。
+- `read_sync_status`：读取配置下所有端点同步状态。
+- `read_node_sync_status`：读取单端点同步状态。
+- `read_wg_preview`：读取单端点生成后的 WireGuard / AmneziaWG 配置预览。
+- `read_client_download_options`：读取客户端下载构建选项。
+
+写入工具：
+
+- `write_create_config` / `write_update_config` / `write_delete_config`：创建、修改、删除配置。
+- `write_create_node` / `write_update_node` / `write_delete_node`：创建、修改、删除端点。
+- `write_create_tag` / `write_apply_tag` / `write_delete_tag`：维护配置标签。
+- `write_create_peer_link_group` / `write_update_peer_link_group` / `write_delete_peer_link_group`：维护双向 Mesh 对。
+- `write_quick_generate_mesh`：按快速组网模式删除并重建配置下 Mesh 对，属于高影响操作。
+- `write_sync_node` / `write_sync_all`：同步单端点或整个配置。
+- `write_endpoint_control`：下发 `start`、`stop`、`push_config`、`wg_show` 控制命令。
+- `write_probe_endpoints`：通过 MQTT 探测动态端点。
+- `write_create_bind_command`：创建一次性客户端绑定命令。
+- `write_reset_client`：重置动态端点客户端态并撤销 MQTT 凭据。
+- `write_create_port_forward_rule` / `write_set_port_forward_rule_enabled` / `write_delete_port_forward_rule`：维护受管端口转发规则。
+- `write_build_client_artifact`：生成或获取客户端压缩包，并返回绑定该客户端产物的 5 分钟下载 URL。
+- `write_create_config_bulk_package`：生成配置批量下载包，并返回绑定该批量包的 5 分钟下载 URL。
+- `write_export_snapshot`：为已有加密快照生成 5 分钟导出 URL。MCP 不提供快照创建、导入、恢复、删除能力，也不接收任何快照密码。
+
+### MCP 常用调用顺序
+
+- 系统巡检：`read_system_status` -> `read_configs`
+- 修改配置前：`read_config_overview` -> `read_mesh_validation` -> 写入工具
+- 端点离线诊断：`read_endpoint_status` -> `read_endpoint_logs` -> `read_node_sync_status` -> `read_wg_preview`
+- 快速组网：`read_config_overview` -> `read_mesh_validation` -> `write_quick_generate_mesh` -> `read_mesh_validation`
+- 创建端口转发：`read_nodes` -> `read_port_forward_rules` -> `write_create_port_forward_rule`
+- 快照导出：`read_snapshots` -> `write_export_snapshot`

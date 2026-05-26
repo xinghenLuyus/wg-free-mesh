@@ -32,5 +32,17 @@ def require_download_grant(
     return auth_service.require_download_grant(download_token, config_id=config_id, node_id=node_id)
 
 
+def require_file_download_or_user(
+    kind: str,
+    resource_id: str,
+    authorization: str | None,
+    download_token: str | None,
+) -> None:
+    user = auth_service.optional_user(_extract_bearer_token(authorization))
+    if user is not None:
+        return
+    auth_service.require_file_download_grant(download_token, kind=kind, resource_id=resource_id)
+
+
 CurrentUserDep = Annotated[CurrentUser, Depends(require_current_user)]
 DownloadGrantDep = Annotated[DownloadGrant, Depends(require_download_grant)]

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal, cast
+from urllib.parse import urlencode
 
 from pydantic import BaseModel, Field
 
@@ -9,9 +10,11 @@ from app.api.v1.routers.configs import ConfigCreateRequest, ConfigUpdateRequest
 from app.api.v1.routers.mesh import PeerLinkGroupRequest, QuickMeshGenerateRequest
 from app.api.v1.routers.nodes import NodeRequest
 from app.api.v1.routers.tools import PortForwardRuleRequest
+from app.core.config import settings
 from app.core.errors import AppError
 from app.mcp.access import McpAccessGrant, current_mcp_grant
 from app.services.control_plane_service import control_plane_service
+from app.services.auth_service import auth_service
 from app.services.download_tools_service import download_tools_service
 
 
@@ -353,11 +356,23 @@ async def reset_client(config_id: str, node_id: str) -> dict[str, object]:
 
 
 async def build_client_artifact(source: str, goos: str, goarch: str) -> dict[str, object]:
-    return download_tools_service.build_client_artifact(source, goos, goarch)
+    artifact = download_tools_service.build_client_artifact(source, goos, goarch)
+    return _with_file_download_url(
+        artifact,
+        kind="client_artifact",
+        resource_id=str(artifact["artifact_id"]),
+        download_path=str(artifact["download_path"]),
+    )
 
 
 async def create_config_bulk_package(config_id: str, node_ids: list[str]) -> dict[str, object]:
-    return download_tools_service.create_config_bulk_package(config_id, node_ids)
+    package = download_tools_service.create_config_bulk_package(config_id, node_ids)
+    return _with_file_download_url(
+        package,
+        kind="config_bulk_package",
+        resource_id=str(package["package_id"]),
+        download_path=str(package["download_path"]),
+    )
 
 
 async def create_snapshot(note: str, password: str) -> dict[str, Any]:
@@ -377,6 +392,52 @@ async def delete_snapshot(snapshot_id: str) -> dict[str, str]:
     control_plane_service.delete_snapshot(snapshot_id)
     await control_plane_service.publish_snapshots()
     return {"message": "Snapshot deleted"}
+
+
+async def export_snapshot(snapshot_id: str) -> dict[str, object]:
+    path = control_plane_service.export_snapshot(snapshot_id)
+    payload: dict[str, object] = {
+        "kind": "snapshot_export",
+        "snapshot_id": snapshot_id,
+        "filename": path.name,
+        "download_path": f"/api/v1/backups/export/{snapshot_id}",
+    }
+    return _with_file_download_url(
+        payload,
+        kind="snapshot_export",
+        resource_id=snapshot_id,
+        download_path=str(payload["download_path"]),
+    )
+
+
+def _with_file_download_url(
+    payload: dict[str, object],
+    *,
+    kind: str,
+    resource_id: str,
+    download_path: str,
+) -> dict[str, object]:
+    grant = current_mcp_grant()
+    token = auth_service.create_file_download_token(
+        kind=kind,
+        resource_id=resource_id,
+        subject=f"mcp:{grant.name}",
+    )
+    access_token = str(token["access_token"])
+    return {
+        **payload,
+        "kind": kind,
+        "download_url": _download_url(download_path, access_token),
+        "download_token_expires_at": str(token["expires_at"]),
+        "token_type": "download",
+    }
+
+
+def _download_url(path: str, token: str) -> str:
+    separator = "&" if "?" in path else "?"
+    relative = f"{path}{separator}{urlencode({'download_token': token})}"
+    public_origin = settings.public_origin.strip().rstrip("/")
+    return f"{public_origin}{relative}" if public_origin else relative
 
 
 def _audit(

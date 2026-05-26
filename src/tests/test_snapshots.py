@@ -3,6 +3,7 @@ from zipfile import ZipFile
 from fastapi.testclient import TestClient
 
 from app.data.store import store
+from app.services.auth_service import auth_service
 
 TEST_PASSWORD = "test-password-123"
 
@@ -146,3 +147,41 @@ def test_snapshot_restore_includes_mcp_access_data(authenticated_client: TestCli
     audit_logs = store.list_mcp_audit_logs(limit=10)
     assert [item["id"] for item in audit_logs] == [audit["id"]]
     assert audit_logs[0]["target_name"] == "snapshot_test"
+
+
+def test_snapshot_export_accepts_scoped_file_download_token(client: TestClient, auth_headers: dict[str, str]) -> None:
+    snapshot_response = client.post(
+        "/api/v1/backups/snapshot",
+        headers=auth_headers,
+        json={"note": "download token", "password": TEST_PASSWORD},
+    )
+    assert snapshot_response.status_code == 200
+    snapshot = snapshot_response.json()["data"]
+    token = auth_service.create_file_download_token(kind="snapshot_export", resource_id=snapshot["id"])
+
+    response = client.get(
+        f"/api/v1/backups/export/{snapshot['id']}",
+        params={"download_token": token["access_token"]},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith("attachment;")
+
+
+def test_file_download_token_cannot_cross_resource(client: TestClient, auth_headers: dict[str, str]) -> None:
+    snapshot_response = client.post(
+        "/api/v1/backups/snapshot",
+        headers=auth_headers,
+        json={"note": "download token", "password": TEST_PASSWORD},
+    )
+    assert snapshot_response.status_code == 200
+    snapshot = snapshot_response.json()["data"]
+    token = auth_service.create_file_download_token(kind="snapshot_export", resource_id="other-snapshot")
+
+    response = client.get(
+        f"/api/v1/backups/export/{snapshot['id']}",
+        params={"download_token": token["access_token"]},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "DOWNLOAD_TOKEN_SCOPE_MISMATCH"
