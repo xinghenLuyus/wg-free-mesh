@@ -33,6 +33,12 @@ const installCommands = [
   { key: 'windows', labelKey: 'endpointControl.installCommandWindowsAdmin', command: '.\\wfmctl.exe install; $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine")' },
   { key: 'unix', labelKey: 'endpointControl.installCommandUnix', command: 'sudo ./wfmctl install' },
 ]
+const actionSuccessKeys: Record<string, string> = {
+  start: 'endpointControl.commandStartQueued',
+  stop: 'endpointControl.commandStopQueued',
+  push_config: 'endpointControl.commandPushConfigQueued',
+  wg_show: 'endpointControl.commandInfoQueued',
+}
 
 const outputLogs = computed(() => logs.value.filter((log) => log.action === 'event').slice(0, 20))
 
@@ -62,8 +68,8 @@ async function sendAction(action: string) {
   const key = action === 'start' ? 'start-wg' : action === 'stop' ? 'stop-wg' : action === 'wg_show' ? 'wg-info' : action === 'push_config' ? 'push-config' : `action-${action}`
   await actions.run(key, async () => {
     try {
-      const result = await api.controlEndpoint(String(route.params.configId), String(route.params.nodeId), action)
-      notify.success(result.message)
+      await api.controlEndpoint(String(route.params.configId), String(route.params.nodeId), action)
+      notify.success(t(actionSuccessKeys[action] || 'endpointControl.commandQueued'))
     } catch (error) {
       notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.commandFailed'))
     }
@@ -113,8 +119,8 @@ async function copyInstallCommand(command: string) {
   try {
     await copyText(command)
     notify.success(t('endpointControl.installCommandCopied'))
-  } catch (error) {
-    notify.error(error instanceof Error ? error.message : t('endpointControl.installCommandCopyFailed'))
+  } catch {
+    notify.error(t('endpointControl.installCommandCopyFailed'))
   }
 }
 

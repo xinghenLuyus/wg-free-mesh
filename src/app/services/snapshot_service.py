@@ -37,7 +37,12 @@ class SnapshotService:
         return self.rebuild_index_from_disk()
 
     def create_snapshot(self, note: str, password: str) -> SnapshotInfo:
-        auth_service.verify_admin_password(password)
+        auth_service.verify_admin_password(
+            password,
+            invalid_code="ADMIN_PASSWORD_INVALID",
+            invalid_status_code=400,
+            invalid_message="Administrator password is incorrect",
+        )
         created_at = now_utc()
         snapshot = SnapshotInfo(
             id=new_id("snap"),
@@ -318,7 +323,7 @@ class SnapshotService:
         except (KeyError, TypeError, ValueError) as exc:
             raise AppError("SNAPSHOT_INVALID_ARCHIVE", "Snapshot archive is invalid", 400) from exc
         except Exception as exc:
-            raise AppError("SNAPSHOT_PASSWORD_INVALID", "Snapshot password is invalid", 401) from exc
+            raise AppError("SNAPSHOT_PASSWORD_INVALID", "Snapshot password is invalid", 400) from exc
 
     def _manifest_crypto(self, manifest: dict[str, object] | None) -> dict[str, object] | None:
         if not manifest or manifest.get("format") != SNAPSHOT_ARCHIVE_FORMAT:

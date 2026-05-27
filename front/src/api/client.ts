@@ -33,6 +33,10 @@ function isAuthFlowUrl(url = '') {
   return ['/auth/login', '/auth/setup', '/auth/session', '/auth/state', '/auth/logout'].includes(url)
 }
 
+function isSessionAuthError(code: string) {
+  return ['AUTH_REQUIRED', 'AUTH_SETUP_REQUIRED', 'INVALID_TOKEN', 'TOKEN_EXPIRED'].includes(code)
+}
+
 function redirectForAuthError(code: string) {
   clearAuthToken()
   if (code === 'AUTH_SETUP_REQUIRED') {
@@ -65,9 +69,8 @@ http.interceptors.response.use(
     if (error instanceof AxiosError) {
       const data = error.response?.data as ApiErrorResponse | undefined
       const code = data?.error?.code || ''
-      const status = error.response?.status || 0
       const url = error.config?.url || ''
-      if (!isAuthFlowUrl(url) && (status === 401 || code === 'AUTH_SETUP_REQUIRED')) {
+      if (!isAuthFlowUrl(url) && isSessionAuthError(code)) {
         redirectForAuthError(code)
       }
     }

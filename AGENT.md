@@ -1,6 +1,6 @@
 # AGENT.md
 
-本文件约束 Codex / 自动化编码助手在本仓库内的行为。所有自动化协作必须同时遵守 [docs/协作约定.md](D:/wenjian/stepsave/project/wg-free-mesh/docs/协作约定.md)。
+本文件约束 Codex / 自动化编码助手在本仓库内的行为。所有自动化协作必须同时遵守 [docs/developer/collaboration.md](docs/developer/collaboration.md)。
 
 ## 基本原则
 

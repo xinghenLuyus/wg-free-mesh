@@ -380,6 +380,7 @@ async function deleteTag(tag: string) {
     if (error instanceof ApiClientError) {
       notify.error(error.message)
     }
+    return
   }
 }
 

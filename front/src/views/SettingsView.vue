@@ -131,6 +131,12 @@ const themeSegmentedOptions = computed(() =>
   themeOptions.map((option) => ({ label: t(option.labelKey), value: option.value })),
 )
 
+function mqttTestMessage(success: boolean, latencyMs: number) {
+  return t(success ? 'settings.connectionSuccessWithLatency' : 'settings.connectionFailedWithLatency', {
+    latency: latencyMs,
+  })
+}
+
 function localeLabel(locale: AppLocale | string) {
   return locale === 'en-US' ? t('locale.enUS') : t('locale.zhCN')
 }
@@ -188,7 +194,7 @@ async function testMqtt() {
     if (!valid) return
     try {
       const result = await api.testMqttSettings({ ...mqttForm })
-      const message = `${result.success ? t('settings.connectionSuccess') : t('settings.connectionFailed')} / ${result.message}`
+      const message = mqttTestMessage(result.success, result.latency_ms)
       if (result.success) {
         notify.success(message)
       } else {

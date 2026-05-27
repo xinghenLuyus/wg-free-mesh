@@ -45,6 +45,9 @@ coverage.out
 
 # Node / frontend build outputs
 node_modules/
+docs/node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
 front/node_modules/
 front/dist/
 front/.vite/

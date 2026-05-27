@@ -8,6 +8,33 @@ from app.services.auth_service import auth_service
 TEST_PASSWORD = "test-password-123"
 
 
+def test_snapshot_create_wrong_admin_password_is_business_error(authenticated_client: TestClient) -> None:
+    response = authenticated_client.post(
+        "/api/v1/backups/snapshot",
+        json={"note": "wrong password", "password": "wrong-password"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "ADMIN_PASSWORD_INVALID"
+
+
+def test_snapshot_restore_wrong_snapshot_password_is_business_error(authenticated_client: TestClient) -> None:
+    snapshot_response = authenticated_client.post(
+        "/api/v1/backups/snapshot",
+        json={"note": "restore wrong password", "password": TEST_PASSWORD},
+    )
+    assert snapshot_response.status_code == 200
+    snapshot = snapshot_response.json()["data"]
+
+    response = authenticated_client.post(
+        f"/api/v1/backups/restore/{snapshot['id']}",
+        json={"password": "wrong-password"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "SNAPSHOT_PASSWORD_INVALID"
+
+
 def test_snapshot_restore_roundtrip_uses_application_database(authenticated_client: TestClient) -> None:
     created = authenticated_client.post("/api/v1/configs", json={"name": "snapshot_config"})
     assert created.status_code == 200
