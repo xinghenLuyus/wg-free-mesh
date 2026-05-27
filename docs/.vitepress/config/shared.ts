@@ -17,7 +17,7 @@ export const shared: UserConfig = {
     lineNumbers: true,
   },
   themeConfig: {
-    logo: { src: `${base}logo.png`, alt: 'WG Free Mesh' },
+    logo: { src: '/logo.png', alt: 'WG Free Mesh' },
     sidebar,
     search: {
       provider: 'local',
