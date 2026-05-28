@@ -43,6 +43,8 @@
 | `INVALID_DOWNLOAD_RESOURCE` | 下载资源类型无效。 |
 | `DOWNLOAD_TOKEN_SCOPE_MISMATCH` | token 与目标文件不匹配。 |
 | `CLIENT_ARTIFACT_NOT_FOUND` | 客户端产物不存在。 |
+| `GITHUB_RELEASE_ASSET_NOT_FOUND` | 当前版本没有匹配的 GitHub Release 客户端包。 |
+| `GITHUB_RELEASE_DOWNLOAD_FAILED` | GitHub Release 客户端包检查失败。 |
 | `CONFIG_BULK_PACKAGE_NOT_FOUND` | 配置批量包不存在。 |
 | `CONFIG_BULK_EMPTY_SELECTION` | 未选择可下载端点。 |
 | `CONFIG_BULK_NODE_NOT_READY` | 端点没有可下载的 staged 配置。 |

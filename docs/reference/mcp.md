@@ -69,7 +69,7 @@ MCP 的目标是让 AI 能读懂当前系统状态，并在用户确认后执行
 | `write_create_port_forward_rule` | 创建端口转发规则。 |
 | `write_set_port_forward_rule_enabled` | 启用或禁用端口转发规则。 |
 | `write_delete_port_forward_rule` | 删除端口转发规则。 |
-| `write_build_client_artifact` | 构建或获取客户端产物，返回下载 URL。 |
+| `write_build_client_artifact` | 本地构建客户端产物，或返回匹配当前版本的 GitHub Release 下载 URL。 |
 | `write_create_config_bulk_package` | 创建配置批量下载包，返回下载 URL。 |
 | `write_export_snapshot` | 导出已有快照，返回 5 分钟下载 URL。 |
 

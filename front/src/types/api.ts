@@ -66,6 +66,7 @@ export interface ClientArtifactRead {
   artifact_id: string
   filename: string
   download_path: string
+  download_url?: string
   source: 'local_build' | 'github_release'
   goos: 'windows' | 'linux' | 'darwin'
   goarch: 'amd64' | 'arm64' | '386'

@@ -636,14 +636,15 @@ def _register_write_tools(server: Any) -> None:
         Use after read_client_download_options. Requires a write token and MCP confirmation.
         Parameters: source is local_build or github_release; goos is windows, linux, or darwin;
         goarch is amd64, arm64, or 386. The 386 architecture is Windows-only.
-        Side effects: may generate a zip artifact in the backend artifact store.
+        Side effects: local_build may generate a zip artifact in the backend artifact store;
+        github_release only returns a matching GitHub Release download URL.
         """
         selection = await _resolve_client_artifact_selection(ctx, source, goos, goarch)
         return await operations.confirmed_write(
             ctx,
             target_name="write_build_client_artifact",
             summary=f"Build client artifact {selection.goos}/{selection.goarch} from {selection.source}",
-            impact="A client download artifact can be generated in the backend artifact store.",
+            impact="local_build can generate a backend artifact; github_release returns an external Release download URL.",
             writer=lambda: operations.build_client_artifact(selection.source, selection.goos, selection.goarch),
         )
 

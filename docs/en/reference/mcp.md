@@ -28,4 +28,5 @@ Authorization: Bearer <mcp-token>
 
 Write tools require a `write` token and confirmation. Snapshot create, import, restore, delete, and snapshot passwords are intentionally not exposed through MCP.
 
-Download-related MCP tools return 5-minute scoped URLs instead of file bytes.
+Download-related MCP tools do not return file bytes. Backend-generated files return 5-minute
+scoped URLs; GitHub Release client downloads return the matching external Release URL directly.

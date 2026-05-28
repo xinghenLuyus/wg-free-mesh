@@ -16,7 +16,7 @@
 - EMQX 节点级账号与 HTTP 授权回查
 - 备份恢复
 - 系统状态聚合
-- 工具下载，包含客户端本地源码构建和配置批量下载
+- 工具下载，包含 GitHub Release 客户端下载、本地源码构建和配置批量下载
 - 客户端绑定、MQTT 账号授权、心跳、事件、命令 ACK 和重置客户端
 - MCP 只读/写工具入口、AI 接入 Token 管理和 MCP 调用审计
 
@@ -90,7 +90,7 @@ Authorization: Bearer <mcp-token>
 
 Token 只分 `read` 和 `write`。所有 MCP 写工具会通过 MCP 标准 elicitation 向客户端请求交互确认；客户端不支持该交互或用户拒绝时，服务端不执行写动作。读写调用都会写入 MCP 审计表，并在 AI 接入页展示。当前 MCP 能力覆盖系统状态、配置、节点、Mesh、端点状态/日志、端口转发、快照元数据、客户端产物下载 URL、配置批量包下载 URL、快照导出 URL，以及配置/节点/Mesh/同步/远程控制/端口转发写操作。
 
-MCP 不提供快照创建、导入、恢复或删除能力，也不接收任何快照密码。客户端下载、配置批量下载和快照导出只返回 5 分钟有效、绑定单个文件的下载 URL，不通过 MCP 传输文件内容。
+MCP 不提供快照创建、导入、恢复或删除能力，也不接收任何快照密码。后端生成的客户端下载、配置批量下载和快照导出只返回 5 分钟有效、绑定单个文件的下载 URL；GitHub Release 客户端下载直接返回外部 Release URL。MCP 不传输文件内容。
 
 ## 手动运行
 
@@ -174,7 +174,7 @@ python -m pytest -q
 - 后端启动会自动协调数据库迁移到最新 schema，已有 SQLite/PostgreSQL 数据库不需要手动补字段
 - 备份恢复使用应用级快照，可在不同数据库之间导入恢复。快照包含 WireGuard 私钥和客户端 MQTT 密码，必须按敏感备份保存。恢复后后端会重建 EMQX 节点用户、清空历史运行态并主动探测端点，端点重新发出 heartbeat、event 或 detect ACK 后才显示在线
 - 生产启动命令同样带 `--timeout-graceful-shutdown 1`，避免 SSE 长连接阻塞停机
-- 下载工具生成的客户端构建产物缓存到后端运行数据目录 `data/artifacts/clients/`；配置批量下载临时包写入 `data/artifacts/config-bulk/`，每次生成新包时会删除旧包，只保留最近一次生成结果。本地开发使用 `--reload` 时应排除 `data` 目录，避免产物写入触发重载
+- 下载工具的 GitHub Release 来源不落后端缓存，直接返回同版本 Release asset URL；本地源码构建产物缓存到后端运行数据目录 `data/artifacts/clients/`。配置批量下载临时包写入 `data/artifacts/config-bulk/`，每次生成新包时会删除旧包，只保留最近一次生成结果。本地开发使用 `--reload` 时应排除 `data` 目录，避免产物写入触发重载
 
 ## 目录索引
 

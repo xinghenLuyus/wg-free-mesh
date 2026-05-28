@@ -7,6 +7,8 @@ from pathlib import Path
 import subprocess
 import tempfile
 import threading
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from app.core.config import settings
@@ -42,10 +44,11 @@ CLIENT_DOWNLOAD_SOURCES = [
     {
         "value": "github_release",
         "label": "GitHub release",
-        "available": False,
-        "description": "Reserved for future official release artifacts.",
+        "available": True,
+        "description": "Download the official client package from the GitHub release matching the server version.",
     },
 ]
+GITHUB_RELEASE_REPOSITORY = "xinghenLuyus/wg-free-mesh"
 
 
 class DownloadToolsService:
@@ -84,15 +87,13 @@ class DownloadToolsService:
                 system: [{"value": arch, "label": SUPPORTED_CLIENT_ARCH_LABELS[arch]} for arch in arches]
                 for system, arches in SUPPORTED_CLIENT_ARCHES.items()
             },
-            "defaults": {"source": "local_build", "goos": "windows", "goarch": "amd64"},
+            "defaults": {"source": "github_release", "goos": "windows", "goarch": "amd64"},
             "version": settings.app_version,
         }
 
     def _validate_client_target(self, source: str, goos: str, goarch: str) -> None:
         if source not in {"local_build", "github_release"}:
             raise AppError("INVALID_DOWNLOAD_SOURCE", "Download source is invalid", 400)
-        if source == "github_release":
-            raise AppError("DOWNLOAD_SOURCE_UNAVAILABLE", "GitHub release source is not available yet", 501)
         if goos not in SUPPORTED_CLIENT_SYSTEMS:
             raise AppError("INVALID_CLIENT_SYSTEM", "Client system is invalid", 400)
         if goarch not in SUPPORTED_CLIENT_ARCHES[goos]:
@@ -136,6 +137,9 @@ class DownloadToolsService:
 
     def build_client_artifact(self, source: str, goos: str, goarch: str) -> dict[str, object]:
         self._validate_client_target(source, goos, goarch)
+        if source == "github_release":
+            return self._github_release_client_artifact(goos, goarch)
+
         artifact_id = self._client_artifact_id(source, goos, goarch)
         artifact_path = self._client_artifact_path(artifact_id)
         filename = self._client_artifact_filename(goos, goarch)
@@ -149,7 +153,16 @@ class DownloadToolsService:
             self._build_local_client_artifact(artifact_path, filename, goos, goarch)
         return self._client_artifact_payload(artifact_id, filename, source, goos, goarch, cached=False)
 
-    def _client_artifact_payload(self, artifact_id: str, filename: str, source: str, goos: str, goarch: str, *, cached: bool) -> dict[str, object]:
+    def _client_artifact_payload(
+        self,
+        artifact_id: str,
+        filename: str,
+        source: str,
+        goos: str,
+        goarch: str,
+        *,
+        cached: bool,
+    ) -> dict[str, object]:
         return {
             "artifact_id": artifact_id,
             "filename": filename,
@@ -161,6 +174,60 @@ class DownloadToolsService:
             "source_hash": self._client_source_hash(),
             "cached": cached,
         }
+
+    def _github_release_client_artifact(self, goos: str, goarch: str) -> dict[str, object]:
+        version = settings.app_version
+        filename = self._client_artifact_filename(goos, goarch)
+        release_url = f"https://github.com/{GITHUB_RELEASE_REPOSITORY}/releases/download/v{version}/{filename}"
+        self._ensure_release_asset_exists(release_url, version, filename)
+        return {
+            "artifact_id": f"github_release-{version}-{goos}-{goarch}",
+            "filename": filename,
+            "download_path": release_url,
+            "download_url": release_url,
+            "source": "github_release",
+            "goos": goos,
+            "goarch": goarch,
+            "version": version,
+            "cached": False,
+        }
+
+    def _ensure_release_asset_exists(self, url: str, version: str, filename: str) -> None:
+        request = Request(
+            url,
+            method="HEAD",
+            headers={"User-Agent": f"WG-Free-Mesh/{settings.app_version}"},
+        )
+        try:
+            with urlopen(request, timeout=10) as response:
+                if response.status >= 400:
+                    raise AppError(
+                        "GITHUB_RELEASE_ASSET_NOT_FOUND",
+                        "GitHub release asset not found",
+                        404,
+                        {"version": version, "filename": filename},
+                    )
+        except HTTPError as exc:
+            if exc.code == 404:
+                raise AppError(
+                    "GITHUB_RELEASE_ASSET_NOT_FOUND",
+                    "GitHub release asset not found",
+                    404,
+                    {"version": version, "filename": filename},
+                ) from exc
+            raise AppError(
+                "GITHUB_RELEASE_DOWNLOAD_FAILED",
+                "GitHub release asset check failed",
+                502,
+                {"status": exc.code, "version": version, "filename": filename},
+            ) from exc
+        except URLError as exc:
+            raise AppError(
+                "GITHUB_RELEASE_DOWNLOAD_FAILED",
+                "GitHub release asset check failed",
+                502,
+                {"message": str(exc.reason), "version": version, "filename": filename},
+            ) from exc
 
     def _build_local_client_artifact(self, artifact_path: Path, filename: str, goos: str, goarch: str) -> None:
         client_dir = self._repo_root / "client"

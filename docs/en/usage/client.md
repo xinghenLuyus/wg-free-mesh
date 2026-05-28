@@ -6,7 +6,12 @@ The client is command-line only. There is no local GUI. This makes it a better f
 
 ## Download the Client
 
-Open the download page from the tool list and choose client download. The page only exposes the build-and-download action. Build cache, artifact paths, and cleanup are handled by the backend.
+Open the download page from the tool list and choose client download. The page supports two sources:
+
+- GitHub release: looks for a Release package matching the current server version, then lets the browser download directly from GitHub.
+- Local source build: asks the server to build a client package from the local `client/` source tree. This is mainly for development and temporary verification.
+
+If GitHub release is selected and the current version or target package does not exist, the page shows an error immediately.
 
 Packages are separated by operating system and architecture. Windows supports the common 64-bit build and an additional 32-bit build. After extraction, keep the client in a stable directory. If the directory is moved, run install again.
 

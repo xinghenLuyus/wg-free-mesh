@@ -79,7 +79,10 @@ def tool_index() -> dict[str, object]:
         },
         "tools": {
             "read_client_download_options": "Read supported client download/build options.",
-            "write_build_client_artifact": "Build or fetch a client artifact.",
+            "write_build_client_artifact": (
+                "Build a local client artifact or return a GitHub Release download URL "
+                "matching the current server version."
+            ),
             "write_create_config_bulk_package": "Create a bulk config download package.",
         },
         "port_forward": {

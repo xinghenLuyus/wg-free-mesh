@@ -28,6 +28,16 @@ const architectureOptions = computed(() => {
 })
 const sourceAvailable = computed(() => selectedSource.value?.available !== false)
 const sourceLabel = computed(() => translateDownloadOption(selectedSource.value?.value, selectedSource.value?.label || source.value))
+const sourceRequirement = computed(() =>
+  source.value === 'github_release'
+    ? t('tools.clientDownload.githubRequirement')
+    : t('tools.clientDownload.requirement'),
+)
+const actionLabel = computed(() =>
+  source.value === 'github_release'
+    ? t('tools.clientDownload.downloadFromRelease')
+    : t('tools.clientDownload.buildAndDownload'),
+)
 const statusTitle = computed(() => t(`tools.clientDownload.status.${statusState.value}.title`))
 const statusDescription = computed(() => t(`tools.clientDownload.status.${statusState.value}.description`))
 
@@ -46,6 +56,15 @@ function saveBlob(blob: Blob, filename: string) {
   link.click()
   document.body.removeChild(link)
   URL.revokeObjectURL(url)
+}
+
+function openDirectDownload(url: string) {
+  const link = document.createElement('a')
+  link.href = url
+  link.rel = 'noopener'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
 }
 
 async function loadOptions() {
@@ -80,6 +99,12 @@ async function generateArtifact() {
     })
     if (source.value !== requestedSource || goos.value !== requestedGoos || goarch.value !== requestedGoarch) return
     statusState.value = 'downloading'
+    if (nextArtifact.download_url) {
+      openDirectDownload(nextArtifact.download_url)
+      statusState.value = 'done'
+      notify.success(t('tools.clientDownload.downloadStarted'))
+      return
+    }
     const blob = await api.downloadClientArtifact(nextArtifact.artifact_id)
     if (source.value !== requestedSource || goos.value !== requestedGoos || goarch.value !== requestedGoarch) return
     saveBlob(blob, nextArtifact.filename)
@@ -129,8 +154,8 @@ onMounted(() => {
         <div class="tool-panel__head">
           <el-icon><SetUp /></el-icon>
           <div>
-            <h2>{{ t('tools.clientDownload.localBuild') }}</h2>
-            <p>{{ t('tools.clientDownload.requirement') }}</p>
+            <h2>{{ sourceLabel }}</h2>
+            <p>{{ sourceRequirement }}</p>
           </div>
         </div>
 
@@ -155,7 +180,7 @@ onMounted(() => {
         </el-form>
 
         <el-button type="primary" :icon="SetUp" :loading="building" :disabled="!sourceAvailable" @click="generateArtifact">
-          {{ t('tools.clientDownload.buildAndDownload') }}
+          {{ actionLabel }}
         </el-button>
       </article>
 

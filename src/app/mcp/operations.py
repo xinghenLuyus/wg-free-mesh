@@ -357,6 +357,8 @@ async def reset_client(config_id: str, node_id: str) -> dict[str, object]:
 
 async def build_client_artifact(source: str, goos: str, goarch: str) -> dict[str, object]:
     artifact = download_tools_service.build_client_artifact(source, goos, goarch)
+    if artifact.get("download_url"):
+        return artifact
     return _with_file_download_url(
         artifact,
         kind="client_artifact",

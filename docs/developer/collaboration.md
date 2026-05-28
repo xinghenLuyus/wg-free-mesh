@@ -48,14 +48,18 @@ ghcr.io/xinghenluyus/wg-free-mesh-app
 
 发布规则：
 
+- 普通 push 不发布镜像，也不创建 Release。
+- 只有推送 `v*` Git tag 才会触发镜像发布和 GitHub Release。
 - 只支持 `x.y.z` 和 `x.y.z-rc.n` 两种版本格式；其它格式直接跳过镜像构建。
 - 镜像版本标签直接使用 `src/pyproject.toml` 的版本号，例如 `1.0.0` 或 `1.0.0-rc.1`。
 - 不发布 `dev`、`sha-*` 或其它临时镜像标签。
 - 如果版本是正式版，镜像同时更新 `latest`。
 - 如果版本是 RC，且仓库里还没有任何 `vX.Y.Z` 正式版 Git tag，镜像同时更新 `latest`。
 - 如果版本是 RC，且仓库里已经存在正式版 Git tag，只发布 RC 版本标签，不更新 `latest`。
-- 如果 workflow 由 Git tag 触发，Git tag 必须是 `v<version>`；不一致时跳过镜像构建。
+- Git tag 必须是 `v<version>`；不一致时发布失败。
 - Docker compose 默认拉取 `latest`，生产环境可在 `.env` 中用 `WFM_IMAGE_TAG` 固定版本。
+- GitHub Release 会自动上传 `client/build_release.py` 生成的多平台客户端 zip 包。
+- Release 创建后仍可在 GitHub 页面手动编辑标题、说明、是否预发布和附件。
 
 首次发布后需要在 GitHub Packages 中确认该镜像为 Public，否则外部用户无法匿名拉取。
 

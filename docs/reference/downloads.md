@@ -17,6 +17,11 @@
 
 ## 客户端产物
 
+客户端产物支持两个来源：
+
+- `github_release`：按 `src/pyproject.toml` 中的当前系统版本拼出 `v{version}` Release，并查找 `wfm-client-{goos}-{goarch}-v{version}.zip`。命中后接口返回 `download_url`，前端直接跳转 GitHub 下载，不经过后端缓存。
+- `local_build`：服务端调用本地 Go 工具链构建 zip，并通过后端下载接口返回。
+
 构建接口：
 
 ```http
@@ -30,6 +35,8 @@ GET /api/v1/tools/download/client-artifacts/{artifact_id}
 ```
 
 下载接口支持管理员会话认证，也支持 `kind=client_artifact` 的文件下载 token。
+
+GitHub Release 来源不使用该下载接口；接口返回的 `download_url` 是 GitHub Release asset URL。
 
 ## 配置批量下载包
 

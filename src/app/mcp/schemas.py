@@ -109,7 +109,9 @@ class McpPortForwardRulePayload(BaseModel):
 
 
 class McpClientArtifactPayload(BaseModel):
-    source: Literal["local_build", "github_release"] = Field(description="Client artifact source. github_release may be unavailable.")
+    source: Literal["local_build", "github_release"] = Field(
+        description="Client artifact source. github_release returns the matching GitHub Release download URL for the current server version."
+    )
     goos: Literal["windows", "linux", "darwin"] = Field(description="Target operating system.")
     goarch: Literal["amd64", "arm64", "386"] = Field(description="Target architecture. 386 is Windows-only.")
 
