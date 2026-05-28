@@ -1,20 +1,59 @@
 # 总体架构
 
-WG Free Mesh 由控制台、后端、数据库、Go 客户端、EMQX 和 Docker gateway 组成。
+WG Free Mesh 由控制台、后端、数据库、Go 客户端、EMQX 和 Docker gateway 组成。开发时先确认组件边界和版本矩阵，再进入具体模块。
+
+## 开发环境速览
+
+版本以当前仓库配置、锁文件和 Docker 编排为准。
+
+| 层级 | 组件 | 当前版本 / 约束 | 来源 |
+| --- | --- | --- | --- |
+| 应用版本 | WG Free Mesh | `1.0.0` | `src/pyproject.toml` |
+| 后端运行时 | Python | `>=3.12`，Docker 镜像 `python:3.12-slim` | `src/pyproject.toml`、`docker/app/backend.Dockerfile` |
+| 后端框架 | FastAPI | `>=0.115.0` | `src/pyproject.toml` |
+| 后端配置 | pydantic-settings | `>=2.6.0` | `src/pyproject.toml` |
+| 数据访问 | SQLAlchemy | `>=2.0.0` | `src/pyproject.toml` |
+| 数据迁移 | Alembic | `>=1.13.0` | `src/pyproject.toml` |
+| PostgreSQL 驱动 | psycopg | `>=3.2.0` | `src/pyproject.toml` |
+| MQTT 客户端 | aiomqtt | `>=2.3.0` | `src/pyproject.toml` |
+| MCP 服务 | mcp | `>=1.12.0` | `src/pyproject.toml` |
+| 前端运行时 | Node.js | Docker 构建使用 `node:22-alpine` | `docker/app/backend.Dockerfile` |
+| 包管理器 | pnpm | `10.33.0` | `docker/app/backend.Dockerfile` |
+| 前端框架 | Vue | `3.5.32` | `front/pnpm-lock.yaml` |
+| 前端构建 | Vite | `5.4.21` | `front/pnpm-lock.yaml` |
+| 前端语言 | TypeScript | `5.9.3` | `front/pnpm-lock.yaml` |
+| UI 组件 | Element Plus | `2.13.7` | `front/pnpm-lock.yaml` |
+| 前端状态 | Pinia | `2.3.1` | `front/pnpm-lock.yaml` |
+| 前端路由 | Vue Router | `4.6.4` | `front/pnpm-lock.yaml` |
+| 前端 i18n | vue-i18n | `11.3.2` | `front/pnpm-lock.yaml` |
+| HTTP 客户端 | Axios | `1.15.0` | `front/pnpm-lock.yaml` |
+| 客户端语言 | Go | `1.22` | `client/go.mod` |
+| 客户端 MQTT | paho.golang | `0.21.0` | `client/go.mod` |
+| 文档站 | VitePress | `1.6.4` | `docs/package.json` |
+| Gateway | Nginx | `1.27-alpine` | `docker/*/docker-compose.yml` |
+| MQTT broker | EMQX | `5.8.5` | `docker/*/docker-compose.yml` |
+| 生产数据库 | PostgreSQL | `16-alpine` | `docker/postgres/docker-compose.yml` |
+| 本地数据库 | SQLite | Python / SQLAlchemy 内置支持 | `docker/sqlite/.env.example` |
+
+## 组件拓扑
 
 ```text
-Browser Console
-  -> Gateway
-    -> Frontend static files
+Browser / MCP client
+  -> Docker gateway (Nginx)
+    -> Frontend static files (Vue / Vite)
     -> FastAPI backend
-      -> SQLAlchemy repository
-      -> SQLite / PostgreSQL
+      -> Service layer
+      -> SQLAlchemy repositories
+      -> SQLite or PostgreSQL
       -> EMQX management API
       -> MCP server
-    -> EMQX MQTT ports
+      -> SSE event stream
+    -> EMQX MQTT listeners
+
+wfmctl
+  -> Backend bind API
 
 wfm-agent
-  -> Backend bind API
   -> EMQX MQTT
   -> wg / awg / wg-quick / awg-quick
 ```

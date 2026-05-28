@@ -1,20 +1,59 @@
 # Architecture
 
-WG Free Mesh consists of the web console, backend, database, Go client, EMQX, and Docker gateway.
+WG Free Mesh consists of the web console, backend, database, Go client, EMQX, and Docker gateway. Before changing code, check the component boundaries and version matrix.
+
+## Development Environment
+
+Versions come from the current repository config, lockfiles, and Docker compose files.
+
+| Layer | Component | Current version / constraint | Source |
+| --- | --- | --- | --- |
+| App version | WG Free Mesh | `1.0.0` | `src/pyproject.toml` |
+| Backend runtime | Python | `>=3.12`, Docker image `python:3.12-slim` | `src/pyproject.toml`, `docker/app/backend.Dockerfile` |
+| Backend framework | FastAPI | `>=0.115.0` | `src/pyproject.toml` |
+| Backend settings | pydantic-settings | `>=2.6.0` | `src/pyproject.toml` |
+| Data access | SQLAlchemy | `>=2.0.0` | `src/pyproject.toml` |
+| Migrations | Alembic | `>=1.13.0` | `src/pyproject.toml` |
+| PostgreSQL driver | psycopg | `>=3.2.0` | `src/pyproject.toml` |
+| MQTT client | aiomqtt | `>=2.3.0` | `src/pyproject.toml` |
+| MCP server | mcp | `>=1.12.0` | `src/pyproject.toml` |
+| Frontend runtime | Node.js | Docker build uses `node:22-alpine` | `docker/app/backend.Dockerfile` |
+| Package manager | pnpm | `10.33.0` | `docker/app/backend.Dockerfile` |
+| Frontend framework | Vue | `3.5.32` | `front/pnpm-lock.yaml` |
+| Frontend build | Vite | `5.4.21` | `front/pnpm-lock.yaml` |
+| Frontend language | TypeScript | `5.9.3` | `front/pnpm-lock.yaml` |
+| UI components | Element Plus | `2.13.7` | `front/pnpm-lock.yaml` |
+| Frontend state | Pinia | `2.3.1` | `front/pnpm-lock.yaml` |
+| Frontend router | Vue Router | `4.6.4` | `front/pnpm-lock.yaml` |
+| Frontend i18n | vue-i18n | `11.3.2` | `front/pnpm-lock.yaml` |
+| HTTP client | Axios | `1.15.0` | `front/pnpm-lock.yaml` |
+| Client language | Go | `1.22` | `client/go.mod` |
+| Client MQTT | paho.golang | `0.21.0` | `client/go.mod` |
+| Documentation | VitePress | `1.6.4` | `docs/package.json` |
+| Gateway | Nginx | `1.27-alpine` | `docker/*/docker-compose.yml` |
+| MQTT broker | EMQX | `5.8.5` | `docker/*/docker-compose.yml` |
+| Production database | PostgreSQL | `16-alpine` | `docker/postgres/docker-compose.yml` |
+| Local database | SQLite | Built into Python / SQLAlchemy support | `docker/sqlite/.env.example` |
+
+## Component Topology
 
 ```text
-Browser Console
-  -> Gateway
-    -> Frontend static files
+Browser / MCP client
+  -> Docker gateway (Nginx)
+    -> Frontend static files (Vue / Vite)
     -> FastAPI backend
-      -> SQLAlchemy repository
-      -> SQLite / PostgreSQL
+      -> Service layer
+      -> SQLAlchemy repositories
+      -> SQLite or PostgreSQL
       -> EMQX management API
       -> MCP server
-    -> EMQX MQTT ports
+      -> SSE event stream
+    -> EMQX MQTT listeners
+
+wfmctl
+  -> Backend bind API
 
 wfm-agent
-  -> Backend bind API
   -> EMQX MQTT
   -> wg / awg / wg-quick / awg-quick
 ```
