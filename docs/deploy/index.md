@@ -77,12 +77,34 @@ http://localhost:8000
 
 如果启用了 MQTT，EMQX 可能比后端更晚就绪。短时间内看到等待 EMQX 或等待端点上线属于正常现象；后端会在 EMQX 在线后同步账号、授权和客户端连接信息。
 
-## 更新
+## 镜像版本
 
-更新代码后，在对应目录重新构建并启动：
+Docker 部署默认使用 `latest` 镜像。`latest` 指向项目当前公开推荐版本；如果当前还没有正式版本，它会指向最新的 RC 版本。
+
+一般部署不需要关心镜像版本，直接执行：
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
+如果你需要生产环境固定版本、避免自动跟随 `latest`，可以在 `.env` 中指定镜像标签，例如：
+
+```env
+WFM_IMAGE_TAG=1.0.0
+```
+
+预发布版本也可以固定，例如：
+
+```env
+WFM_IMAGE_TAG=1.0.0-rc.1
+```
+
+## 更新
+
 更新前建议先在系统设置里导出快照。快照是应用级数据，可以用于 SQLite 和 PostgreSQL 之间迁移。
+
+进入当前使用的 Docker 目录后，直接拉起服务即可：
+
+```bash
+docker compose up -d
+```

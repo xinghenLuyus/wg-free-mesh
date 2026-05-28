@@ -36,6 +36,28 @@ Update docs when changing:
 - Snapshot content and restore semantics.
 - Security boundaries.
 
+## Image Publishing
+
+The app image is built by GitHub Actions and published to GHCR:
+
+```text
+ghcr.io/xinghenluyus/wg-free-mesh-app
+```
+
+There is still only one version source: `[project].version` in `src/pyproject.toml`.
+
+Release rules:
+
+- Branch builds push `dev` and `sha-<commit>` tags.
+- Git tags must use `v<version>` and must exactly match `src/pyproject.toml`.
+- Pre-release versions can use `1.0.0-rc.1`, with the same image tag.
+- Tag builds also update `latest`; before the first stable release, `latest` points to the newest RC.
+- Docker compose pulls `latest` by default. Production deployments can pin a version with `WFM_IMAGE_TAG` in `.env`.
+
+After the first publish, confirm that the package is Public in GitHub Packages. Otherwise external users cannot pull it anonymously.
+
+Local Docker build is for development only. Compose keeps the build block commented out and does not use it as the normal deployment path.
+
 ## Frontend and Backend
 
 If the frontend needs complex derived state, ask the backend for a projection or field. Do not duplicate:

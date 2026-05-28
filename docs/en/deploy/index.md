@@ -77,12 +77,34 @@ Open the console and complete administrator initialization. Then create a config
 
 If MQTT is enabled, EMQX may become ready later than the backend. Seeing temporary EMQX or node waiting states is normal. Once EMQX is online, the backend synchronizes accounts, authorization, and client connection data.
 
-## Update
+## Image Version
 
-After updating code, rebuild and restart from the selected Docker directory:
+Docker deployment uses the `latest` image by default. `latest` points to the current public recommended version. Before the first stable release, it points to the newest RC release.
+
+Most deployments do not need to manage image tags. Start normally:
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
+If you need a fixed production version and do not want to follow `latest`, set the image tag in `.env`:
+
+```env
+WFM_IMAGE_TAG=1.0.0
+```
+
+Pre-release versions can also be pinned:
+
+```env
+WFM_IMAGE_TAG=1.0.0-rc.1
+```
+
+## Update
+
 Export a snapshot from system settings before updating. Snapshots are application-level data and can be used to migrate between SQLite and PostgreSQL.
+
+From the selected Docker directory, start the services again:
+
+```bash
+docker compose up -d
+```

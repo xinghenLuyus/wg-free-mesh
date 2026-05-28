@@ -36,6 +36,28 @@
 - 快照内容和恢复语义变化。
 - 安全边界变化。
 
+## 镜像发布
+
+App 镜像由 GitHub Actions 构建并发布到 GHCR：
+
+```text
+ghcr.io/xinghenluyus/wg-free-mesh-app
+```
+
+版本来源仍然只有一个：`src/pyproject.toml` 的 `[project].version`。
+
+发布规则：
+
+- 分支构建推送 `dev` 和 `sha-<commit>` 标签。
+- Git tag 必须使用 `v<version>`，并且必须与 `src/pyproject.toml` 完全一致。
+- 预发布版本可以使用 `1.0.0-rc.1`，镜像标签同名。
+- tag 构建会同时更新 `latest`；没有正式版本时，`latest` 指向最新 RC。
+- Docker compose 默认拉取 `latest`，生产环境可在 `.env` 中用 `WFM_IMAGE_TAG` 固定版本。
+
+首次发布后需要在 GitHub Packages 中确认该镜像为 Public，否则外部用户无法匿名拉取。
+
+本地 Docker build 只用于开发调试，compose 中保留注释配置，不作为普通部署入口。
+
 ## 前后端协作
 
 前端如果发现需要复杂推导，应优先要求后端提供投影或字段。不要在前端复制：

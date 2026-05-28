@@ -21,9 +21,11 @@ services:
       - app
 
   app:
-    build:
-      context: ../..
-      dockerfile: docker/app/backend.Dockerfile
+    image: ghcr.io/xinghenluyus/wg-free-mesh-app:${WFM_IMAGE_TAG:-latest}
+    # Local image build is for development only.
+    # build:
+    #   context: ../..
+    #   dockerfile: docker/app/backend.Dockerfile
     env_file:
       - ./.env
     volumes:
