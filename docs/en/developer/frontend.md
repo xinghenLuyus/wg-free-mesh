@@ -42,6 +42,7 @@ Major page groups:
 - Node workspace: mesh, sync, control, and advanced settings.
 - Tools: downloads, quick mesh, port forwarding, AI integration.
 - Settings: system settings, MQTT, backups, and password.
+- Help entry: the sidebar opens the public documentation site in a new tab; there is no local Help page.
 
 Tool pages should focus on user actions and avoid exposing backend cache paths or temporary internals.
 

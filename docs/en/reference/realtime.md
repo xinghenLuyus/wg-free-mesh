@@ -58,7 +58,7 @@ After connection:
 | `control.log.updated` | Control log status update. | `config_id`, `node_id`, `log` |
 | `settings.mqtt.updated` | MQTT settings form refresh. | `mqtt` |
 | `snapshot.list.updated` | Snapshot list refresh. | `snapshots` |
-| `system.status.updated` | Home, system page, global status. | `summary`, `services`, `sync`, `topology` |
+| `system.status.updated` | Home, system page, global status. | `summary`, `services`, `sync`, `topology`, `update` |
 | `system.clock.sync` | Server time sync and SSE liveness. | `timestamp` |
 
 ## Frontend Rules

@@ -23,6 +23,7 @@ from app.services.emqx_reconcile_service import emqx_reconcile_service
 from app.services.realtime_service import realtime_service
 from app.services.snapshot_service import snapshot_service
 from app.services.system_projection_service import system_projection_service
+from app.services.update_check_service import system_update_check_service
 
 logger = logging.getLogger(__name__)
 
@@ -857,7 +858,11 @@ class ControlPlaneService:
         configs = store._list_configs_base()
         snapshots = [self._build_config_projection(config.id, use_cache=True, store_cache=True) for config in configs]
         status = system_projection_service.build(snapshots, mqtt_status=str(mqtt_status["status"]))
-        return {**status, "timestamp": _iso_datetime(status["timestamp"]) or ""}
+        return {
+            **status,
+            "update": system_update_check_service.get_status(),
+            "timestamp": _iso_datetime(status["timestamp"]) or "",
+        }
 
 
 control_plane_service = ControlPlaneService()

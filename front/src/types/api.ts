@@ -615,6 +615,15 @@ export interface SystemStatusRead {
     mqtt: string
     wireguard: string
   }
+  update: {
+    has_update: boolean
+    current_version: string
+    latest_version: string
+    is_prerelease: boolean
+    release_url: string
+    name: string
+    published_at: string
+  }
   timestamp: string
 }
 

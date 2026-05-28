@@ -28,7 +28,6 @@
 - `SettingsView.vue`
   - 控制台语言、主题模式、MQTT、密码和快照管理页面。
   - 快照卡片负责创建备注、修改备注、导入、导出、恢复和删除。
-- `HelpView.vue`
 - `SystemView.vue`
 
 ## 约定

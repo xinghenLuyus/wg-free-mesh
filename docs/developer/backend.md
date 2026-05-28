@@ -62,6 +62,18 @@ EMQX 是外部执行层。后端在 EMQX 在线时同步账号和授权，离线
 
 涉及 MQTT 凭据、在线态或 EMQX 回调时，同时更新 [MQTT 协议](./mqtt-protocol)、[MQTT 消息参考](/reference/mqtt-messages) 和 [客户端接入时序](/reference/client-lifecycle)。
 
+## 系统更新检测
+
+系统状态接口会在后台检查 GitHub Release，并把结果合并到 `/api/v1/system/status` 的 `update` 字段。检查失败或没有新版时，前端保持静默，不显示更新提示。
+
+版本判断规则：
+
+- 当前版本是正式版 `x.y.z` 时，只检测更高的正式版，不提示 RC/快照版。
+- 当前版本是 RC/快照版 `x.y.z-rc.n` 时，检测更高的 RC/快照版，也检测当前版本线及更高版本线的正式版。
+- 检查结果有短期缓存，避免系统状态刷新频繁访问 GitHub。
+
+系统更新只做提示和跳转 Release，不在后端执行自升级。
+
 ## 错误处理
 
 业务错误使用统一错误结构，错误码要稳定。新增错误码时同步 [错误码参考](/reference/errors)。

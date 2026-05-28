@@ -118,6 +118,7 @@ export default {
     checking: '系统状态检测中...',
     syncIssue: '存在自动同步异常',
     running: '系统运行中',
+    runningUpdate: '系统运行中（有更新）',
     runningDev: '系统运行中（开发环境）',
     waiting: '等待端点上线',
     meshAlert: '存在 Mesh 异常',
@@ -445,11 +446,6 @@ export default {
     loadFailed: '配置加载失败',
     createFailed: '配置创建失败',
   },
-  help: {
-    title: '帮助',
-    placeholder: '帮助内容后续补充。',
-    description: '这里保留和旧版一致的页面入口与占位位置。',
-  },
   settings: {
     eyebrow: 'System Settings',
     title: '系统设置',
@@ -556,6 +552,10 @@ export default {
     topologyConfigErrors: '{count} 条异常连接',
     topologyConfigNodes: '{count} 个异常节点',
     topologyEmpty: '当前没有需要处理的 Mesh 异常。',
+    updateAvailable: '发现新版本',
+    updateVersion: 'WG Free Mesh {version}',
+    updateDescription: '当前版本 {current}，最新版本 {latest}。点击查看 GitHub Release 获取更新说明。',
+    openRelease: '查看 Release',
     loadFailed: '系统状态加载失败',
   },
   download: {

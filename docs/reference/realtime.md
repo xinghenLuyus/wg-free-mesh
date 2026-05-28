@@ -70,7 +70,7 @@ data: {"type":"system.status.updated","payload":{}}
 | `control.log.updated` | 控制日志状态变化。 | `config_id`、`node_id`、`log` |
 | `settings.mqtt.updated` | 设置页 MQTT 表单跨页面同步。 | `mqtt` |
 | `snapshot.list.updated` | 设置页快照列表刷新。 | `snapshots` |
-| `system.status.updated` | 首页、系统状态页、左下角全局状态刷新。 | `summary`、`services`、`sync`、`topology` |
+| `system.status.updated` | 首页、系统状态页、左下角全局状态刷新。 | `summary`、`services`、`sync`、`topology`、`update` |
 | `system.clock.sync` | 服务端时间校准和 SSE 活性信号。 | `timestamp` |
 
 ## Mesh 工作区刷新

@@ -12,7 +12,6 @@ const ConfigWorkspaceLayout = () => import('@/views/ConfigWorkspaceLayout.vue')
 const DownloadConfigView = () => import('@/views/DownloadConfigView.vue')
 const DownloadToolsView = () => import('@/views/DownloadToolsView.vue')
 const EndpointsView = () => import('@/views/EndpointsView.vue')
-const HelpView = () => import('@/views/HelpView.vue')
 const HomeView = () => import('@/views/HomeView.vue')
 const QuickMeshGenerateView = () => import('@/views/QuickMeshGenerateView.vue')
 const QuickMeshToolsView = () => import('@/views/QuickMeshToolsView.vue')
@@ -63,7 +62,7 @@ export const router = createRouter({
           ],
         },
         { path: 'settings', component: SettingsView },
-        { path: 'help', component: HelpView },
+        { path: 'help', redirect: '/' },
         { path: 'backups', redirect: '/settings' },
         { path: 'system', component: SystemView },
         { path: 'tools/download', component: DownloadToolsView },

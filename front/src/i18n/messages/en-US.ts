@@ -118,6 +118,7 @@ export default {
     checking: 'Checking system status...',
     syncIssue: 'Auto sync issues detected',
     running: 'System running',
+    runningUpdate: 'System running (update available)',
     runningDev: 'System running (development)',
     waiting: 'Waiting for endpoints',
     mqttError: 'MQTT service error',
@@ -445,11 +446,6 @@ export default {
     loadFailed: 'Failed to load configs',
     createFailed: 'Failed to create config',
   },
-  help: {
-    title: 'Help',
-    placeholder: 'Help content will be added later.',
-    description: 'This keeps the same page entry and placeholder position as the old version.',
-  },
   settings: {
     eyebrow: 'System Settings',
     title: 'System Settings',
@@ -556,6 +552,10 @@ export default {
     topologyConfigErrors: '{count} broken links',
     topologyConfigNodes: '{count} affected nodes',
     topologyEmpty: 'There are no Mesh issues to resolve right now.',
+    updateAvailable: 'Update available',
+    updateVersion: 'WG Free Mesh {version}',
+    updateDescription: 'Current version is {current}; latest version is {latest}. Open GitHub Release for details.',
+    openRelease: 'Open Release',
     loadFailed: 'Failed to load system status',
   },
   download: {

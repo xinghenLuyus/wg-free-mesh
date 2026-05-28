@@ -41,6 +41,18 @@ EMQX is an execution layer. If it is offline, write to the database first and sy
 
 When MQTT credentials, online state, or EMQX callbacks change, update [MQTT Protocol](./mqtt-protocol), [MQTT Messages](/en/reference/mqtt-messages), and [Client Lifecycle](/en/reference/client-lifecycle).
 
+## System Update Check
+
+The system status API checks GitHub Releases in the background and adds the result to the `update` field of `/api/v1/system/status`. If the check fails or no newer version exists, the frontend stays silent and does not show an update prompt.
+
+Version selection rules:
+
+- When the current version is stable `x.y.z`, only newer stable releases are considered. RC/snapshot releases are ignored.
+- When the current version is an RC/snapshot `x.y.z-rc.n`, newer RC/snapshot releases are considered, and stable releases on the same version line or a newer version line are also considered.
+- Results are cached briefly to avoid hitting GitHub on every system status refresh.
+
+System update checking only shows a prompt and links to GitHub Release. The backend never performs self-upgrade.
+
 ## Errors
 
 Business errors use the unified error structure. New error codes must be added to [Errors](/en/reference/errors).

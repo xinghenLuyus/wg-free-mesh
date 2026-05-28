@@ -96,7 +96,7 @@ const realtime = useRealtime((event: RealtimeEvent) => {
 const topItems = computed(() => [
   { path: '/', label: t('layout.home'), icon: House },
   { path: '/settings', label: t('layout.settings'), icon: Setting },
-  { path: '/help', label: t('layout.help'), icon: InfoFilled },
+  { path: 'https://wfm.xinghenluyus.cn', label: t('layout.help'), icon: InfoFilled, external: true },
 ])
 const toolItems = computed(() => [
   { path: '/tools/download', label: t('layout.download'), icon: Download },
@@ -111,6 +111,7 @@ const systemStatusText = computed(() => {
   if (systemStatus.value?.services.mqtt === 'disabled') return t('layout.mqttDisabled')
   if (!systemStatus.value) return t('layout.checking')
   if (systemStatus.value.sync.issue_count > 0) return t('layout.syncIssue')
+  if (systemStatus.value.update?.has_update) return t('layout.runningUpdate')
   if (health.value?.dev_test_api_enabled) return t('layout.runningDev')
   return t('layout.running')
 })
@@ -167,6 +168,10 @@ function isToolActive(path: string) {
   return currentPath.value === path || currentPath.value.startsWith(`${path}/`)
 }
 
+function openExternalUrl(url: string) {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
 async function handleLogout() {
   await actions.run('logout', async () => {
     await authStore.logout()
@@ -210,16 +215,17 @@ watch(
       </div>
 
       <nav class="sidebar__nav">
-        <RouterLink
+        <a
           v-for="item in topItems"
           :key="item.path"
-          :to="item.path"
+          :href="item.external ? item.path : undefined"
           class="sidebar-link"
-          :class="{ 'sidebar-link--active': currentPath === item.path }"
+          :class="{ 'sidebar-link--active': !item.external && currentPath === item.path }"
+          @click.prevent="item.external ? openExternalUrl(item.path) : router.push(item.path)"
         >
           <el-icon><component :is="item.icon" /></el-icon>
           <span>{{ item.label }}</span>
-        </RouterLink>
+        </a>
 
         <div class="sidebar-divider"></div>
         <div class="sidebar-section">{{ t('layout.configList') }}</div>

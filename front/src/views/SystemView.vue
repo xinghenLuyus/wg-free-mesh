@@ -55,6 +55,12 @@ function openNodeApply(configId: string, nodeId: string) {
   void router.push(`/configs/${configId}/nodes/${nodeId}/apply`)
 }
 
+function openReleasePage() {
+  const url = status.value?.update.release_url
+  if (!url) return
+  window.location.href = url
+}
+
 const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type === 'system.clock.sync' && health.value) {
     const payload = event.payload as unknown as SystemClockSyncPayload
@@ -117,6 +123,20 @@ onBeforeUnmount(() => {
       <el-descriptions-item :label="t('system.time')">{{ serverClockText }}</el-descriptions-item>
       <el-descriptions-item :label="t('system.timezone')">{{ health.timezone }}</el-descriptions-item>
     </el-descriptions>
+  </section>
+
+  <section v-if="status?.update.has_update" class="content-band section-gap update-card">
+    <div class="update-card__copy">
+      <p class="update-card__eyebrow">{{ t('system.updateAvailable') }}</p>
+      <h2>{{ status.update.name || t('system.updateVersion', { version: status.update.latest_version }) }}</h2>
+      <p>
+        {{ t('system.updateDescription', {
+          current: status.update.current_version,
+          latest: status.update.latest_version,
+        }) }}
+      </p>
+    </div>
+    <el-button type="primary" @click="openReleasePage">{{ t('system.openRelease') }}</el-button>
   </section>
 
   <section v-if="status" class="content-band section-gap">
@@ -227,6 +247,38 @@ onBeforeUnmount(() => {
   margin-top: 20px;
 }
 
+.update-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-color: color-mix(in srgb, var(--el-color-warning) 42%, var(--app-border));
+  background: color-mix(in srgb, var(--el-color-warning) 8%, var(--app-surface));
+}
+
+.update-card__copy {
+  min-width: 0;
+}
+
+.update-card__eyebrow {
+  margin: 0 0 8px;
+  color: var(--el-color-warning-dark-2);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.update-card h2 {
+  margin: 0;
+  color: var(--app-text-strong);
+  font-size: 20px;
+}
+
+.update-card p {
+  margin: 8px 0 0;
+  color: var(--app-muted);
+  line-height: 1.6;
+}
+
 .topology-head {
   display: flex;
   align-items: center;
@@ -301,6 +353,7 @@ onBeforeUnmount(() => {
 
 @media (max-width: 720px) {
   .page-header,
+  .update-card,
   .topology-head,
   .topology-card__head {
     flex-direction: column;
