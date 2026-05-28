@@ -2,7 +2,7 @@
 
 WG Free Mesh is a centralized management platform for WireGuard networks. It brings configs, nodes, client onboarding, Mesh relationships, config delivery, endpoint control, backups, and AI integration into one console, so multiple client nodes can be managed, configured, observed, and quickly rebuilt from one place.
 
-![Console overview](/images/png1-en.png)
+![Console overview](https://bu.dusays.com/2026/05/28/6a17f2060d63d.png)
 
 ## Good fits
 
@@ -32,13 +32,13 @@ Manage all client nodes under one config. Each node can maintain virtual IPs, pu
 
 A config defines the virtual subnet, default listen port, default DNS, protocol type, and default behavior for newly created nodes. A node represents an actual client endpoint in the network.
 
-![Config page](/images/png2-en.png)
+![Config page](https://bu.dusays.com/2026/05/28/6a17f20ae0775.png)
 
 ### Generated WireGuard configs
 
 The system generates per-node config text from configs, nodes, and Mesh peer links. For fields that are outside automatic generation, it provides dedicated pages for manual maintenance. If a client is bound, staged configs can be synchronized and delivered automatically.
 
-![Config preview](/images/png3-en.png)
+![Config preview](https://bu.dusays.com/2026/05/28/6a17f20fad6cd.png)
 
 ### Quick Mesh
 
@@ -52,7 +52,7 @@ Built-in quick networking modes:
 
 After downloading the client, bind it to a node with `wfmctl bind`. Once bound, the server can observe client status and send actions such as start, stop, push config, and show runtime information.
 
-![Endpoint control](/images/png4-en.png)
+![Endpoint control](https://bu.dusays.com/2026/05/28/6a17f213ea380.png)
 
 ### Downloads and backups
 
