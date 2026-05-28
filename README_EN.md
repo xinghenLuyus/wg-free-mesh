@@ -1,4 +1,7 @@
-# WG Free Mesh
+<h1>
+  <img src="./front/public/logo.png" alt="WG Free Mesh" width="36" align="left" />
+  WG Free Mesh
+</h1>
 
 English | [简体中文](./README.md)
 
