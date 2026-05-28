@@ -48,10 +48,13 @@ There is still only one version source: `[project].version` in `src/pyproject.to
 
 Release rules:
 
-- Branch builds push `dev` and `sha-<commit>` tags.
-- Git tags must use `v<version>` and must exactly match `src/pyproject.toml`.
-- Pre-release versions can use `1.0.0-rc.1`, with the same image tag.
-- Tag builds also update `latest`; before the first stable release, `latest` points to the newest RC.
+- Only `x.y.z` and `x.y.z-rc.n` version formats are supported. Other formats skip image builds.
+- The image version tag is read directly from `src/pyproject.toml`, for example `1.0.0` or `1.0.0-rc.1`.
+- `dev`, `sha-*`, and other temporary image tags are not published.
+- Stable versions also update `latest`.
+- RC versions also update `latest` only when the repository has no existing `vX.Y.Z` stable Git tag.
+- RC versions do not update `latest` once a stable Git tag exists.
+- If the workflow is triggered by a Git tag, the Git tag must be `v<version>`. Mismatches skip image builds.
 - Docker compose pulls `latest` by default. Production deployments can pin a version with `WFM_IMAGE_TAG` in `.env`.
 
 After the first publish, confirm that the package is Public in GitHub Packages. Otherwise external users cannot pull it anonymously.

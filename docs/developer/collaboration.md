@@ -48,10 +48,13 @@ ghcr.io/xinghenluyus/wg-free-mesh-app
 
 发布规则：
 
-- 分支构建推送 `dev` 和 `sha-<commit>` 标签。
-- Git tag 必须使用 `v<version>`，并且必须与 `src/pyproject.toml` 完全一致。
-- 预发布版本可以使用 `1.0.0-rc.1`，镜像标签同名。
-- tag 构建会同时更新 `latest`；没有正式版本时，`latest` 指向最新 RC。
+- 只支持 `x.y.z` 和 `x.y.z-rc.n` 两种版本格式；其它格式直接跳过镜像构建。
+- 镜像版本标签直接使用 `src/pyproject.toml` 的版本号，例如 `1.0.0` 或 `1.0.0-rc.1`。
+- 不发布 `dev`、`sha-*` 或其它临时镜像标签。
+- 如果版本是正式版，镜像同时更新 `latest`。
+- 如果版本是 RC，且仓库里还没有任何 `vX.Y.Z` 正式版 Git tag，镜像同时更新 `latest`。
+- 如果版本是 RC，且仓库里已经存在正式版 Git tag，只发布 RC 版本标签，不更新 `latest`。
+- 如果 workflow 由 Git tag 触发，Git tag 必须是 `v<version>`；不一致时跳过镜像构建。
 - Docker compose 默认拉取 `latest`，生产环境可在 `.env` 中用 `WFM_IMAGE_TAG` 固定版本。
 
 首次发布后需要在 GitHub Packages 中确认该镜像为 Public，否则外部用户无法匿名拉取。
