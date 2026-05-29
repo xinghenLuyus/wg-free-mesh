@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from enum import StrEnum
 from uuid import uuid4
 
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import x25519
 from pydantic import BaseModel, Field
 
 
@@ -31,8 +33,15 @@ def generate_private_key() -> str:
 
 
 def derive_public_key(private_key: str) -> str:
-    digest = hashlib.sha256(private_key.encode("utf-8")).digest()[:32]
-    return encode_key(digest)
+    raw_private_key = base64.b64decode(private_key, validate=True)
+    if len(raw_private_key) != 32:
+        raise ValueError("WireGuard private key must decode to 32 bytes")
+    public_key = x25519.X25519PrivateKey.from_private_bytes(raw_private_key).public_key()
+    raw_public_key = public_key.public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    return encode_key(raw_public_key)
 
 
 def generate_key_pair() -> tuple[str, str]:
