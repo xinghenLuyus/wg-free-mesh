@@ -28,6 +28,34 @@
 POST /api/v1/tools/download/client-artifacts/build
 ```
 
+复制 bash 下载命令时使用更小的权限边界：
+
+- `github_release`：前端不请求后端授权，直接按当前版本、系统和架构拼出 GitHub Release asset URL。复制出的命令只包含 `curl` 下载和 `unzip` 解压。
+- `local_build`：前端调用下载授权接口，后端复用客户端下载构建逻辑生成或定位 zip，然后签发 5 分钟有效的 `client_artifact` 文件 token。复制出的命令只包含带 `download_token` 的文件 URL，不包含管理员会话 token。
+
+下载授权接口：
+
+```http
+POST /api/v1/tools/download/client-artifacts/download-grant
+```
+
+请求体与构建接口一致：
+
+```json
+{
+  "source": "local_build",
+  "goos": "linux",
+  "goarch": "amd64"
+}
+```
+
+返回值包含 `filename`、`download_path`、`download_token` 和 `download_token_expires_at`。该 token 的 scope 固定为：
+
+```text
+kind=client_artifact
+resource_id={artifact_id}
+```
+
 下载接口：
 
 ```http
@@ -37,6 +65,18 @@ GET /api/v1/tools/download/client-artifacts/{artifact_id}
 下载接口支持管理员会话认证，也支持 `kind=client_artifact` 的文件下载 token。
 
 GitHub Release 来源不使用该下载接口；接口返回的 `download_url` 是 GitHub Release asset URL。
+
+复制出的 bash 命令示例：
+
+```bash
+curl -fL -o 'wfm-client-linux-amd64-v1.0.0-rc.1.zip' 'https://github.com/xinghenLuyus/wg-free-mesh/releases/download/v1.0.0-rc.1/wfm-client-linux-amd64-v1.0.0-rc.1.zip' && unzip -oq 'wfm-client-linux-amd64-v1.0.0-rc.1.zip' -d 'wfm-client-linux-amd64-v1.0.0-rc.1'
+```
+
+本地构建源示例：
+
+```bash
+curl -fL -o 'wfm-client-linux-amd64-v1.0.0-rc.1.zip' 'https://wfm.example.com/api/v1/tools/download/client-artifacts/local_build-...-linux-amd64?download_token=xxxxx' && unzip -oq 'wfm-client-linux-amd64-v1.0.0-rc.1.zip' -d 'wfm-client-linux-amd64-v1.0.0-rc.1'
+```
 
 ## 配置批量下载包
 

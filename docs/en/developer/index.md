@@ -7,15 +7,16 @@ If you only want to deploy and use the system, start with [Guide](/en/guide/) an
 ## Reading Order
 
 1. [Architecture](./architecture): understand the main processes and components.
-2. [Project Structure](./project-structure): understand source directories, runtime data, and ownership boundaries.
-3. [Backend](./backend): understand where business rules live.
-4. [Database](./database): understand SQLAlchemy, Alembic, and snapshots.
-5. [Frontend](./frontend): understand why the frontend does not duplicate backend rules.
-6. [Client](./client): understand `wfm-agent` and `wfmctl`.
-7. [Events](./events): understand SSE event boundaries.
-8. [MQTT Protocol](./mqtt-protocol): understand the control channel between backend, EMQX, and clients.
-9. [API Contract](./api-contract): understand response shape, errors, and download tokens.
-10. [Collaboration](./collaboration): read this before making broad changes.
+2. [Development Startup](./dev-start): start the local development environment in EMQX, backend, frontend order.
+3. [Project Structure](./project-structure): understand source directories, runtime data, and ownership boundaries.
+4. [Backend](./backend): understand where business rules live.
+5. [Database](./database): understand SQLAlchemy, Alembic, and snapshots.
+6. [Frontend](./frontend): understand why the frontend does not duplicate backend rules.
+7. [Client](./client): understand `wfm-agent` and `wfmctl`.
+8. [Events](./events): understand SSE event boundaries.
+9. [MQTT Protocol](./mqtt-protocol): understand the control channel between backend, EMQX, and clients.
+10. [API Contract](./api-contract): understand response shape, errors, and download tokens.
+11. [Collaboration](./collaboration): read this before making broad changes.
 
 ## By Task
 

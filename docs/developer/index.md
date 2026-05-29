@@ -9,15 +9,16 @@
 建议按下面顺序阅读：
 
 1. [总体架构](./architecture)：先理解系统由哪些进程和组件组成。
-2. [目录与边界](./project-structure)：确认源码目录、运行数据和职责边界。
-3. [后端](./backend)：理解业务规则放在哪里，API、服务、仓储如何分层。
-4. [数据库](./database)：理解 SQLAlchemy、Alembic 和快照的关系。
-5. [前端](./frontend)：理解前端只做展示和交互，不复制后端业务规则。
-6. [客户端](./client)：理解 `wfm-agent` 和 `wfmctl` 的职责。
-7. [实时事件](./events)：理解 SSE 事件边界和页面刷新方式。
-8. [MQTT 协议](./mqtt-protocol)：理解服务端、EMQX 和客户端之间的控制通道。
-9. [API 契约](./api-contract)：理解 API 响应、错误和下载 token。
-10. [协作约定](./collaboration)：修改代码前先确认开发边界。
+2. [开发环境启动](./dev-start)：按 EMQX、后端、前端顺序启动本地开发环境。
+3. [目录与边界](./project-structure)：确认源码目录、运行数据和职责边界。
+4. [后端](./backend)：理解业务规则放在哪里，API、服务、仓储如何分层。
+5. [数据库](./database)：理解 SQLAlchemy、Alembic 和快照的关系。
+6. [前端](./frontend)：理解前端只做展示和交互，不复制后端业务规则。
+7. [客户端](./client)：理解 `wfm-agent` 和 `wfmctl` 的职责。
+8. [实时事件](./events)：理解 SSE 事件边界和页面刷新方式。
+9. [MQTT 协议](./mqtt-protocol)：理解服务端、EMQX 和客户端之间的控制通道。
+10. [API 契约](./api-contract)：理解 API 响应、错误和下载 token。
+11. [协作约定](./collaboration)：修改代码前先确认开发边界。
 
 ## 按任务查阅
 

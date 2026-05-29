@@ -117,7 +117,10 @@ func Start() error {
 	if err := startServiceRequest(); err != nil {
 		return err
 	}
-	fmt.Printf("Service %s start requested.\n", Name)
+	if err := waitForServiceState("running", 15*time.Second); err != nil {
+		return err
+	}
+	fmt.Printf("Service %s started.\n", Name)
 	return nil
 }
 
@@ -142,7 +145,7 @@ func Restart() error {
 	}
 	if info.Installed && info.State != "stopped" {
 		_ = stopServiceRequest()
-		if err := waitForServiceState("stopped", 30*time.Second); err != nil {
+		if err := waitForServiceState("stopped", 15*time.Second); err != nil {
 			return err
 		}
 	}
@@ -418,10 +421,50 @@ func waitForServiceState(target string, timeout time.Duration) error {
 			return nil
 		}
 		if time.Now().After(deadline) {
-			return fmt.Errorf("service %s did not reach %s state within %s; last state: %s", Name, target, timeout, lastState)
+			return fmt.Errorf("service %s did not reach %s state within %s; last state: %s%s", Name, target, timeout, lastState, serviceStartDiagnostics())
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+func serviceStartDiagnostics() string {
+	var sections []string
+	if output, err := exec.Command("sc.exe", "queryex", Name).CombinedOutput(); err == nil {
+		if text := strings.TrimSpace(string(output)); text != "" {
+			sections = append(sections, "sc queryex output:\n"+text)
+		}
+	} else {
+		text := strings.TrimSpace(string(output))
+		if text == "" {
+			sections = append(sections, fmt.Sprintf("sc queryex failed: %v", err))
+		} else {
+			sections = append(sections, fmt.Sprintf("sc queryex failed: %v\n%s", err, text))
+		}
+	}
+	if tail := serviceLogTail(40); tail != "" {
+		sections = append(sections, "recent service log:\n"+tail)
+	}
+	if len(sections) == 0 {
+		return ""
+	}
+	return "\n\n" + strings.Join(sections, "\n\n")
+}
+
+func serviceLogTail(lines int) string {
+	body, err := os.ReadFile(filepath.Join(logDir(), "wfm-agent.log"))
+	if err != nil {
+		return ""
+	}
+	text := strings.TrimSpace(string(body))
+	if text == "" {
+		return ""
+	}
+	parts := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	start := 0
+	if len(parts) > lines {
+		start = len(parts) - lines
+	}
+	return strings.Join(parts[start:], "\n")
 }
 
 func commandOutput(action string, name string, args ...string) (string, error) {

@@ -7,9 +7,11 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.v1.routing import SessionProtectedAPIRouter
+from app.api.v1.deps import CurrentUserDep
 from app.api.v1.deps import require_file_download_or_user
 from app.core.responses import ApiResponse, ok
 from app.core.validation import strip_required_text
+from app.services.auth_service import auth_service
 from app.services.control_plane_service import control_plane_service
 from app.services.download_tools_service import download_tools_service
 
@@ -48,6 +50,33 @@ def build_client_artifact(payload: Annotated[dict[str, Any], Body()]) -> ApiResp
             str(payload.get("goos") or ""),
             str(payload.get("goarch") or ""),
         )
+    )
+
+
+@router.post("/download/client-artifacts/download-grant")
+def create_client_artifact_download_grant(
+    payload: Annotated[dict[str, Any], Body()],
+    user: CurrentUserDep,
+) -> ApiResponse[dict[str, object]]:
+    artifact = download_tools_service.build_client_artifact(
+        str(payload.get("source") or ""),
+        str(payload.get("goos") or ""),
+        str(payload.get("goarch") or ""),
+    )
+    if artifact.get("download_url"):
+        return ok(artifact)
+    token = auth_service.create_file_download_token(
+        kind="client_artifact",
+        resource_id=str(artifact["artifact_id"]),
+        subject=user.username,
+    )
+    return ok(
+        {
+            **artifact,
+            "download_token": token["access_token"],
+            "download_token_expires_at": token["expires_at"],
+            "token_type": token["token_type"],
+        }
     )
 
 

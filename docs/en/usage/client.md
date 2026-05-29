@@ -28,7 +28,7 @@ On Windows, use an elevated PowerShell from the client directory:
 On Linux and macOS, run from the client directory:
 
 ```bash
-sudo ./wfmctl install
+chmod +x ./wfmctl ./wfm-agent && sudo ./wfmctl install
 ```
 
 During install, the client prints its identity and version, then checks whether `wg` and `awg` are available. Missing toolchains should produce a clear hint but should not block installation.

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ArrowLeft, Download, Finished, SetUp } from '@element-plus/icons-vue'
+import { ArrowLeft, CopyDocument, Download, Finished, SetUp } from '@element-plus/icons-vue'
 import { computed, onMounted, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
+import { API_BASE_URL, API_ORIGIN } from '@/api/base'
 import { api } from '@/api/modules'
 import type { ClientDownloadOptionsRead } from '@/types/api'
 import { notify } from '@/utils/notify'
@@ -18,6 +19,7 @@ const goos = shallowRef('windows')
 const goarch = shallowRef('amd64')
 const loading = shallowRef(false)
 const building = shallowRef(false)
+const copyingCommand = shallowRef(false)
 const loadError = shallowRef('')
 const statusState = shallowRef<'idle' | 'building' | 'downloading' | 'done' | 'failed'>('idle')
 
@@ -40,11 +42,65 @@ const actionLabel = computed(() =>
 )
 const statusTitle = computed(() => t(`tools.clientDownload.status.${statusState.value}.title`))
 const statusDescription = computed(() => t(`tools.clientDownload.status.${statusState.value}.description`))
+const architectureSegmentKey = computed(() => `${goos.value}:${architectureOptions.value.map((item) => item.value).join(',')}`)
 
 function translateDownloadOption(value: string | undefined, fallback: string) {
   if (value === 'local_build') return t('tools.clientDownload.localBuild')
   if (value === 'github_release') return t('tools.clientDownload.githubRelease')
   return fallback
+}
+
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, `'\\''`)}'`
+}
+
+function clientArtifactFilename(targetGoos = goos.value, targetGoarch = goarch.value) {
+  return `wfm-client-${targetGoos}-${targetGoarch}-v${options.value?.version || ''}.zip`
+}
+
+function clientArtifactDirectory(filename: string) {
+  return filename.replace(/\.zip$/i, '')
+}
+
+function githubReleaseClientDownloadUrl(targetGoos = goos.value, targetGoarch = goarch.value) {
+  const version = options.value?.version || ''
+  const filename = clientArtifactFilename(targetGoos, targetGoarch)
+  return `https://github.com/xinghenLuyus/wg-free-mesh/releases/download/v${encodeURIComponent(version)}/${encodeURIComponent(filename)}`
+}
+
+function absoluteDownloadUrl(path: string, downloadToken?: string) {
+  if (/^https?:\/\//i.test(path)) return path
+  const separator = path.includes('?') ? '&' : '?'
+  const tokenQuery = downloadToken ? `${separator}download_token=${encodeURIComponent(downloadToken)}` : ''
+  if (path.startsWith('/api/v1/')) return `${API_ORIGIN}${path}${tokenQuery}`
+  return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}${tokenQuery}`
+}
+
+function unzipFlag() {
+  return goos.value === 'windows' ? '-o' : '-oq'
+}
+
+function clientDownloadBashCommand(filename: string, downloadUrl: string) {
+  const targetDir = clientArtifactDirectory(filename)
+  return [
+    `curl -fL -o ${shellQuote(filename)} ${shellQuote(downloadUrl)}`,
+    `unzip ${unzipFlag()} ${shellQuote(filename)} -d ${shellQuote(targetDir)}`,
+  ].join(' && ')
+}
+
+async function copyText(value: string) {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(value)
+    return
+  }
+  const input = document.createElement('textarea')
+  input.value = value
+  input.style.position = 'fixed'
+  input.style.opacity = '0'
+  document.body.appendChild(input)
+  input.select()
+  document.execCommand('copy')
+  document.body.removeChild(input)
 }
 
 function saveBlob(blob: Blob, filename: string) {
@@ -118,6 +174,34 @@ async function generateArtifact() {
   }
 }
 
+async function copyDownloadCommand() {
+  if (!sourceAvailable.value) return
+  const requestedSource = source.value
+  const requestedGoos = goos.value
+  const requestedGoarch = goarch.value
+  copyingCommand.value = true
+  try {
+    let filename = clientArtifactFilename(requestedGoos, requestedGoarch)
+    let downloadUrl = githubReleaseClientDownloadUrl(requestedGoos, requestedGoarch)
+    if (requestedSource !== 'github_release') {
+      const artifact = await api.createClientArtifactDownloadGrant({
+        source: requestedSource,
+        goos: requestedGoos,
+        goarch: requestedGoarch,
+      })
+      filename = artifact.filename
+      downloadUrl = absoluteDownloadUrl(artifact.download_url || artifact.download_path, artifact.download_token)
+    }
+    if (source.value !== requestedSource || goos.value !== requestedGoos || goarch.value !== requestedGoarch) return
+    await copyText(clientDownloadBashCommand(filename, downloadUrl))
+    notify.success(t('tools.clientDownload.downloadCommandCopied'))
+  } catch (error) {
+    notify.error(error instanceof ApiClientError ? error.message : t('tools.clientDownload.downloadCommandCopyFailed'))
+  } finally {
+    copyingCommand.value = false
+  }
+}
+
 function backToDownloadTools() {
   void router.push('/tools/download')
 }
@@ -175,13 +259,18 @@ onMounted(() => {
             <el-segmented v-model="goos" :options="options.systems" />
           </el-form-item>
           <el-form-item :label="t('tools.clientDownload.architecture')">
-            <el-segmented v-model="goarch" :options="architectureOptions" />
+            <el-segmented :key="architectureSegmentKey" v-model="goarch" :options="architectureOptions" />
           </el-form-item>
         </el-form>
 
-        <el-button type="primary" :icon="SetUp" :loading="building" :disabled="!sourceAvailable" @click="generateArtifact">
-          {{ actionLabel }}
-        </el-button>
+        <div class="tool-actions">
+          <el-button type="primary" :icon="SetUp" :loading="building" :disabled="!sourceAvailable" @click="generateArtifact">
+            {{ actionLabel }}
+          </el-button>
+          <el-button plain :icon="CopyDocument" :loading="copyingCommand" :disabled="!sourceAvailable" @click="copyDownloadCommand">
+            {{ t('tools.clientDownload.copyDownloadCommand') }}
+          </el-button>
+        </div>
       </article>
 
       <aside class="tool-panel tool-panel--summary">
@@ -237,6 +326,8 @@ onMounted(() => {
 .tool-panel__head p { margin: 6px 0 0; color: var(--app-muted); font-size: 13px; }
 .tool-form { display: grid; gap: 4px; }
 .tool-form :deep(.el-select), .tool-form :deep(.el-segmented) { width: 100%; }
+.tool-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.tool-actions .el-button { margin-left: 0; }
 .tool-summary { display: grid; gap: 14px; margin: 0; }
 .tool-summary div { display: grid; gap: 5px; padding-bottom: 12px; border-bottom: 1px solid var(--app-border-soft); }
 .tool-summary dt { color: var(--app-faint); font-size: 12px; font-weight: 800; }

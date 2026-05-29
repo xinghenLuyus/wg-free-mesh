@@ -31,7 +31,7 @@ const bindingBusy = shallowRef(false)
 let lastRealtimeVersion = 0
 const installCommands = [
   { key: 'windows', labelKey: 'endpointControl.installCommandWindowsAdmin', command: '.\\wfmctl.exe install; $env:Path = [Environment]::GetEnvironmentVariable("Path", "Machine")' },
-  { key: 'unix', labelKey: 'endpointControl.installCommandUnix', command: 'sudo ./wfmctl install' },
+  { key: 'unix', labelKey: 'endpointControl.installCommandUnix', command: 'chmod +x ./wfmctl ./wfm-agent && sudo ./wfmctl install' },
 ]
 const actionSuccessKeys: Record<string, string> = {
   start: 'endpointControl.commandStartQueued',

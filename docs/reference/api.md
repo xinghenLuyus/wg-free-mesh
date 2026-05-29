@@ -155,6 +155,7 @@ Authorization: Bearer <admin-session-token>
 | --- | --- | --- |
 | `GET` | `/api/v1/tools/download/client-options` | 读取客户端构建选项。 |
 | `POST` | `/api/v1/tools/download/client-artifacts/build` | 构建或获取客户端产物。 |
+| `POST` | `/api/v1/tools/download/client-artifacts/download-grant` | 为本地构建客户端产物生成 5 分钟单文件下载 token；Release 来源不需要该接口。 |
 | `GET` | `/api/v1/tools/download/client-artifacts/{artifact_id}` | 下载客户端产物。 |
 | `GET` | `/api/v1/tools/download/config-bulk/options` | 读取配置批量下载选项。 |
 | `POST` | `/api/v1/tools/download/config-bulk/package` | 生成配置批量下载包。 |

@@ -160,6 +160,8 @@ export const api = {
   clientDownloadOptions: () => request<ClientDownloadOptionsRead>('/tools/download/client-options'),
   buildClientArtifact: (payload: { source: string; goos: string; goarch: string }) =>
     request<ClientArtifactRead>('/tools/download/client-artifacts/build', { method: 'POST', data: payload, timeout: 360000 }),
+  createClientArtifactDownloadGrant: (payload: { source: string; goos: string; goarch: string }) =>
+    request<ClientArtifactRead>('/tools/download/client-artifacts/download-grant', { method: 'POST', data: payload, timeout: 360000 }),
   downloadClientArtifact: (artifactId: string) =>
     request<Blob>(`/tools/download/client-artifacts/${artifactId}`, { responseType: 'blob', timeout: 120000 }),
   configBulkOptions: (configId?: string) =>

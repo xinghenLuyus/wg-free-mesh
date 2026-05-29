@@ -69,6 +69,7 @@ const zhDeveloperSidebar: DefaultTheme.SidebarItem[] = [
     items: [
       { text: '开发者索引', link: '/developer/' },
       { text: '总体架构', link: '/developer/architecture' },
+      { text: '开发环境启动', link: '/developer/dev-start' },
       { text: '目录与边界', link: '/developer/project-structure' },
       { text: '后端', link: '/developer/backend' },
       { text: '前端', link: '/developer/frontend' },
@@ -151,6 +152,7 @@ const enDeveloperSidebar: DefaultTheme.SidebarItem[] = [
     items: [
       { text: 'Index', link: '/en/developer/' },
       { text: 'Architecture', link: '/en/developer/architecture' },
+      { text: 'Development Startup', link: '/en/developer/dev-start' },
       { text: 'Structure', link: '/en/developer/project-structure' },
       { text: 'Backend', link: '/en/developer/backend' },
       { text: 'Frontend', link: '/en/developer/frontend' },

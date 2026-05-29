@@ -65,6 +65,8 @@ In production, the backend validates public origin and proxied Host. Browser req
 
 Client artifacts, bulk config packages, and snapshot exports may use 5-minute single-file download tokens. A download token is bound to one resource and cannot call other APIs.
 
+Client download bash commands follow the same boundary. GitHub Release commands download directly from GitHub. Local build commands first ask the backend for `/api/v1/tools/download/client-artifacts/download-grant`, then use the returned single-file token in the copied URL.
+
 Write APIs should follow the same order:
 
 1. Validate input and permissions.

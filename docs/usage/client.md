@@ -28,7 +28,7 @@ Windows 使用 PowerShell 管理员，在客户端目录执行：
 Linux 和 macOS 在客户端目录执行：
 
 ```bash
-sudo ./wfmctl install
+chmod +x ./wfmctl ./wfm-agent && sudo ./wfmctl install
 ```
 
 安装过程会输出客户端标识、版本信息，并检查本机是否具备 `wg` 和 `awg` 工具链。缺失工具链时，客户端会给出提示，但安装本身不应该因为这些检查失败而中断。

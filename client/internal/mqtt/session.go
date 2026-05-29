@@ -10,6 +10,8 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -382,7 +384,10 @@ func startWireGuard(interfaceName string, configPath string, tunnelProtocol stri
 		return err
 	}
 	if runtime.GOOS == "windows" {
-		return runCommand(tunnelServiceTool(tunnelProtocol), "/installtunnelservice", configPath)
+		if err := runCommand(tunnelServiceTool(tunnelProtocol), "/installtunnelservice", configPath); err != nil {
+			return err
+		}
+		return waitWireGuardStarted(interfaceName, configPath, tunnelProtocol, 15*time.Second)
 	}
 	return runCommand(tunnelQuickTool(tunnelProtocol), "up", configPath)
 }
@@ -418,8 +423,132 @@ func waitWireGuardStopped(interfaceName string, tunnelProtocol string, timeout t
 	}
 }
 
+func waitWireGuardStarted(interfaceName string, configPath string, tunnelProtocol string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	var lastDetail string
+	stableSince := time.Time{}
+	for {
+		running, detail := inspectWireGuard(interfaceName, tunnelProtocol)
+		serviceRunning, serviceDetail := windowsTunnelServiceRunning(interfaceName, configPath, tunnelProtocol)
+		if running && serviceRunning {
+			if stableSince.IsZero() {
+				stableSince = time.Now()
+			}
+			if time.Since(stableSince) >= 3*time.Second {
+				return nil
+			}
+		} else {
+			stableSince = time.Time{}
+		}
+		if running && !serviceRunning {
+			lastDetail = serviceDetail
+		} else {
+			lastDetail = detail
+		}
+		if lastDetail == "" {
+			lastDetail = "interface or tunnel service is not running"
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("wireguard interface %s did not start before timeout: %s%s", interfaceName, lastDetail, windowsTunnelServiceDiagnostics(interfaceName, configPath, tunnelProtocol))
+		}
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+func windowsTunnelServiceRunning(interfaceName string, configPath string, tunnelProtocol string) (bool, string) {
+	if runtime.GOOS != "windows" {
+		return true, ""
+	}
+	var details []string
+	for _, serviceName := range windowsTunnelServiceNames(interfaceName, configPath, tunnelProtocol) {
+		output, err := exec.Command("sc.exe", "query", serviceName).CombinedOutput()
+		text := strings.TrimSpace(string(output))
+		if err != nil {
+			if text != "" {
+				details = append(details, fmt.Sprintf("%s query failed: %s", serviceName, text))
+			}
+			continue
+		}
+		state := strings.ToLower(parseWindowsServiceState(text))
+		if state == "running" {
+			return true, ""
+		}
+		if state != "" {
+			details = append(details, fmt.Sprintf("%s state=%s", serviceName, state))
+		}
+	}
+	if len(details) == 0 {
+		return false, "tunnel service was not found"
+	}
+	return false, strings.Join(details, "; ")
+}
+
+func windowsTunnelServiceDiagnostics(interfaceName string, configPath string, tunnelProtocol string) string {
+	if runtime.GOOS != "windows" {
+		return ""
+	}
+	var sections []string
+	for _, serviceName := range windowsTunnelServiceNames(interfaceName, configPath, tunnelProtocol) {
+		output, err := exec.Command("sc.exe", "queryex", serviceName).CombinedOutput()
+		text := strings.TrimSpace(string(output))
+		if err == nil && text != "" {
+			sections = append(sections, fmt.Sprintf("sc queryex %s output:\n%s", serviceName, text))
+			continue
+		}
+		if text != "" {
+			sections = append(sections, fmt.Sprintf("sc queryex %s failed: %v\n%s", serviceName, err, text))
+		} else {
+			sections = append(sections, fmt.Sprintf("sc queryex %s failed: %v", serviceName, err))
+		}
+	}
+	if len(sections) == 0 {
+		return ""
+	}
+	return "\n\n" + strings.Join(sections, "\n\n")
+}
+
+func windowsTunnelServiceNames(interfaceName string, configPath string, tunnelProtocol string) []string {
+	interfaceName = strings.TrimSpace(interfaceName)
+	names := make([]string, 0, 4)
+	addName := func(prefix string, name string) {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return
+		}
+		serviceName := prefix + name
+		for _, existing := range names {
+			if strings.EqualFold(existing, serviceName) {
+				return
+			}
+		}
+		names = append(names, serviceName)
+	}
+	if tunnelProtocol == "amneziawg_2" {
+		addName("AmneziaWGTunnel$", interfaceName)
+		addName("WireGuardTunnel$", interfaceName)
+	} else {
+		addName("WireGuardTunnel$", interfaceName)
+	}
+	configBase := strings.TrimSuffix(filepath.Base(configPath), filepath.Ext(configPath))
+	if tunnelProtocol == "amneziawg_2" {
+		addName("AmneziaWGTunnel$", configBase)
+		addName("WireGuardTunnel$", configBase)
+	} else {
+		addName("WireGuardTunnel$", configBase)
+	}
+	return names
+}
+
+func parseWindowsServiceState(output string) string {
+	matches := regexp.MustCompile(`STATE\s+:\s+\d+\s+([A-Z_]+)`).FindStringSubmatch(output)
+	if len(matches) == 2 {
+		return matches[1]
+	}
+	return ""
+}
+
 func runCommand(name string, args ...string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
 	output, err := cmd.CombinedOutput()

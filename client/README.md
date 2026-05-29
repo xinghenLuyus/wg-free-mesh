@@ -71,14 +71,14 @@ wfmctl status
 Linux 生产环境建议在解压后的客户端目录使用 `sudo`：
 
 ```bash
-sudo ./wfmctl install
+chmod +x ./wfmctl ./wfm-agent && sudo ./wfmctl install
 wfmctl status
 ```
 
 macOS 生产环境建议在解压后的客户端目录使用 `sudo`：
 
 ```bash
-sudo ./wfmctl install
+chmod +x ./wfmctl ./wfm-agent && sudo ./wfmctl install
 wfmctl status
 ```
 
