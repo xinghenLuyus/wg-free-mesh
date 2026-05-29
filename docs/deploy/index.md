@@ -6,6 +6,15 @@ WG Free Mesh 目前只推荐 Docker 部署。
 
 生产环境建议先阅读 [环境变量](/deploy/environment)，改完必要变量后再启动。公网访问建议再阅读 [反向代理](/deploy/reverse-proxy)，用 HTTPS 暴露控制台和 API。
 
+## 获取代码
+
+先克隆项目代码，并进入项目目录：
+
+```bash
+git clone https://github.com/xinghenLuyus/wg-free-mesh.git
+cd wg-free-mesh
+```
+
 ## 选择数据库
 
 SQLite 和 PostgreSQL 使用同一套应用逻辑，快照也按应用级数据导出，方便在两种数据库之间迁移。

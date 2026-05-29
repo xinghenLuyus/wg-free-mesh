@@ -4,6 +4,13 @@ The simplest path is the Docker SQLite deployment.
 
 ## Start
 
+Clone the repository first:
+
+```bash
+git clone https://github.com/xinghenLuyus/wg-free-mesh.git
+cd wg-free-mesh
+```
+
 Enter the Docker SQLite directory:
 
 ```bash

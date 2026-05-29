@@ -6,6 +6,15 @@ This is not a single-process web application. It includes the console, backend A
 
 For production, read [Environment](/en/deploy/environment) before starting. If the service will be exposed publicly, also read [Reverse Proxy](/en/deploy/reverse-proxy) and publish the console and API through HTTPS.
 
+## Clone the Repository
+
+Clone the project and enter the repository directory first:
+
+```bash
+git clone https://github.com/xinghenLuyus/wg-free-mesh.git
+cd wg-free-mesh
+```
+
 ## Choose a Database
 
 SQLite and PostgreSQL use the same application logic. Snapshots are exported at the application layer, so data can be migrated between the two modes.

@@ -31,6 +31,13 @@ const zhGuideSidebar: DefaultTheme.SidebarItem[] = [
       { text: 'AI 接入', link: '/ai/' },
     ],
   },
+  {
+    text: '帮助',
+    collapsed: false,
+    items: [
+      { text: 'WG 环境安装', link: '/help/wg-environment' },
+    ],
+  },
 ]
 
 const zhReferenceSidebar: DefaultTheme.SidebarItem[] = [
@@ -106,6 +113,13 @@ const enGuideSidebar: DefaultTheme.SidebarItem[] = [
       { text: 'AI Integration', link: '/en/ai/' },
     ],
   },
+  {
+    text: 'Help',
+    collapsed: false,
+    items: [
+      { text: 'WG Environment Install', link: '/en/help/wg-environment' },
+    ],
+  },
 ]
 
 const enReferenceSidebar: DefaultTheme.SidebarItem[] = [
@@ -155,12 +169,14 @@ export const sidebar: DefaultTheme.Sidebar = {
   '/deploy/': zhGuideSidebar,
   '/usage/': zhGuideSidebar,
   '/ai/': zhGuideSidebar,
+  '/help/': zhGuideSidebar,
   '/reference/': zhReferenceSidebar,
   '/developer/': zhDeveloperSidebar,
   '/en/guide/': enGuideSidebar,
   '/en/deploy/': enGuideSidebar,
   '/en/usage/': enGuideSidebar,
   '/en/ai/': enGuideSidebar,
+  '/en/help/': enGuideSidebar,
   '/en/reference/': enReferenceSidebar,
   '/en/developer/': enDeveloperSidebar,
 }

@@ -4,6 +4,13 @@
 
 ## 启动
 
+先克隆项目代码：
+
+```bash
+git clone https://github.com/xinghenLuyus/wg-free-mesh.git
+cd wg-free-mesh
+```
+
 进入 Docker SQLite 目录：
 
 ```bash
