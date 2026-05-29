@@ -1,6 +1,6 @@
 [project]
 name = "wg-free-mesh-api"
-version = "1.0.0-rc.2"
+version = "1.0.0-rc.3"
 description = "WG Free Mesh FastAPI backend"
 readme = "README.md"
 requires-python = ">=3.12"

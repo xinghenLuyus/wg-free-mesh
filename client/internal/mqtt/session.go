@@ -286,7 +286,11 @@ func (s *Session) applyControlWithProtocol(action string, tunnelProtocol string)
 		}
 		return startWireGuard(iface, configPath, tunnelProtocol)
 	case "stop":
-		return stopWireGuard(iface, tunnelProtocol)
+		configPath, err := profile.ConfigPath(s.profile)
+		if err != nil {
+			return err
+		}
+		return stopWireGuard(iface, configPath, tunnelProtocol)
 	default:
 		return fmt.Errorf("unsupported control action: %s", action)
 	}
@@ -301,7 +305,11 @@ func (s *Session) applyConfigPush(payload map[string]any) error {
 	currentInterfaceName := profile.InterfaceName(s.profile)
 	wasRunning, _ := inspectWireGuard(currentInterfaceName, tunnelProtocol)
 	if wasRunning {
-		if err := stopWireGuard(currentInterfaceName, tunnelProtocol); err != nil {
+		currentConfigPath, err := profile.ConfigPath(s.profile)
+		if err != nil {
+			return err
+		}
+		if err := stopWireGuard(currentInterfaceName, currentConfigPath, tunnelProtocol); err != nil {
 			return fmt.Errorf("stop running interface before config update failed: %w", err)
 		}
 	}
@@ -402,11 +410,11 @@ func restartWireGuardAfterConfigUpdate(oldInterfaceName string, newInterfaceName
 	return startWireGuard(newInterfaceName, configPath, tunnelProtocol)
 }
 
-func stopWireGuard(interfaceName string, tunnelProtocol string) error {
+func stopWireGuard(interfaceName string, configPath string, tunnelProtocol string) error {
 	if runtime.GOOS == "windows" {
 		return runCommand(tunnelServiceTool(tunnelProtocol), "/uninstalltunnelservice", interfaceName)
 	}
-	return runCommand(tunnelQuickTool(tunnelProtocol), "down", interfaceName)
+	return runCommand(tunnelQuickTool(tunnelProtocol), "down", configPath)
 }
 
 func waitWireGuardStopped(interfaceName string, tunnelProtocol string, timeout time.Duration) error {
