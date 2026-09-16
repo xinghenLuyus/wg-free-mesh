@@ -32,9 +32,9 @@
 
 ## 目录索引
 
-- [v0/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/v0/README.md)
-- [v0/routers/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/v0/routers/README.md)
-- [internal/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/internal/README.md)
-- [client/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/client/README.md)
-- [v1/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/v1/README.md)
-- [v1/routers/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/v1/routers/README.md)
+- [v0/README.md](./v0/README.md)
+- [v0/routers/README.md](./v0/routers/README.md)
+- [internal/README.md](./internal/README.md)
+- [client/README.md](./client/README.md)
+- [v1/README.md](./v1/README.md)
+- [v1/routers/README.md](./v1/routers/README.md)

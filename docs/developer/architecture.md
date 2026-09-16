@@ -8,7 +8,7 @@ WG Free Mesh 由控制台、后端、数据库、Go 客户端、EMQX 和 Docker 
 
 | 层级 | 组件 | 当前版本 / 约束 | 来源 |
 | --- | --- | --- | --- |
-| 应用版本 | WG Free Mesh | `1.0.0` | `src/pyproject.toml` |
+| 应用版本 | WG Free Mesh | `1.0.0-rc.4` | `src/pyproject.toml` |
 | 后端运行时 | Python | `>=3.12`，Docker 镜像 `python:3.12-slim` | `src/pyproject.toml`、`docker/app/backend.Dockerfile` |
 | 后端框架 | FastAPI | `>=0.115.0` | `src/pyproject.toml` |
 | 后端配置 | pydantic-settings | `>=2.6.0` | `src/pyproject.toml` |

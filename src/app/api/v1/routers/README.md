@@ -47,4 +47,4 @@
   - `health()`：健康检查。
   - `system_status(...)`：控制台系统状态聚合。
 
-内部基础设施回查接口单独放在 [api/internal/routers](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/internal/routers/README.md)，不混入 `/api/v1`。
+内部基础设施回查接口单独放在 [api/internal/routers](../../internal/routers/README.md)，不混入 `/api/v1`。

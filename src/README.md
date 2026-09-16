@@ -64,8 +64,8 @@ WFM_TIMEZONE=Asia/Shanghai
 WFM_ENABLE_DEV_TEST_API=false
 ```
 
-环境变量示例文件放在 [`.env.example`](D:/wenjian/stepsave/project/wg-free-mesh/src/.env.example)，实际本地配置文件应放到 `src/.env`。后端配置不会再从项目根目录读取 `.env`。
-`src/.env` 只负责本地 dev 后端启动所需配置；其中需要的字段必须都能在 [docker/.env](D:/wenjian/stepsave/project/wg-free-mesh/docker/.env) 中找到对应项。  
+环境变量示例文件放在 [`.env.example`](./.env.example)，实际本地配置文件应放到 `src/.env`。后端配置不会再从项目根目录读取 `.env`。
+`src/.env` 只负责本地 dev 后端启动所需配置；其中需要的字段必须能在 [Docker SQLite 环境示例](../docker/sqlite/.env.example) 或 [Docker PostgreSQL 环境示例](../docker/postgres/.env.example) 中找到对应项。
 Docker 的 SQLite 与 PostgreSQL 启动目录各自提供 `.env.example`，该目录下 `.env` 是对应容器部署的完整环境变量注入源；在 Docker 场景下，`gateway`、`app` 与按 profile 启用的 `emqx` 都以它为准。
 也就是说：`src/.env` 应是 Docker 环境变量集合的可运行子集，而不是另一套并行配置体系。
 时间存储仍统一使用 UTC，控制台默认显示时区由 `WFM_TIMEZONE` 控制，默认值为北京时间 `Asia/Shanghai`。
@@ -178,13 +178,13 @@ python -m pytest -q
 
 ## 目录索引
 
-- [app/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/README.md)：应用主包入口。
-- [app/api/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/README.md)：API 分层说明。
-- [app/api/internal/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/api/internal/README.md)：内部基础设施接口。
-- [app/core/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/core/README.md)：配置、安全、错误和响应。
-- [app/domain/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/domain/README.md)：领域模型。
-- [app/data/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/data/README.md)：数据库基础设施、仓储入口与应用级快照。
-- [app/infrastructure/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/infrastructure/README.md)：基础设施兼容入口。
-- [app/schemas/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/schemas/README.md)：请求与响应模型。
-- [app/services/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/app/services/README.md)：认证、控制平面与实时服务。
-- [tests/README.md](D:/wenjian/stepsave/project/wg-free-mesh/src/tests/README.md)：后端测试说明。
+- [app/README.md](./app/README.md)：应用主包入口。
+- [app/api/README.md](./app/api/README.md)：API 分层说明。
+- [app/api/internal/README.md](./app/api/internal/README.md)：内部基础设施接口。
+- [app/core/README.md](./app/core/README.md)：配置、安全、错误和响应。
+- [app/domain/README.md](./app/domain/README.md)：领域模型。
+- [app/data/README.md](./app/data/README.md)：数据库基础设施、仓储入口与应用级快照。
+- [app/infrastructure/README.md](./app/infrastructure/README.md)：基础设施兼容入口。
+- [app/schemas/README.md](./app/schemas/README.md)：请求与响应模型。
+- [app/services/README.md](./app/services/README.md)：认证、控制平面与实时服务。
+- [tests/README.md](./tests/README.md)：后端测试说明。

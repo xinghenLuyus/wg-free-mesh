@@ -43,11 +43,11 @@
 ### 1. 构建客户端
 
 ```powershell
-cd D:\wenjian\stepsave\project\wg-free-mesh\client
+cd path\to\wg-free-mesh\client
 python build_release.py
 ```
 
-发布构建会读取 [src/pyproject.toml](D:/wenjian/stepsave/project/wg-free-mesh/src/pyproject.toml) 中的 `[project].version`，并通过 Go `ldflags` 注入 `wfmctl` / `wfm-agent`。构建产物输出到 `client/dist/`。Windows 发布目标额外包含 32 位 `windows/386`，Linux 与 macOS 仍只发布 64 位目标。
+发布构建会读取 [src/pyproject.toml](../src/pyproject.toml) 中的 `[project].version`，并通过 Go `ldflags` 注入 `wfmctl` / `wfm-agent`。构建产物输出到 `client/dist/`。Windows 发布目标额外包含 32 位 `windows/386`，Linux 与 macOS 仍只发布 64 位目标。
 
 只构建单个平台：
 
@@ -164,7 +164,7 @@ go run .\cmd\agent
 手动 `go build` 仅用于开发调试，二进制版本会显示为 `dev`。正式发布包必须使用 `python build_release.py` 或后端客户端下载页构建。
 
 ```powershell
-cd D:\wenjian\stepsave\project\wg-free-mesh\client
+cd path\to\wg-free-mesh\client
 go build ./...
 ```
 
@@ -180,7 +180,7 @@ go run ./cmd/agent
 如果只想更新单个二进制：
 
 ```powershell
-cd D:\wenjian\stepsave\project\wg-free-mesh\client
+cd path\to\wg-free-mesh\client
 go build -o .\bin\wfmctl.exe .\cmd\ctl
 go build -o .\bin\wfm-agent.exe .\cmd\agent
 ```
@@ -196,7 +196,7 @@ Remove-Item Env:GOARCH
 
 ## 版本来源
 
-项目唯一版本源是 [src/pyproject.toml](D:/wenjian/stepsave/project/wg-free-mesh/src/pyproject.toml) 的 `[project].version`。
+项目唯一版本源是 [src/pyproject.toml](../src/pyproject.toml) 的 `[project].version`。
 
 - 后端 API 版本展示读取该字段。
 - 后端客户端下载构建读取该字段，并注入客户端二进制。
@@ -217,4 +217,4 @@ Remove-Item Env:GOARCH
 
 ## 参考文档
 
-- [客户端设计](D:/wenjian/stepsave/project/wg-free-mesh/docs/客户端设计.md)
+- [客户端设计](../docs/developer/client.md)

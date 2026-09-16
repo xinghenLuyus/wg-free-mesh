@@ -11,7 +11,6 @@ wg-free-mesh/
   client/    Go client and CLI
   docker/    Docker deployment, gateway, EMQX config
   docs/      VitePress documentation site
-  docs-bak/  archived old docs, used only as migration reference
 ```
 
 Business code should live only in `src/`, `front/`, `client/`, `docker/`, and `docs/`. Do not place new runtime modules, temporary caches, build outputs, or runtime data in the repository root.

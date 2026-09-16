@@ -11,7 +11,6 @@ wg-free-mesh/
   client/    Go 客户端和命令行工具
   docker/    Docker 部署入口、gateway、EMQX 配置
   docs/      VitePress 文档站点
-  docs-bak/  旧文档归档，只作迁移参考
 ```
 
 业务源码只应落在 `src/`、`front/`、`client/`、`docker/` 和 `docs/`。根目录不放新的业务模块，也不放临时缓存、构建产物或运行数据。
