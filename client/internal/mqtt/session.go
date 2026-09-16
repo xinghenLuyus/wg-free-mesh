@@ -219,12 +219,13 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 	case s.topic("control"):
 		action := fmt.Sprint(env.Payload["action"])
 		tunnelProtocol := tunnelProtocolFromPayload(env.Payload)
+		previousTunnelProtocol := previousTunnelProtocolFromPayload(env.Payload, tunnelProtocol)
 		if action == "" || action == "<nil>" {
 			action = "unknown"
 		}
 		status := "applied"
 		message := "Command applied."
-		if err := s.applyControlWithProtocol(action, tunnelProtocol); err != nil {
+		if err := s.applyControlWithProtocol(action, tunnelProtocol, previousTunnelProtocol); err != nil {
 			status = "failed"
 			message = err.Error()
 			_ = s.publishEvent("control", fmt.Sprintf("Control command failed: %s: %v", action, err))
@@ -270,10 +271,10 @@ func (s *Session) publishEvent(event, message string) error {
 }
 
 func (s *Session) applyControl(action string) error {
-	return s.applyControlWithProtocol(action, "wireguard")
+	return s.applyControlWithProtocol(action, "wireguard", "wireguard")
 }
 
-func (s *Session) applyControlWithProtocol(action string, tunnelProtocol string) error {
+func (s *Session) applyControlWithProtocol(action string, tunnelProtocol string, previousTunnelProtocol string) error {
 	iface := profile.InterfaceName(s.profile)
 	if iface == "" {
 		return fmt.Errorf("interface_name is required")
@@ -290,27 +291,35 @@ func (s *Session) applyControlWithProtocol(action string, tunnelProtocol string)
 		if err != nil {
 			return err
 		}
-		return stopWireGuard(iface, configPath, tunnelProtocol)
+		return stopActiveTunnel(iface, configPath, tunnelProtocol, previousTunnelProtocol)
 	default:
 		return fmt.Errorf("unsupported control action: %s", action)
 	}
 }
 
 func (s *Session) applyConfigPush(payload map[string]any) error {
-	tunnelProtocol := tunnelProtocolFromPayload(payload)
+	targetProtocol := tunnelProtocolFromPayload(payload)
 	configText := fmt.Sprint(payload["config_text"])
 	if configText == "" || configText == "<nil>" {
 		return fmt.Errorf("config_text is required")
 	}
 	currentInterfaceName := profile.InterfaceName(s.profile)
-	wasRunning, _ := inspectWireGuard(currentInterfaceName, tunnelProtocol)
-	if wasRunning {
-		currentConfigPath, err := profile.ConfigPath(s.profile)
-		if err != nil {
-			return err
+	currentConfigPath, err := profile.ConfigPath(s.profile)
+	if err != nil {
+		return err
+	}
+	previousProtocol := previousTunnelProtocolFromPayload(payload, targetProtocol)
+	protocols := []string{previousProtocol, targetProtocol}
+	runningProtocols := runningTunnelProtocols(currentInterfaceName, protocols)
+	wasRunning := len(runningProtocols) > 0
+	for _, runningProtocol := range runningProtocols {
+		if err := stopWireGuard(currentInterfaceName, currentConfigPath, runningProtocol); err != nil {
+			return fmt.Errorf("stop %s interface before config update failed: %w", runningProtocol, err)
 		}
-		if err := stopWireGuard(currentInterfaceName, currentConfigPath, tunnelProtocol); err != nil {
-			return fmt.Errorf("stop running interface before config update failed: %w", err)
+		if runtime.GOOS == "windows" {
+			if err := waitWireGuardStopped(currentInterfaceName, runningProtocol, 15*time.Second); err != nil {
+				return fmt.Errorf("wait for %s interface to stop before config update failed: %w", runningProtocol, err)
+			}
 		}
 	}
 	interfaceName := fmt.Sprint(payload["interface_name"])
@@ -326,11 +335,59 @@ func (s *Session) applyConfigPush(payload map[string]any) error {
 		if err != nil {
 			return err
 		}
-		if err := restartWireGuardAfterConfigUpdate(currentInterfaceName, nextInterfaceName, configPath, tunnelProtocol); err != nil {
+		if err := startWireGuard(nextInterfaceName, configPath, targetProtocol); err != nil {
 			return fmt.Errorf("restart interface after config update failed: %w", err)
 		}
 	}
 	return nil
+}
+
+func stopActiveTunnel(interfaceName string, configPath string, targetProtocol string, previousTunnelProtocol string) error {
+	protocols := []string{previousTunnelProtocol, targetProtocol}
+	runningProtocols := runningTunnelProtocols(interfaceName, protocols)
+	if len(runningProtocols) == 0 {
+		return stopWireGuard(interfaceName, configPath, targetProtocol)
+	}
+	for _, runningProtocol := range runningProtocols {
+		if err := stopWireGuard(interfaceName, configPath, runningProtocol); err != nil {
+			return fmt.Errorf("stop %s interface failed: %w", runningProtocol, err)
+		}
+	}
+	return nil
+}
+
+func runningTunnelProtocols(interfaceName string, protocols []string) []string {
+	running := make([]string, 0, len(protocols))
+	seen := make(map[string]bool, len(protocols))
+	for _, tunnelProtocol := range protocols {
+		if seen[tunnelProtocol] {
+			continue
+		}
+		seen[tunnelProtocol] = true
+		if active, _ := inspectWireGuard(interfaceName, tunnelProtocol); active {
+			running = append(running, tunnelProtocol)
+		}
+	}
+	return running
+}
+
+func previousTunnelProtocolFromPayload(payload map[string]any, targetProtocol string) string {
+	previousProtocol := normalizeTunnelProtocol(fmt.Sprint(payload["previous_tunnel_protocol"]))
+	if previousProtocol == "" {
+		return targetProtocol
+	}
+	return previousProtocol
+}
+
+func normalizeTunnelProtocol(value string) string {
+	switch strings.TrimSpace(value) {
+	case "wireguard":
+		return "wireguard"
+	case "amneziawg_2":
+		return "amneziawg_2"
+	default:
+		return ""
+	}
 }
 
 func inspectWireGuard(interfaceName string, tunnelProtocol string) (bool, string) {
@@ -398,16 +455,6 @@ func startWireGuard(interfaceName string, configPath string, tunnelProtocol stri
 		return waitWireGuardStarted(interfaceName, configPath, tunnelProtocol, 15*time.Second)
 	}
 	return runCommand(tunnelQuickTool(tunnelProtocol), "up", configPath)
-}
-
-func restartWireGuardAfterConfigUpdate(oldInterfaceName string, newInterfaceName string, configPath string, tunnelProtocol string) error {
-	if runtime.GOOS == "windows" {
-		if err := waitWireGuardStopped(oldInterfaceName, tunnelProtocol, 15*time.Second); err != nil {
-			return err
-		}
-		return startWireGuard(newInterfaceName, configPath, tunnelProtocol)
-	}
-	return startWireGuard(newInterfaceName, configPath, tunnelProtocol)
 }
 
 func stopWireGuard(interfaceName string, configPath string, tunnelProtocol string) error {

@@ -8,7 +8,7 @@ Versions come from the current repository config, lockfiles, and Docker compose 
 
 | Layer | Component | Current version / constraint | Source |
 | --- | --- | --- | --- |
-| App version | WG Free Mesh | `1.0.0-rc.4` | `src/pyproject.toml` |
+| App version | WG Free Mesh | `1.0.0-rc.5` | `src/pyproject.toml` |
 | Backend runtime | Python | `>=3.12`, Docker image `python:3.12-slim` | `src/pyproject.toml`, `docker/app/backend.Dockerfile` |
 | Backend framework | FastAPI | `>=0.115.0` | `src/pyproject.toml` |
 | Backend settings | pydantic-settings | `>=2.6.0` | `src/pyproject.toml` |

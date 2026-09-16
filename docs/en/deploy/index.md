@@ -107,13 +107,3 @@ Pre-release versions can also be pinned:
 ```env
 WFM_IMAGE_TAG=1.0.0-rc.1
 ```
-
-## Update
-
-Export a snapshot from system settings before updating. Snapshots are application-level data and can be used to migrate between SQLite and PostgreSQL.
-
-From the selected Docker directory, start the services again:
-
-```bash
-docker compose up -d
-```

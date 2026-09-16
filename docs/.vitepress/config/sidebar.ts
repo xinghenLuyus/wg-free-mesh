@@ -14,6 +14,7 @@ const zhGuideSidebar: DefaultTheme.SidebarItem[] = [
     collapsed: false,
     items: [
       { text: 'Docker 部署', link: '/deploy/' },
+      { text: '应用更新', link: '/deploy/update' },
       { text: '环境变量', link: '/deploy/environment' },
       { text: '反向代理', link: '/deploy/reverse-proxy' },
     ],
@@ -97,6 +98,7 @@ const enGuideSidebar: DefaultTheme.SidebarItem[] = [
     collapsed: false,
     items: [
       { text: 'Docker Deploy', link: '/en/deploy/' },
+      { text: 'Application Update', link: '/en/deploy/update' },
       { text: 'Environment', link: '/en/deploy/environment' },
       { text: 'Reverse Proxy', link: '/en/deploy/reverse-proxy' },
     ],

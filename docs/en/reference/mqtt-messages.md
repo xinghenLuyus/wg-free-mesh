@@ -114,6 +114,7 @@ Payload:
 {
   "action": "push_config",
   "tunnel_protocol": "wireguard",
+  "previous_tunnel_protocol": "amneziawg_2",
   "interface_name": "mesh-main-node-a",
   "config_version": 3,
   "config_sha256": "abc...",
@@ -121,7 +122,9 @@ Payload:
 }
 ```
 
-If the profile interface is running, the client stops it, writes config, and starts it again. `applied` means the whole flow succeeded. If the interface is not running, the client writes config only.
+`previous_tunnel_protocol` identifies the original toolchain that the client must inspect and clean before replacing the config. It is the same as `tunnel_protocol` when the protocol has not changed.
+
+The client inspects both `previous_tunnel_protocol` and the target protocol for the current profile. It stops every running matching interface with its corresponding toolchain before replacing the config and returns `failed` if any stop fails. After writing the new config, it starts the target protocol only when an interface was running before the update. Only the complete sequence returns `applied`.
 
 ## Control
 

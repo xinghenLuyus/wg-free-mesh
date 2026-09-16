@@ -134,6 +134,7 @@ payload 示例：
 {
   "action": "push_config",
   "tunnel_protocol": "wireguard",
+  "previous_tunnel_protocol": "amneziawg_2",
   "interface_name": "mesh-main-node-a",
   "config_version": 3,
   "config_sha256": "abc...",
@@ -148,7 +149,9 @@ payload 示例：
 | `wireguard` | 状态检查使用 `wg`；Linux/macOS 使用 `wg-quick`；Windows 使用 `wireguard.exe` tunnel service 命令。 |
 | `amneziawg_2` | 状态检查使用 `awg`；Linux/macOS 使用 `awg-quick`；Windows 使用 `amneziawg.exe` tunnel service 命令。 |
 
-如果当前 profile 对应接口正在运行，客户端应停止接口、写入新配置、再重新启动接口。只有完整流程成功，才能返回 `applied`。如果接口未运行，客户端只写入配置，不主动启动。
+`previous_tunnel_protocol` 指定写入新配置前需要检查并清理的原工具链。没有发生协议切换时，它与 `tunnel_protocol` 相同。
+
+客户端先检查 `previous_tunnel_protocol` 和目标协议下当前 profile 的接口。发现运行中的接口时，必须在覆盖配置前使用对应工具链停止；任一停止失败则返回 `failed`。全部停止后写入新配置，并在更新前存在运行接口时使用目标工具链重新启动。只有完整流程成功，才能返回 `applied`。如果更新前没有接口运行，客户端只写入配置，不主动启动。
 
 ## `control`
 

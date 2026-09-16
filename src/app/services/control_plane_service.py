@@ -48,6 +48,7 @@ class ControlPlaneService:
         self._queued_refresh_ids: set[str] = set()
         self._running_refresh_ids: set[str] = set()
         self._config_projection_cache: dict[str, ConfigProjectionSnapshot] = {}
+        self._previous_tunnel_protocols: dict[str, str] = {}
 
     def startup(self) -> None:
         if self._refresh_task and not self._refresh_task.done():
@@ -57,6 +58,7 @@ class ControlPlaneService:
         self._queued_refresh_ids.clear()
         self._running_refresh_ids.clear()
         self._config_projection_cache.clear()
+        self._previous_tunnel_protocols.clear()
         self._refresh_task = asyncio.create_task(self._refresh_worker(), name="config-refresh-worker")
 
     async def shutdown(self) -> None:
@@ -67,6 +69,7 @@ class ControlPlaneService:
         self._queued_refresh_ids.clear()
         self._running_refresh_ids.clear()
         self._config_projection_cache.clear()
+        self._previous_tunnel_protocols.clear()
         if task is None:
             return
         task.cancel()
@@ -333,6 +336,9 @@ class ControlPlaneService:
         previous = store.get_config(config_id)
         self.invalidate_config_projection(config_id)
         result = store.update_config(config_id, payload)
+        current_protocol = str(result.get("tunnel_protocol", previous.tunnel_protocol.value))
+        if previous.tunnel_protocol.value != current_protocol:
+            self._previous_tunnel_protocols[config_id] = previous.tunnel_protocol.value
         if previous.enabled != bool(result.get("enabled", previous.enabled)):
             emqx_reconcile_service.reconcile_all()
         return result
@@ -341,6 +347,7 @@ class ControlPlaneService:
         store.delete_config(config_id)
         emqx_reconcile_service.reconcile_all()
         self.invalidate_config_projection(config_id)
+        self._previous_tunnel_protocols.pop(config_id, None)
 
     def list_configs(self):
         return store.list_configs()
@@ -615,6 +622,9 @@ class ControlPlaneService:
         return {
             "action": "push_config",
             "tunnel_protocol": config.tunnel_protocol.value,
+            "previous_tunnel_protocol": self._previous_tunnel_protocols.get(
+                config_id, config.tunnel_protocol.value
+            ),
             "interface_name": node_config_interface_name(config.name, node.name),
             "config_version": state.staged_version,
             "config_sha256": state.staged_sha256,
@@ -689,6 +699,9 @@ class ControlPlaneService:
         payload_body: dict[str, object] = {"action": action}
         config = store.get_config(config_id)
         payload_body["tunnel_protocol"] = config.tunnel_protocol.value
+        payload_body["previous_tunnel_protocol"] = self._previous_tunnel_protocols.get(
+            config_id, config.tunnel_protocol.value
+        )
         payload = {
             "type": kind,
             "request_id": log.request_id,

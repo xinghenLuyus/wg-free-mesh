@@ -107,13 +107,3 @@ WFM_IMAGE_TAG=1.0.0
 ```env
 WFM_IMAGE_TAG=1.0.0-rc.1
 ```
-
-## 更新
-
-更新前建议先在系统设置里导出快照。快照是应用级数据，可以用于 SQLite 和 PostgreSQL 之间迁移。
-
-进入当前使用的 Docker 目录后，直接拉起服务即可：
-
-```bash
-docker compose up -d
-```
