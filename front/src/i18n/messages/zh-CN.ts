@@ -684,8 +684,10 @@ export default {
     endpointControl: {
       title: '端点控制',
       description: '查看当前节点运行状态、远程控制和命令行回显。',
-    realtimeOk: '实时连接正常',
-    realtimeDown: '实时连接断开',
+    clientNotInitialized: '客户端未初始化',
+    endpointOnline: '端点在线',
+    endpointDropped: '端点掉线',
+    endpointOffline: '端点离线',
     runtimeStatus: '运行状态',
     node: '节点',
     type: '类型',

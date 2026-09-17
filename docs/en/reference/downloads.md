@@ -1,6 +1,19 @@
-# Downloads
+# Downloads and File Tokens
 
-Download APIs support either an admin session or a short-lived scoped download token.
+Download capabilities fall into three groups:
+
+- Endpoint config text downloads.
+- Backend-generated file downloads.
+- Short-lived download URLs returned by MCP.
+
+## Endpoint Config Text
+
+To download an endpoint config:
+
+1. Call `/api/v1/configs/{config_id}/nodes/{node_id}/download-token` to create a download token.
+2. Download the config from the returned `download_path`.
+
+The token is bound to that `config_id + node_id` and cannot download another endpoint config.
 
 ## Client artifacts
 
@@ -51,6 +64,10 @@ Download the local artifact:
 GET /api/v1/tools/download/client-artifacts/{artifact_id}
 ```
 
+The download endpoint accepts either an authenticated admin session or a file download token with `kind=client_artifact`.
+
+GitHub Release artifacts do not use this endpoint; their `download_url` points directly to the GitHub Release asset.
+
 Example copied command for GitHub Release:
 
 ```bash
@@ -63,12 +80,46 @@ Example copied command for local build:
 curl -fL -o 'wfm-client-linux-amd64-v1.0.0-rc.1.zip' 'https://wfm.example.com/api/v1/tools/download/client-artifacts/local_build-...-linux-amd64?download_token=xxxxx' && unzip -oq 'wfm-client-linux-amd64-v1.0.0-rc.1.zip' -d 'wfm-client-linux-amd64-v1.0.0-rc.1'
 ```
 
-## File token kinds
+## Bulk config packages
 
-| kind | resource |
+Create a package:
+
+```http
+POST /api/v1/tools/download/config-bulk/package
+```
+
+Download the package:
+
+```http
+GET /api/v1/tools/download/config-bulk/package/{package_id}
+```
+
+Creating a new bulk package replaces the previous temporary package.
+
+## Snapshot Export
+
+Export a snapshot with:
+
+```http
+GET /api/v1/backups/export/{snapshot_id}
+```
+
+MCP `write_export_snapshot` returns a five-minute `snapshot_export` download URL and does not transfer snapshot file contents.
+
+## File Token Rules
+
+A file token is bound to:
+
+```text
+kind + resource_id
+```
+
+Supported values are:
+
+| kind | resource_id |
 | --- | --- |
-| `client_artifact` | client artifact id |
-| `config_bulk_package` | bulk package id |
-| `snapshot_export` | snapshot id |
+| `client_artifact` | `artifact_id` |
+| `config_bulk_package` | `package_id` |
+| `snapshot_export` | `snapshot_id` |
 
-MCP download tools return URLs containing 5-minute scoped tokens. MCP does not transfer file bytes.
+An expired token returns `INVALID_DOWNLOAD_TOKEN`; a token used for another resource returns `DOWNLOAD_TOKEN_SCOPE_MISMATCH`.

@@ -78,7 +78,7 @@ Docker 的 SQLite 与 PostgreSQL 启动目录各自提供 `.env.example`，该�
 TLS 开启时，后端从项目相对路径 `docker/emqx/certs/ca.crt` 读取 CA，并在客户端绑定时下发给客户端；客户端会校验 CA 和 MQTT 主机名。Docker 模式下该目录以只读方式挂载到 app 容器。  
 `WFM_APP_PORT` 只用于 Docker Compose 宿主机端口映射，后端本地运行不读取该变量。  
 EMQX 统一账号密码为 `WFM_EMQX_USERNAME` / `WFM_EMQX_PASSWORD`，本地手动运行后端且修改过 Docker 默认值时，需要让本地后端读取到同一组值。  
-`WFM_ENABLE_MQTT_SERVICES=false` 时，后端不会启动 MQTT 入口服务，所有客户端绑定和远程控制能力都会被禁用；Docker 部署还要关闭 `mqtt` profile，避免创建 EMQX 容器。
+`WFM_ENABLE_MQTT_SERVICES=false` 时，后端不会启动 MQTT 入口服务，禁止创建动态端点，已有动态端点按静态端点处理；服务端配置仍可同步到 staged 状态，但不会继续下发。数据库和快照中的历史 MQTT 数据不会被清理。Docker 是否创建 EMQX 仅由 `COMPOSE_PROFILES` 控制。
 
 ## MCP
 

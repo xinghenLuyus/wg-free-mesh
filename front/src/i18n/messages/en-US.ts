@@ -684,8 +684,10 @@ export default {
     endpointControl: {
       title: 'Endpoint Control',
       description: 'View current node runtime, remote controls, and command output.',
-    realtimeOk: 'Realtime connected',
-    realtimeDown: 'Realtime disconnected',
+    clientNotInitialized: 'Client not initialized',
+    endpointOnline: 'Endpoint online',
+    endpointDropped: 'Endpoint dropped',
+    endpointOffline: 'Endpoint offline',
     runtimeStatus: 'Runtime Status',
     node: 'Node',
     type: 'Type',

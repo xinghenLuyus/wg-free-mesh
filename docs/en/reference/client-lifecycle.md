@@ -137,7 +137,14 @@ After reset, old MQTT credentials must not continue working. The client must bin
 
 ## Dynamic to Static
 
-When a dynamic node becomes static, the backend clears binding permissions, clears runtime state, marks the node offline, disables EMQX credentials, and pushes status updates.
+When a dynamic node becomes static, the backend must:
+
+- Clear binding permissions.
+- Clear runtime state.
+- Set `client_initialized=false`.
+- Set `client_presence_state=offline`.
+- Delete or disable the EMQX user.
+- Publish an endpoint status event.
 
 Static nodes do not show bind commands and do not support endpoint control.
 
@@ -149,7 +156,16 @@ Static nodes do not show bind commands and do not support endpoint control.
 | dropped | All reachable signals exceed TTL, or detect fails/times out without another recent signal. |
 | offline | Never bound, will message received, client reset, node changed to static, or permission revoked. |
 
-Reachable signals include heartbeat, detect ACK, control ACK, info ACK, config push ACK, and non-offline events.
+Reachable signals include:
+
+- heartbeat
+- detect ACK
+- control ACK
+- info ACK
+- config push ACK
+- non-`offline` events
+
+The client sends a heartbeat every 30 minutes. The server online TTL must be longer than that interval so a single missed heartbeat does not cause a false disconnect.
 
 ## Version and Config Projection
 
@@ -159,6 +175,8 @@ WG config version state is calculated by the backend:
 
 - `latest`: confirmed client state matches staged server state.
 - `pending`: config has not been pushed or confirmed state is behind.
+
+The frontend displays this state and does not calculate it independently.
 
 ## Diagnostics
 

@@ -66,7 +66,7 @@ function resetForm() {
     mtu: 1420,
     dns: '1.1.1.1',
     auto_sync: true,
-    node_type: 'dynamic',
+    node_type: mqttServicesEnabled.value ? 'dynamic' : 'static',
     public_key: '',
     private_key: '',
     tags: [],
@@ -116,12 +116,14 @@ async function autofillVirtualIp() {
 async function submit() {
   await actions.run('submit-node', async () => {
     try {
+      const payload: Record<string, unknown> = { ...form }
+      if (!mqttServicesEnabled.value && editingNodeId.value) delete payload.node_type
       if (editingNodeId.value) {
-        const result = await api.updateNode(editingNodeId.value, form)
+        const result = await api.updateNode(editingNodeId.value, payload)
         notify.success(t('nodes.saved'))
         notifyChangeHints(result.change_hints)
       } else {
-        await api.createNode(String(route.params.configId), form)
+        await api.createNode(String(route.params.configId), payload)
         notify.success(t('nodes.created'))
       }
       dialogVisible.value = false
@@ -204,7 +206,7 @@ onMounted(async () => {
             <el-button size="small" @click="openEdit(row)">{{ t('nodes.edit') }}</el-button>
             <el-button size="small" @click="goTo('mesh', row.id)">Mesh</el-button>
             <el-button size="small" @click="goTo('apply', row.id)">{{ t('nodes.apply') }}</el-button>
-            <el-button size="small" type="primary" plain @click="goTo('control', row.id)">{{ t('nodes.control') }}</el-button>
+            <el-button size="small" type="primary" plain :disabled="!mqttServicesEnabled || row.node_type === 'static'" @click="goTo('control', row.id)">{{ t('nodes.control') }}</el-button>
             <el-button size="small" type="danger" plain @click="deleteNode(row)">{{ t('common.delete') }}</el-button>
           </el-space>
         </template>
@@ -220,6 +222,7 @@ onMounted(async () => {
       <el-form-item :label="t('configOverview.type')">
         <el-segmented
           v-model="form.node_type"
+          :disabled="!mqttServicesEnabled"
           :options="[
             { label: t('nodeWorkspace.dynamicNode'), value: 'dynamic' },
             { label: t('nodeWorkspace.staticNode'), value: 'static' },

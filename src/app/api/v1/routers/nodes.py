@@ -23,7 +23,7 @@ class NodeRequest(BaseModel):
     dns: str | None = None
     auto_sync: bool | None = None
     enabled: bool | None = None
-    node_type: str = "dynamic"
+    node_type: str | None = None
     public_key: str | None = None
     private_key: str | None = None
     tags: list[str] = Field(default_factory=list)

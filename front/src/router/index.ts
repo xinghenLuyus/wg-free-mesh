@@ -99,9 +99,12 @@ router.beforeEach(async (to) => {
     const redirect = typeof to.query.redirect === 'string' ? to.query.redirect : '/'
     return redirect
   }
-  if (authStore.authenticated && to.path.endsWith('/control')) {
+  if (authStore.authenticated && (to.path.endsWith('/control') || to.path === '/tools/download/client')) {
     const health = await api.health()
     if (!health.mqtt_services_enabled) {
+      if (to.path === '/tools/download/client') {
+        return { path: '/tools/download', query: { mqtt: 'disabled' } }
+      }
       const configId = String(to.params.configId)
       const nodeId = String(to.params.nodeId)
       return { path: `/configs/${configId}/nodes/${nodeId}/mesh`, query: { mqtt: 'disabled' } }

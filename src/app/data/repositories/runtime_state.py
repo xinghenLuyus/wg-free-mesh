@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from app.core.errors import AppError
+from app.core.features import effective_node, effective_node_type, mqtt_services_enabled
 from app.domain.models import (
     ConfigSyncState,
     ConnectivityState,
@@ -70,7 +71,7 @@ class RuntimeStateRepositoryMixin:
                     "client_downloaded_at": None,
                 }
             )
-        if node.node_type == NodeType.static:
+        if effective_node_type(node) == NodeType.static:
             return runtime.model_copy(
                 update={
                     "online": False,
@@ -131,12 +132,15 @@ class RuntimeStateRepositoryMixin:
         return states_by_config
 
     def list_runtime_snapshot(self, config_id: str) -> list[dict[str, object]]:
-        self.reconcile_client_timeouts(config_id)
+        mqtt_enabled = mqtt_services_enabled()
+        if mqtt_enabled:
+            self.reconcile_client_timeouts(config_id)
         runtime_map = self._list_runtime_rows(config_id)
         state_map = self._list_node_config_states(config_id)
-        client_states = self.list_client_states(config_id)
+        client_states = self.list_client_states(config_id) if mqtt_enabled else {}
         items: list[dict[str, object]] = []
         for node in self.list_nodes(config_id):
+            node_type = effective_node_type(node)
             runtime = runtime_map.get(node.id)
             if runtime is None:
                 runtime = self.get_runtime(config_id, node.id)
@@ -159,7 +163,7 @@ class RuntimeStateRepositoryMixin:
                         "client_downloaded_at": None,
                     }
                 )
-            elif node.node_type == NodeType.static:
+            elif node_type == NodeType.static:
                 runtime = runtime.model_copy(
                     update={
                         "online": False,
@@ -176,12 +180,16 @@ class RuntimeStateRepositoryMixin:
                     }
                 )
             state = state_map.get(node.id) or self.get_node_config_state(config_id, node.id)
-            client_state = client_states.get(node.id) or {"client_initialized": False, "client_presence_state": "offline"}
+            client_state = (
+                client_states.get(node.id) or {"client_initialized": False, "client_presence_state": "offline"}
+                if node_type == NodeType.dynamic
+                else {"client_initialized": False, "client_presence_state": "offline"}
+            )
             items.append(
                 {
                     "node_id": node.id,
                     "node_name": node.name,
-                    "node_type": node.node_type,
+                    "node_type": node_type,
                     "online": runtime.online,
                     "connectivity_state": runtime.connectivity_state,
                     "wg_running": runtime.wg_running,
@@ -400,19 +408,30 @@ class RuntimeStateRepositoryMixin:
         return {"summary": summary, "runtime": self.get_runtime(config_id, node_id)}
 
     def get_node_endpoint_status(self, config_id: str, node_id: str) -> dict[str, object]:
-        self.reconcile_client_timeouts(config_id)
         node = self.get_node(node_id)
+        node_type = effective_node_type(node)
+        is_dynamic = node_type == NodeType.dynamic
+        if is_dynamic:
+            self.reconcile_client_timeouts(config_id)
         if not node.enabled:
             raise AppError("NODE_DISABLED", "Disabled endpoint has no runtime control status", 409)
         runtime = self.get_runtime(config_id, node_id)
         state = self.get_node_config_state(config_id, node_id)
         server_apply_status = self._sync_status_from_state(state)
-        wg_config_version_state = "latest" if state.confirmed_sha256 and state.confirmed_sha256 == state.staged_sha256 else "pending"
-        logs = self.list_endpoint_logs(config_id, node_id, limit=1)
+        wg_config_version_state = (
+            "latest"
+            if not is_dynamic or (state.confirmed_sha256 and state.confirmed_sha256 == state.staged_sha256)
+            else "pending"
+        )
+        logs = self.list_endpoint_logs(config_id, node_id, limit=1) if is_dynamic else []
         return {
-            "node": node,
+            "node": effective_node(node),
             "runtime": runtime,
-            "client_state": self.get_client_state(config_id, node_id),
+            "client_state": (
+                self.get_client_state(config_id, node_id)
+                if is_dynamic
+                else {"client_initialized": False, "client_presence_state": "offline"}
+            ),
             "config_state": {
                 "desired_version": state.desired_version,
                 "staged_version": state.staged_version,

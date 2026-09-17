@@ -476,7 +476,7 @@ onMounted(async () => {
       </el-form>
     </article>
 
-    <article class="settings-card settings-card--mqtt">
+    <article class="settings-card settings-card--mqtt" :class="{ 'settings-card--feature-disabled': !mqttServicesEnabled }">
       <div class="settings-card__head">
         <span class="settings-card__icon"><el-icon><Connection /></el-icon></span>
         <div>
@@ -489,13 +489,13 @@ onMounted(async () => {
         {{ t('settings.mqttUnavailable') }}
       </div>
 
-      <el-form v-else ref="mqttFormRef" :model="mqttForm" :rules="mqttRules" class="settings-form" label-position="top">
+      <el-form ref="mqttFormRef" :model="mqttForm" :rules="mqttRules" class="settings-form" label-position="top">
         <div class="form-grid">
           <el-form-item label="Host" prop="host" required>
-            <el-input v-model="mqttForm.host" placeholder="broker.example.com" />
+            <el-input v-model="mqttForm.host" placeholder="broker.example.com" :disabled="!mqttServicesEnabled" />
           </el-form-item>
           <el-form-item label="Port">
-            <el-input-number v-model="mqttForm.port" :min="1" :max="65535" style="width: 100%" />
+            <el-input-number v-model="mqttForm.port" :min="1" :max="65535" :disabled="!mqttServicesEnabled" style="width: 100%" />
           </el-form-item>
         </div>
 
@@ -504,13 +504,13 @@ onMounted(async () => {
             <strong>{{ t('settings.tlsTitle') }}</strong>
             <span>{{ t('settings.tlsDescription') }}</span>
           </div>
-          <el-switch v-model="mqttForm.tls" />
+          <el-switch v-model="mqttForm.tls" :disabled="!mqttServicesEnabled" />
         </div>
 
         <div class="action-row">
-          <el-button type="primary" :icon="Check" :loading="savingMqtt" @click="saveMqtt">{{ t('settings.saveMqtt') }}</el-button>
-          <el-button :icon="RefreshLeft" :loading="resettingMqtt" @click="resetMqtt">{{ t('settings.resetMqtt') }}</el-button>
-          <el-button :icon="Connection" :loading="testingMqtt" @click="testMqtt">{{ t('settings.testConnection') }}</el-button>
+          <el-button type="primary" :icon="Check" :loading="savingMqtt" :disabled="!mqttServicesEnabled" @click="saveMqtt">{{ t('settings.saveMqtt') }}</el-button>
+          <el-button :icon="RefreshLeft" :loading="resettingMqtt" :disabled="!mqttServicesEnabled" @click="resetMqtt">{{ t('settings.resetMqtt') }}</el-button>
+          <el-button :icon="Connection" :loading="testingMqtt" :disabled="!mqttServicesEnabled" @click="testMqtt">{{ t('settings.testConnection') }}</el-button>
         </div>
       </el-form>
     </article>
@@ -630,6 +630,11 @@ onMounted(async () => {
   border-radius: 8px;
   background: linear-gradient(180deg, var(--app-surface) 0%, var(--app-surface-elevated) 100%);
   box-shadow: var(--app-shadow-sm);
+}
+
+.settings-card--feature-disabled {
+  filter: grayscale(1);
+  opacity: .72;
 }
 
 .settings-card--backup {

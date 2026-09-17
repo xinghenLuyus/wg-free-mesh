@@ -89,7 +89,7 @@ POST /api/v1/tools/download/config-bulk/package
 下载接口：
 
 ```http
-GET /api/v1/tools/download/config-bulk/{package_id}
+GET /api/v1/tools/download/config-bulk/package/{package_id}
 ```
 
 配置批量下载不复用旧包。生成新包时会替换临时产物。

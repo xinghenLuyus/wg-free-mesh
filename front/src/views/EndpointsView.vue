@@ -80,6 +80,20 @@ const needsClientInit = computed(() => {
   return endpointStatus.value?.node.node_type === 'dynamic' && !endpointStatus.value.client_state.client_initialized
 })
 
+const endpointConnectionStatus = computed(() => {
+  if (!endpointStatus.value) return null
+  if (needsClientInit.value) {
+    return { type: 'info' as const, label: t('endpointControl.clientNotInitialized') }
+  }
+  if (endpointStatus.value.client_state.client_presence_state === 'online') {
+    return { type: 'success' as const, label: t('endpointControl.endpointOnline') }
+  }
+  if (endpointStatus.value.client_state.client_presence_state === 'dropped') {
+    return { type: 'warning' as const, label: t('endpointControl.endpointDropped') }
+  }
+  return { type: 'warning' as const, label: t('endpointControl.endpointOffline') }
+})
+
 const mqttServiceEnabled = computed(() => endpointStatus.value?.mqtt_service.enabled !== false)
 
 function presenceLabel(state: string | undefined) {
@@ -227,8 +241,8 @@ watch(
           <h2>{{ t('endpointControl.title') }}</h2>
           <p>{{ t('endpointControl.description') }}</p>
         </div>
-        <el-tag :type="realtime.connected ? 'success' : 'warning'">
-          {{ realtime.connected ? t('endpointControl.realtimeOk') : t('endpointControl.realtimeDown') }}
+        <el-tag v-if="endpointConnectionStatus" :type="endpointConnectionStatus.type">
+          {{ endpointConnectionStatus.label }}
         </el-tag>
       </div>
 

@@ -35,8 +35,8 @@
 
 | 变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `WFM_ENABLE_MQTT_SERVICES` | `true` | 是否启用客户端绑定、MQTT 通信和远程控制。 |
-| `COMPOSE_PROFILES` | `mqtt` | Docker Compose 是否启动 EMQX profile。关闭 MQTT 时留空。 |
+| `WFM_ENABLE_MQTT_SERVICES` | `true` | 是否启用动态端点、客户端绑定、MQTT 通信和远程控制。关闭后已有动态端点按静态端点处理。 |
+| `COMPOSE_PROFILES` | `mqtt` | 独立控制 Docker Compose 是否启动 EMQX profile。 |
 | `WFM_MQTT_URL` | `mqtt://emqx:1883` | 后端连接 broker 的内部地址。 |
 | `WFM_MQTT_PUBLIC_PORT` | `1883` | 客户端明文 MQTT 接入端口。 |
 | `WFM_MQTT_PUBLIC_TLS_PORT` | `8883` | 客户端 TLS MQTT 接入端口。 |

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import cast
 
+from app.core.features import effective_node_type
 from app.domain.models import Config, Node, NodeType
 
 
@@ -23,7 +24,7 @@ class ConfigListProjection:
             topology = topology_for(config.id)
             config_nodes = nodes_by_config.get(config.id, [])
             disabled_nodes = [node for node in config_nodes if not node.enabled]
-            dynamic_nodes = [node for node in config_nodes if node.enabled and node.node_type == NodeType.dynamic]
+            dynamic_nodes = [node for node in config_nodes if node.enabled and effective_node_type(node) == NodeType.dynamic]
             runtime_map = runtimes_by_config.get(config.id, {})
             online_node_count = len(
                 [
@@ -38,6 +39,7 @@ class ConfigListProjection:
                     update={
                         "online_node_count": online_node_count,
                         "offline_node_count": max(len(dynamic_nodes) - online_node_count, 0),
+                        "dynamic_node_count": len(dynamic_nodes),
                         "disabled_node_count": len(disabled_nodes),
                         "topology_invalid": bool(config.enabled) and not bool(topology["valid"]),
                         "topology_error_count": cast(int, topology["error_count"]) if config.enabled else 0,

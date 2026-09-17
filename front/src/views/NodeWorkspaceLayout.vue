@@ -113,6 +113,7 @@ const tabs = computed(() => {
 const primaryTabs = computed(() => tabs.value.filter((item) => item.align === 'left'))
 const actionTabs = computed(() => tabs.value.filter((item) => item.align === 'right'))
 const disabledNode = computed(() => node.value?.enabled === false)
+const mqttServicesEnabled = computed(() => endpointStatus.value?.mqtt_service.enabled !== false)
 
 const allTags = computed(() => configTags.value.map((item) => item.name))
 
@@ -228,7 +229,7 @@ async function saveNodeSettings() {
     const valid = await settingsFormRef.value?.validate().catch(() => false)
     if (!valid) return
     try {
-      const result = await api.updateNode(currentNode.id, toNodeUpdatePayload(currentNode, {
+      const payload: Record<string, unknown> = toNodeUpdatePayload(currentNode, {
         name: settingsForm.name,
         ipv4_address: settingsForm.ipv4_address || null,
         ipv6_address: settingsForm.ipv6_address || null,
@@ -254,7 +255,9 @@ async function saveNodeSettings() {
         awg_i3: settingsForm.awg_i3 || null,
         awg_i4: settingsForm.awg_i4 || null,
         awg_i5: settingsForm.awg_i5 || null,
-      }))
+      })
+      if (!mqttServicesEnabled.value) delete payload.node_type
+      const result = await api.updateNode(currentNode.id, payload)
       settingsVisible.value = false
       await load()
       notify.success(t('nodeWorkspace.settingsSaved'))
@@ -456,6 +459,7 @@ onMounted(async () => {
         <el-form-item :label="t('nodeWorkspace.type')">
           <el-segmented
             v-model="settingsForm.node_type"
+            :disabled="!mqttServicesEnabled"
             :options="[
               { label: t('nodeWorkspace.dynamicNode'), value: 'dynamic' },
               { label: t('nodeWorkspace.staticNode'), value: 'static' },

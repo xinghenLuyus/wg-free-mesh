@@ -5,6 +5,7 @@ import json
 from collections.abc import Sequence
 
 from app.core.errors import AppError
+from app.core.features import effective_node_type, mqtt_services_enabled
 from app.domain.models import Config, ConfigSyncState, ControlStatus, Node, PeerLink, TunnelProtocol, derive_public_key, generate_key_pair, generate_private_key, now_utc, sha256_text
 from app.data.database import connect
 from app.projections.config_overview_projection import config_overview_projection
@@ -95,7 +96,7 @@ class SyncSettingsRepositoryMixin:
                 {
                     "node_id": node.id,
                     "node_name": node.name,
-                    "node_type": node.node_type,
+                    "node_type": effective_node_type(node),
                     "auto_sync": node.auto_sync,
                     "desired_version": state.desired_version,
                     "staged_version": state.staged_version,
@@ -206,13 +207,16 @@ class SyncSettingsRepositoryMixin:
                 )
                 active_links = peer_links_by_local.get(node.id, [])
                 peer_total = len(active_links)
-                peer_online = len(
-                    [
-                        link
-                        for link in active_links
-                        if bool((runtime_map.get(link.peer_node_id) or self.get_runtime(config_id, link.peer_node_id)).online)
-                    ]
-                )
+                if mqtt_services_enabled():
+                    peer_online = len(
+                        [
+                            link
+                            for link in active_links
+                            if bool((runtime_map.get(link.peer_node_id) or self.get_runtime(config_id, link.peer_node_id)).online)
+                        ]
+                    )
+                else:
+                    peer_online = (runtime_map.get(node.id) or self.get_runtime(config_id, node.id)).peers_online
                 connection.execute(
                     """
                     UPDATE endpoint_runtime_status
@@ -244,7 +248,7 @@ class SyncSettingsRepositoryMixin:
         return {
             "node_id": node.id,
             "node_name": node.name,
-            "node_type": node.node_type,
+            "node_type": effective_node_type(node),
             "auto_sync": node.auto_sync,
             "desired_version": state.desired_version,
             "staged_version": state.staged_version,
@@ -271,7 +275,7 @@ class SyncSettingsRepositoryMixin:
             "exists": bool(content),
             "content": content,
             "node_name": node.name,
-            "node_type": node.node_type,
+            "node_type": effective_node_type(node),
             "source": "server_applied",
             "desired_version": state.desired_version,
             "staged_version": state.staged_version,

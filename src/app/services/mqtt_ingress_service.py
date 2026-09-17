@@ -270,6 +270,8 @@ class MqttIngressService:
         kind: str,
         payload: dict[str, Any],
     ) -> None:
+        if not self.is_enabled():
+            raise RuntimeError("MQTT services are disabled")
         if self._client is None:
             raise RuntimeError("MQTT ingress client is not connected")
         topic = f"wfm/{config_id}/{node_id}/{kind}"

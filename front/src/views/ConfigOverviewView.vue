@@ -270,7 +270,7 @@ function resetCreateForm() {
     mtu: 1420,
     dns: '1.1.1.1',
     auto_sync: overview.value?.config.auto_sync ?? true,
-    node_type: 'dynamic',
+    node_type: mqttServicesEnabled.value ? 'dynamic' : 'static',
     public_key: '',
     private_key: '',
     tags_text: '',
@@ -603,8 +603,8 @@ watch(
             <el-option :label="t('configOverview.sortName')" value="name" />
             <el-option :label="t('configOverview.sortVirtualIp')" value="virtual_ip" />
             <el-option :label="t('configOverview.sortCreatedAt')" value="created_at" />
-            <el-option :label="t('configOverview.sortOnline')" value="online" />
-            <el-option :label="t('configOverview.sortNodeType')" value="node_type" />
+            <el-option :label="t('configOverview.sortOnline')" value="online" :disabled="!mqttServicesEnabled" />
+            <el-option :label="t('configOverview.sortNodeType')" value="node_type" :disabled="!mqttServicesEnabled" />
           </el-select>
           <el-select v-model="tagFilter" clearable :placeholder="t('configOverview.filterByTag')" style="width: 160px">
             <el-option v-for="tag in allTags" :key="tag" :label="tag" :value="tag" />
@@ -869,6 +869,7 @@ watch(
         <el-form-item :label="t('configOverview.type')">
           <el-segmented
             v-model="createForm.node_type"
+            :disabled="!mqttServicesEnabled"
             :options="[
               { label: t('nodeWorkspace.dynamicNode'), value: 'dynamic' },
               { label: t('nodeWorkspace.staticNode'), value: 'static' },

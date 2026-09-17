@@ -65,7 +65,7 @@ docker compose up -d
 
 ## 关键注意事项
 
-- `app` 默认拉取 `ghcr.io/xinghenluyus/wg-free-mesh-app:latest`；如需固定版本，在 `.env` 中设置 `WFM_IMAGE_TAG`。
+- `app` 默认拉取支持 `linux/amd64` 和 `linux/arm64` 的 `ghcr.io/xinghenluyus/wg-free-mesh-app:latest`；如需固定版本，在 `.env` 中设置 `WFM_IMAGE_TAG`。
 - `WFM_APP_PORT` 只控制宿主机端口映射，容器内 app 固定监听 `8000`。
 - `gateway` 是 Docker 公网入口。App 不再直接映射宿主机端口；外部反向代理优先代理 gateway 的 Web 端口。
 - `WFM_PUBLIC_ORIGIN` 是正式服务主来源。正式模式下外部请求 Host 必须与它一致；`WFM_EXTRA_ALLOWED_ORIGINS` 只追加允许的 `Origin`，不追加 Host 白名单。

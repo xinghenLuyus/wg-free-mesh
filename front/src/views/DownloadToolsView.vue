@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { Download, Files } from '@element-plus/icons-vue'
-import { computed } from 'vue'
+import { computed, onMounted, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import { api } from '@/api/modules'
+
 const { t } = useI18n()
+const mqttServicesEnabled = shallowRef(true)
 
 const downloadEntries = computed(() => [
   {
@@ -12,6 +15,7 @@ const downloadEntries = computed(() => [
     description: t('tools.download.clientDescription'),
     action: t('tools.download.clientAction'),
     icon: Download,
+    disabled: !mqttServicesEnabled.value,
   },
   {
     path: '/tools/download/configs',
@@ -19,8 +23,14 @@ const downloadEntries = computed(() => [
     description: t('tools.download.configBulkDescription'),
     action: t('tools.download.configBulkAction'),
     icon: Files,
+    disabled: false,
   },
 ])
+
+onMounted(async () => {
+  const health = await api.health()
+  mqttServicesEnabled.value = health.mqtt_services_enabled
+})
 </script>
 
 <template>
@@ -35,7 +45,15 @@ const downloadEntries = computed(() => [
     </div>
 
     <div class="download-tools-grid">
-      <RouterLink v-for="entry in downloadEntries" :key="entry.path" :to="entry.path" class="download-entry">
+      <RouterLink
+        v-for="entry in downloadEntries"
+        :key="entry.path"
+        :to="entry.disabled ? '/tools/download' : entry.path"
+        class="download-entry"
+        :class="{ 'download-entry--disabled': entry.disabled }"
+        :aria-disabled="entry.disabled ? 'true' : 'false'"
+        @click="entry.disabled && $event.preventDefault()"
+      >
         <span class="download-entry__icon">
           <el-icon><component :is="entry.icon" /></el-icon>
         </span>
@@ -67,6 +85,8 @@ const downloadEntries = computed(() => [
   box-shadow: var(--app-shadow-sm); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
 }
 .download-entry:hover { transform: translateY(-2px); border-color: var(--app-border-accent); background: var(--app-surface-elevated); box-shadow: var(--app-shadow-md); }
+.download-entry--disabled { filter: grayscale(1); opacity: .58; cursor: not-allowed; }
+.download-entry--disabled:hover { transform: none; border-color: var(--app-border); background: var(--app-surface); box-shadow: var(--app-shadow-sm); }
 .download-entry:focus-visible { outline: 0; box-shadow: var(--app-focus), var(--app-shadow-md); }
 .download-entry__icon {
   display: inline-flex; align-items: center; justify-content: center; width: 54px; height: 54px; border-radius: 12px;

@@ -44,6 +44,8 @@ class MqttAuthService:
         topic: str,
         action: MqttAction,
     ) -> bool:
+        if not settings.enable_mqtt_services:
+            return False
         if username == settings.emqx_username:
             return True
         try:

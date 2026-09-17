@@ -15,9 +15,11 @@ Response:
 Content-Type: text/event-stream
 ```
 
-Production reverse proxies must disable buffering.
+Production reverse proxies must disable buffering, for example with Nginx `proxy_buffering off`, or events may not reach the browser immediately.
 
 ## Frame Format
+
+Standard SSE frame:
 
 ```text
 event: system.status.updated
@@ -25,7 +27,13 @@ id: evt_xxx
 data: {"type":"system.status.updated","payload":{}}
 ```
 
-Payloads must be JSON serializable. Convert datetimes, enums, and domain objects before sending.
+| Field | Description |
+| --- | --- |
+| `event` | Event type. |
+| `id` | Event ID. |
+| `data` | JSON string containing the event type and payload. |
+
+`data` must be JSON serializable. Convert `datetime` values, enums, and domain objects to strings or plain objects before sending so serialization errors cannot break the SSE stream.
 
 ## Connection Strategy
 
@@ -35,6 +43,8 @@ Payloads must be JSON serializable. Convert datetimes, enums, and domain objects
 - Reconnect is handled by one shared reconnect layer.
 - Backend shutdown wakes subscribers so stream responses exit.
 
+When there are no active subscribers, the server should not keep generating meaningless pushes.
+
 ## Initial Events
 
 After connection:
@@ -42,7 +52,7 @@ After connection:
 - `system.status.updated`
 - `system.clock.sync`
 
-`system.clock.sync` is sent periodically, around every 15 seconds, and is also a lightweight liveness signal.
+While the connection is alive, `system.clock.sync` is sent periodically, around every 15 seconds. The frontend advances time with a local timer and recalibrates when the next event arrives.
 
 ## Events
 
@@ -60,6 +70,24 @@ After connection:
 | `snapshot.list.updated` | Snapshot list refresh. | `snapshots` |
 | `system.status.updated` | Home, system page, global status. | `summary`, `services`, `sync`, `topology`, `update` |
 | `system.clock.sync` | Server time sync and SSE liveness. | `timestamp` |
+
+## Mesh Workspace Refresh
+
+Mesh field changes can affect multiple endpoints. When an endpoint public address, listen port, or Mesh pair changes, the backend refreshes not only the current endpoint but also affected peer endpoints through `mesh.workspace.updated`.
+
+`workspace.connections[*]` contains connection-integrity results. The frontend displays broken-link indicators directly instead of deriving topology itself.
+
+## Endpoint Control Refresh
+
+Sources of `endpoint.status.updated` include:
+
+- Passive heartbeat reports.
+- Active detect ACK or timeout.
+- Info, control, or config-push ACK.
+- Client events.
+- Client reset.
+
+`info/ack` and `control/ack` update control-log status only. Command output arrives through the MQTT `event`; the backend stores it as a log and then publishes `control.log.created`.
 
 ## Frontend Rules
 

@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.errors import AppError
+from app.core.features import effective_node, mqtt_services_enabled
 from app.domain import awg
 from app.domain.models import ControlStatus, NodeType
 from app.events.publish_plan import PublishPlan
@@ -353,7 +354,12 @@ class ControlPlaneService:
         return store.list_configs()
 
     def get_config(self, config_id: str):
-        return store.get_config(config_id)
+        config = store.get_config(config_id)
+        if mqtt_services_enabled():
+            return config
+        return config.model_copy(
+            update={"dynamic_node_count": 0, "online_node_count": 0, "offline_node_count": 0}
+        )
 
     def config_overview(self, config_id: str):
         use_cache = not self._config_refresh_in_flight(config_id)
@@ -361,17 +367,31 @@ class ControlPlaneService:
         return self._serialize_config_projection(snapshot)["overview"]
 
     def list_nodes(self, config_id: str):
-        return store.list_nodes(config_id)
+        return [effective_node(node) for node in store.list_nodes(config_id)]
 
     def get_node(self, node_id: str):
-        return store.get_node(node_id)
+        return effective_node(store.get_node(node_id))
 
     def create_node(self, config_id: str, payload: dict[str, object]):
+        payload = dict(payload)
+        requested_type = payload.get("node_type")
+        if not mqtt_services_enabled():
+            if requested_type not in {None, NodeType.static, NodeType.static.value}:
+                raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
+            payload["node_type"] = NodeType.static.value
+        elif requested_type is None:
+            payload.pop("node_type", None)
         self.invalidate_config_projection(config_id)
-        return store.create_node(config_id, payload)
+        return effective_node(store.create_node(config_id, payload))
 
     def update_node(self, node_id: str, payload: dict[str, object]):
         previous = store.get_node(node_id)
+        payload = dict(payload)
+        if not mqtt_services_enabled():
+            requested_type = payload.pop("node_type", None)
+            requested_type_value = requested_type.value if isinstance(requested_type, NodeType) else requested_type
+            if requested_type_value == NodeType.dynamic.value:
+                raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
         self.invalidate_config_projection(previous.config_id)
         result = store.update_node(node_id, payload)
         current = store.get_node(node_id)
@@ -384,6 +404,7 @@ class ControlPlaneService:
                 emqx_reconcile_service.reconcile_all()
             if node_type_changed:
                 store.reconcile_node_operational_state(current.config_id, current.id)
+        result["node_type"] = effective_node(current).node_type.value
         return result
 
     def list_tags(self, config_id: str):
@@ -395,17 +416,17 @@ class ControlPlaneService:
 
     def apply_tag_to_nodes(self, config_id: str, tag: str, node_ids: list[str]):
         self.invalidate_config_projection(config_id)
-        return store.apply_tag_to_nodes(config_id, tag, node_ids)
+        return [effective_node(node) for node in store.apply_tag_to_nodes(config_id, tag, node_ids)]
 
     def replace_node_tags(self, node_id: str, tags: list[str]):
         config_id = store.get_node(node_id).config_id
         self.invalidate_config_projection(config_id)
-        return store.replace_node_tags(node_id, tags)
+        return effective_node(store.replace_node_tags(node_id, tags))
 
     def remove_tag_from_node(self, node_id: str, tag: str):
         config_id = store.get_node(node_id).config_id
         self.invalidate_config_projection(config_id)
-        return store.remove_tag_from_node(node_id, tag)
+        return effective_node(store.remove_tag_from_node(node_id, tag))
 
     def delete_tag_from_config(self, config_id: str, tag: str):
         self.invalidate_config_projection(config_id)
@@ -443,7 +464,27 @@ class ControlPlaneService:
         return store.list_peer_links(config_id)
 
     def mesh_workspace(self, config_id: str, node_id: str):
-        return store.mesh_workspace(config_id, node_id)
+        workspace = store.mesh_workspace(config_id, node_id)
+        if mqtt_services_enabled():
+            return workspace
+        result = dict(workspace)
+        node = result.get("node")
+        if isinstance(node, dict):
+            result["node"] = {**node, "node_type": NodeType.static.value}
+        connections = result.get("connections")
+        if isinstance(connections, list):
+            effective_connections: list[object] = []
+            for item in connections:
+                if not isinstance(item, dict):
+                    effective_connections.append(item)
+                    continue
+                effective_item = dict(item)
+                peer_node = effective_item.get("peer_node")
+                if isinstance(peer_node, dict):
+                    effective_item["peer_node"] = {**peer_node, "node_type": NodeType.static.value}
+                effective_connections.append(effective_item)
+            result["connections"] = effective_connections
+        return result
 
     def build_peer_link_draft(self, config_id: str, node_id: str, peer_node_id: str, endpoint_ref_family: str):
         return store.build_peer_link_draft(config_id, node_id, peer_node_id, endpoint_ref_family)
@@ -578,6 +619,8 @@ class ControlPlaneService:
         }
 
     def client_bind_preview(self, token: str) -> dict[str, object]:
+        if not self.mqtt_service_enabled():
+            raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
         return store.validate_client_bind_token(token)
 
     def mark_client_bound(
@@ -592,6 +635,8 @@ class ControlPlaneService:
         version: str = "",
         hostname: str = "",
     ) -> dict[str, object]:
+        if not self.mqtt_service_enabled():
+            raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
         return store.mark_client_bound(
             config_id,
             node_id,
@@ -604,11 +649,15 @@ class ControlPlaneService:
         )
 
     def reset_client_state(self, config_id: str, node_id: str) -> dict[str, object]:
+        if not self.mqtt_service_enabled():
+            raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
         state = store.reset_client_state(config_id, node_id)
         emqx_reconcile_service.revoke_node_user(node_id=node_id)
         return state
 
     def endpoint_logs(self, config_id: str, node_id: str):
+        if not self.mqtt_service_enabled():
+            raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
         return [item.model_dump(mode="json") for item in store.list_endpoint_logs(config_id, node_id)]
 
     def _config_push_payload_body(self, config_id: str, node_id: str) -> dict[str, object]:
@@ -634,6 +683,8 @@ class ControlPlaneService:
     async def publish_config_push(self, config_id: str, node_id: str, *, requested_by: str = "admin"):
         from app.services.mqtt_ingress_service import mqtt_ingress_service
 
+        if not self.mqtt_service_enabled():
+            raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
         log = store.create_control_log(config_id, node_id, "push_config", requested_by=requested_by)
         await realtime_service.publish("control.log.created", {"config_id": config_id, "node_id": node_id, "log": log.model_dump(mode="json")})
         try:

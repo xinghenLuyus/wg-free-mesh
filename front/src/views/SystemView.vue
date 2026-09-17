@@ -143,7 +143,11 @@ onBeforeUnmount(() => {
     <el-descriptions :column="1" border :title="t('system.summary')">
       <el-descriptions-item :label="t('system.configs')">{{ status.summary.configs }}</el-descriptions-item>
       <el-descriptions-item :label="t('system.nodes')">{{ status.summary.nodes }}</el-descriptions-item>
-      <el-descriptions-item :label="t('system.onlineNodes')">{{ status.summary.online_nodes }}</el-descriptions-item>
+      <el-descriptions-item :label="t('system.onlineNodes')">
+        <span :class="{ 'feature-status--disabled': health?.mqtt_services_enabled === false }">
+          {{ status.summary.online_nodes }}
+        </span>
+      </el-descriptions-item>
       <el-descriptions-item :label="t('system.syncIssueNodes')">{{ status.sync.issue_count }}</el-descriptions-item>
       <el-descriptions-item :label="t('system.database')">{{ status.services.database }}</el-descriptions-item>
       <el-descriptions-item :label="t('system.realtimeState')">
@@ -245,6 +249,11 @@ onBeforeUnmount(() => {
 
 .section-gap {
   margin-top: 20px;
+}
+
+.feature-status--disabled {
+  filter: grayscale(1);
+  opacity: .52;
 }
 
 .update-card {

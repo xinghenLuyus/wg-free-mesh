@@ -171,7 +171,7 @@ export const api = {
   createConfigBulkPackage: (payload: { config_id: string; node_ids: string[] }) =>
     request<ConfigBulkPackageRead>('/tools/download/config-bulk/package', { method: 'POST', data: payload }),
   downloadConfigBulkPackage: (packageId: string) =>
-    request<Blob>(`/tools/download/config-bulk/${packageId}`, { responseType: 'blob' }),
+    request<Blob>(`/tools/download/config-bulk/package/${packageId}`, { responseType: 'blob' }),
   portForwardRules: (configId: string) =>
     request<PortForwardRuleRead[]>(`/tools/port-forwards/configs/${configId}`),
   createPortForwardRule: (configId: string, payload: {

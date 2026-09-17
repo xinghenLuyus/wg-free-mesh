@@ -13,6 +13,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 
 from app.core.config import settings
 from app.core.errors import AppError
+from app.core.features import effective_node_type
 from app.domain.models import new_id, now_utc
 from app.data.database import data_dir
 from app.data.repositories.naming import config_artifact_name_segment, node_config_artifact_stem
@@ -80,6 +81,7 @@ class DownloadToolsService:
         return path
 
     def client_options(self) -> dict[str, object]:
+        self._require_client_tools()
         return {
             "sources": CLIENT_DOWNLOAD_SOURCES,
             "systems": [{"value": value, "label": label} for value, label in SUPPORTED_CLIENT_SYSTEMS.items()],
@@ -98,6 +100,10 @@ class DownloadToolsService:
             raise AppError("INVALID_CLIENT_SYSTEM", "Client system is invalid", 400)
         if goarch not in SUPPORTED_CLIENT_ARCHES[goos]:
             raise AppError("INVALID_CLIENT_ARCH", "Client architecture is invalid", 400)
+
+    def _require_client_tools(self) -> None:
+        if not settings.enable_mqtt_services:
+            raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
 
     def _client_source_hash(self) -> str:
         client_dir = self._repo_root / "client"
@@ -136,6 +142,7 @@ class DownloadToolsService:
             return self._build_locks[key]
 
     def build_client_artifact(self, source: str, goos: str, goarch: str) -> dict[str, object]:
+        self._require_client_tools()
         self._validate_client_target(source, goos, goarch)
         if source == "github_release":
             return self._github_release_client_artifact(goos, goarch)
@@ -294,6 +301,7 @@ class DownloadToolsService:
             raise AppError("CLIENT_BUILD_FAILED", "Client build failed", 500, {"message": detail})
 
     def client_artifact_file(self, artifact_id: str) -> tuple[Path, str]:
+        self._require_client_tools()
         path = self._client_artifact_path(artifact_id)
         if not path.exists():
             raise AppError("CLIENT_ARTIFACT_NOT_FOUND", "Client artifact not found", 404)
@@ -323,7 +331,7 @@ class DownloadToolsService:
                     {
                         "id": node.id,
                         "name": node.name,
-                        "node_type": node.node_type,
+                        "node_type": effective_node_type(node),
                         "virtual_ip": node.virtual_ip,
                         "auto_sync": node.auto_sync,
                         "can_download": bool(sync_status.get("staged_sha256")),
@@ -400,7 +408,7 @@ class DownloadToolsService:
         return {
             "package_id": package_id,
             "filename": filename,
-            "download_path": f"/api/v1/tools/download/config-bulk/{package_id}",
+            "download_path": f"/api/v1/tools/download/config-bulk/package/{package_id}",
             "config_id": config.id,
             "config_name": config.name,
             "node_count": len(entries),

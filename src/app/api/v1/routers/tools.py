@@ -107,7 +107,7 @@ def create_config_bulk_package(payload: Annotated[dict[str, Any], Body()]) -> Ap
     )
 
 
-@download_router.get("/download/config-bulk/{package_id}")
+@download_router.get("/download/config-bulk/package/{package_id}")
 def download_config_bulk_package(
     package_id: str,
     authorization: Annotated[str | None, Header()] = None,

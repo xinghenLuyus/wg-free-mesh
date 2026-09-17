@@ -38,7 +38,10 @@ class McpNodePayload(BaseModel):
     dns: str | None = Field(default=None, description="Optional node-specific DNS setting.")
     auto_sync: bool | None = Field(default=None, description="Whether this node automatically syncs system state to staged config.")
     enabled: bool | None = Field(default=None, description="Soft enable flag. Disabled nodes are kept but excluded from runtime/sync.")
-    node_type: Literal["dynamic", "static"] = Field(default="dynamic", description="dynamic uses WFM client/MQTT; static is manually managed.")
+    node_type: Literal["dynamic", "static"] | None = Field(
+        default=None,
+        description="Optional endpoint type. The server defaults to static when MQTT services are disabled.",
+    )
     public_key: str | None = Field(default=None, description="Optional public key. Leave empty when backend should generate key material.")
     private_key: str | None = Field(default=None, description="Optional private key. Handle carefully; it is sensitive.")
     tags: list[str] = Field(default_factory=list, description="Optional node tags.")

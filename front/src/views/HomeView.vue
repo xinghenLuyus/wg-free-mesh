@@ -23,6 +23,7 @@ const creatingConfig = actions.isPending('create-config')
 const { statusFilter, sortKey, layoutMode } = useHomePrefs()
 
 const configs = shallowRef<ConfigRead[]>([])
+const mqttServicesEnabled = shallowRef(true)
 let lastRealtimeVersion = 0
 const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type === 'config.list.updated') {
@@ -74,7 +75,7 @@ const onlineNodeTotal = computed(() => configs.value.reduce((sum, config) => sum
 const portalMetrics = computed(() => [
   { label: t('home.metricConfigs'), value: configs.value.length },
   { label: t('home.metricNodes'), value: configs.value.reduce((sum, config) => sum + config.node_count, 0) },
-  { label: t('home.metricDynamicNodes'), value: configs.value.reduce((sum, config) => sum + config.dynamic_node_count, 0) },
+  { label: t('home.metricDynamicNodes'), value: configs.value.reduce((sum, config) => sum + config.dynamic_node_count, 0), disabled: !mqttServicesEnabled.value },
 ])
 
 const statusFilterOptions = computed(() => [
@@ -87,7 +88,7 @@ const sortOptions = computed(() => [
   { label: t('home.sortUpdated'), value: 'updated' },
   { label: t('home.sortName'), value: 'name' },
   { label: t('home.sortNodes'), value: 'nodes' },
-  { label: t('home.sortOnline'), value: 'online' },
+  { label: t('home.sortOnline'), value: 'online', disabled: !mqttServicesEnabled.value },
 ])
 
 const layoutOptions = computed(() => [
@@ -114,7 +115,7 @@ function configStats(config: ConfigRead) {
     { label: t('home.virtualSubnet'), value: config.virtual_subnet },
     { label: t('home.nodeCount'), value: config.node_count },
     { label: t('home.onlineNodeCount'), value: config.online_node_count },
-    { label: t('home.dynamicNodeCount'), value: config.dynamic_node_count },
+    { label: t('home.dynamicNodeCount'), value: config.dynamic_node_count, disabled: !mqttServicesEnabled.value },
   ]
 }
 
@@ -124,7 +125,9 @@ function formatHomeDate(value: string) {
 }
 
 async function load() {
-  configs.value = await api.configs()
+  const [nextConfigs, health] = await Promise.all([api.configs(), api.health()])
+  configs.value = nextConfigs
+  mqttServicesEnabled.value = health.mqtt_services_enabled
 }
 
 async function submit() {
@@ -195,11 +198,11 @@ watch(
           <i></i>
           {{ t('home.portalStageConfig') }}
         </span>
-        <span>
+        <span :class="{ 'home-portal__flow-stage--disabled': !mqttServicesEnabled }">
           <i></i>
           {{ t('home.portalStageMqtt') }}
         </span>
-        <span>
+        <span :class="{ 'home-portal__flow-stage--disabled': !mqttServicesEnabled }">
           <i></i>
           {{ t('home.portalStageClient') }}
         </span>
@@ -207,12 +210,12 @@ watch(
     </div>
 
     <div class="home-portal__panel">
-      <div class="home-portal__primary-metric">
+      <div class="home-portal__primary-metric" :class="{ 'feature-metric--disabled': !mqttServicesEnabled }">
         <span>{{ t('home.metricOnlineNodes') }}</span>
         <strong>{{ onlineNodeTotal }}</strong>
       </div>
       <div class="home-portal__metrics">
-        <div v-for="metric in portalMetrics" :key="metric.label" class="home-portal__metric">
+        <div v-for="metric in portalMetrics" :key="metric.label" class="home-portal__metric" :class="{ 'feature-metric--disabled': metric.disabled }">
           <strong>{{ metric.value }}</strong>
           <span>{{ metric.label }}</span>
         </div>
@@ -228,7 +231,7 @@ watch(
       <el-button type="primary" :icon="Plus" @click="openCreateDialog">{{ t('home.createConfig') }}</el-button>
       <el-segmented v-model="statusFilter" :options="statusFilterOptions" :aria-label="t('home.statusFilter')" />
       <el-select v-model="sortKey" class="config-sort-select" :aria-label="t('home.sortLabel')">
-        <el-option v-for="option in sortOptions" :key="option.value" :label="option.label" :value="option.value" />
+        <el-option v-for="option in sortOptions" :key="option.value" :label="option.label" :value="option.value" :disabled="option.disabled" />
       </el-select>
       <el-segmented v-model="layoutMode" :options="layoutOptions" :aria-label="t('home.layoutLabel')" />
     </div>
@@ -258,7 +261,7 @@ watch(
       </div>
 
       <dl class="config-stat-grid">
-        <div v-for="stat in configStats(config)" :key="stat.label">
+        <div v-for="stat in configStats(config)" :key="stat.label" :class="{ 'feature-metric--disabled': stat.disabled }">
           <dt>{{ stat.label }}</dt>
           <dd>{{ stat.value }}</dd>
         </div>
@@ -297,7 +300,7 @@ watch(
       </div>
 
       <dl class="config-stat-grid config-stat-grid--list">
-        <div v-for="stat in configStats(config)" :key="stat.label">
+        <div v-for="stat in configStats(config)" :key="stat.label" :class="{ 'feature-metric--disabled': stat.disabled }">
           <dt>{{ stat.label }}</dt>
           <dd>{{ stat.value }}</dd>
         </div>
@@ -602,6 +605,12 @@ watch(
   color: var(--app-muted);
   font-size: 13px;
   font-weight: 650;
+}
+
+.feature-metric--disabled,
+.home-portal__flow-stage--disabled {
+  filter: grayscale(1);
+  opacity: .52;
 }
 
 .config-toolbar {
