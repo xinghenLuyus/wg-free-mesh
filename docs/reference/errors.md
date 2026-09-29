@@ -97,6 +97,7 @@
 | --- | --- |
 | `INVALID_TUNNEL_PROTOCOL` | 隧道协议无效。 |
 | `INVALID_AWG_PARAMETER` | AWG 参数超出范围。 |
+| `INVALID_AWG_VERSION` | AWG 版本不支持、缺失或与协议冲突。 |
 | `INVALID_AWG_H_RANGE` | H 参数格式、范围或重叠关系无效。 |
 | `INVALID_AWG_J_RANGE` | Jmax 必须大于 Jmin。 |
 

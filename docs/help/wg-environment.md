@@ -12,7 +12,7 @@ WG Free Mesh 客户端负责接收控制台下发的配置和控制命令。真�
 
 ## AmneziaWG 工具链
 
-如果配置使用 AmneziaWG 2.0，则需要安装 AmneziaWG 客户端或 `awg` 工具链。也可以先从 [Amnezia 官方文档入口](https://docs.amnezia.org/documentation/alternative-clients/) 选择对应平台。
+如果配置使用 AmneziaWG，则需要安装 AmneziaWG 客户端或 `awg` 工具链。也可以先从 [Amnezia 官方文档入口](https://docs.amnezia.org/documentation/alternative-clients/) 选择对应平台。
 
 常见平台入口：
 

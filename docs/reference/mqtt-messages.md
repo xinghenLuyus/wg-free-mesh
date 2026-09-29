@@ -152,6 +152,8 @@ payload 示例：
 
 `previous_tunnel_protocol` 指定写入新配置前需要检查并清理的原工具链。没有发生协议切换时，它与 `tunnel_protocol` 相同。
 
+业务 API 使用 `amneziawg`；MQTT 下行使用 `amneziawg_2` 表示 AWG 工具链，具体版本由 `awg_version`（1.5、2.0、3.1）指定。客户端也接受协议值 `amneziawg`；非法协议或版本直接返回失败，消息可省略版本字段。
+
 客户端先检查 `previous_tunnel_protocol` 和目标协议下当前 profile 的接口。发现运行中的接口时，必须在覆盖配置前使用对应工具链停止；任一停止失败则返回 `failed`。全部停止后写入新配置，并在更新前存在运行接口时使用目标工具链重新启动。只有完整流程成功，才能返回 `applied`。如果更新前没有接口运行，客户端只写入配置，不主动启动。
 
 ## `control`

@@ -1,5 +1,6 @@
 import { request } from '@/api/client'
 import type {
+  AwgGenerationRead,
   ConfigMutationRead,
   ConfigOverviewRead,
   ConfigRead,
@@ -53,6 +54,8 @@ function toQueryString(query: object) {
 }
 
 export const api = {
+  generateAwg: (payload: Record<string, unknown>) =>
+    request<AwgGenerationRead>('/configs/awg/generate', { method: 'POST', data: payload }),
   authState: () => request<AuthStateRead>('/auth/state'),
   setup: (password: string, locale: AppLocale = 'zh-CN') =>
     request<TokenSessionRead>('/auth/setup', { method: 'POST', data: { password, locale } }),
@@ -76,8 +79,11 @@ export const api = {
     request<ConfigRead>('/configs', { method: 'POST', data: payload }),
   updateConfig: (configId: string, payload: Record<string, unknown>) =>
     request<ConfigMutationRead>(`/configs/${configId}`, { method: 'PUT', data: payload }),
-  randomAwgConfig: () =>
-    request<Record<string, number | string>>('/configs/awg/random', { method: 'POST' }),
+  protocolOptions: () => request<import('@/types/api').ProtocolOptions>('/configs/protocol-options'),
+  convertAwgConfig: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>('/configs/awg/convert', { method: 'POST', data: payload }),
+  randomAwgConfig: (version = '2.0', regenerateKey = false) =>
+    request<Record<string, unknown>>(`/configs/awg/random?awg_version=${version}&regenerate_key=${regenerateKey}`, { method: 'POST' }),
   deleteConfig: (configId: string) =>
     request<{ message: string }>(`/configs/${configId}`, { method: 'DELETE' }),
 
@@ -114,8 +120,8 @@ export const api = {
       data: { virtual_ip },
     }),
   generateKeys: () => request<{ private_key: string; public_key: string }>('/nodes/keys/generate', { method: 'POST' }),
-  randomAwgNode: () =>
-    request<Record<string, number | string | null>>('/nodes/awg/random', { method: 'POST' }),
+  randomAwgNode: (version = '2.0') =>
+    request<Record<string, unknown>>(`/nodes/awg/random?awg_version=${version}`, { method: 'POST' }),
 
   peerLinks: (configId: string) => request<PeerLinkRead[]>(`/configs/${configId}/peer-links`),
   meshWorkspace: (configId: string, nodeId: string) =>

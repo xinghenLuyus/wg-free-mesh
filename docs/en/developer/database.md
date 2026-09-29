@@ -20,6 +20,8 @@ Schema changes must go through Alembic migrations. Changing only `schema.py` wil
 
 Startup initializes and migrates the database so SQLite and PostgreSQL can move to the current schema.
 
+For databases without Alembic version records, initialization identifies the version from the schema and follows the migration chain to the current schema. See [Data Model](/en/reference/data-model) for AWG protocol, version, and extension storage rules.
+
 Migration scripts should:
 
 - Work on SQLite and PostgreSQL.

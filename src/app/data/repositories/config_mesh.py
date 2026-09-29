@@ -155,9 +155,16 @@ class ConfigMeshRepositoryMixin:
         validate_config_name(name)
         now = now_utc().isoformat()
         tunnel_protocol = tunnel_protocol_value(payload.get("tunnel_protocol", TunnelProtocol.wireguard))
+        version = awg.version_value(payload.get("awg_version")) if tunnel_protocol == TunnelProtocol.amneziawg else None
+        if str(payload.get("tunnel_protocol")) == "amneziawg" and not payload.get("awg_version"):
+            raise AppError("INVALID_AWG_VERSION", "AWG version is required", 400)
+        if str(payload.get("tunnel_protocol")) == "amneziawg_2" and version != "2.0":
+            raise AppError("INVALID_AWG_VERSION", "Legacy protocol requires AWG 2.0", 400)
+        if tunnel_protocol == TunnelProtocol.wireguard and payload.get("awg_version"):
+            raise AppError("INVALID_AWG_VERSION", "WireGuard does not use an AWG version", 400)
         awg_params = (
-            awg.ensure_config_params(payload)
-            if tunnel_protocol == TunnelProtocol.amneziawg_2
+            awg.ensure_config_params({**payload, "awg_options": awg.merge_options(payload, {}, version or "2.0", True)}, version or "2.0")
+            if tunnel_protocol == TunnelProtocol.amneziawg
             else awg.empty_config_params()
         )
         config = Config(
@@ -170,6 +177,8 @@ class ConfigMeshRepositoryMixin:
             default_dns=str(payload.get("default_dns") or "") or None,
             auto_sync=bool(payload.get("auto_sync", True)),
             tunnel_protocol=tunnel_protocol,
+            awg_version=version,
+            awg_options=cast(dict, awg_params["awg_options"]),
             awg_s1=cast(int | None, awg_params["awg_s1"]),
             awg_s2=cast(int | None, awg_params["awg_s2"]),
             awg_s3=cast(int | None, awg_params["awg_s3"]),
@@ -213,14 +222,33 @@ class ConfigMeshRepositoryMixin:
                     now,
                 ),
             )
+            connection.execute("UPDATE configs SET awg_version = ?, awg_options_json = ? WHERE id = ?", (config.awg_version, json.dumps(config.awg_options), config.id))
         return self.get_config(config.id)
 
     def update_config(self, config_id: str, payload: dict[str, object]) -> dict[str, object]:
         current = self.get_config(config_id)
         tunnel_protocol = tunnel_protocol_value(payload.get("tunnel_protocol", current.tunnel_protocol))
+        if tunnel_protocol == TunnelProtocol.amneziawg and current.awg_version is None and str(payload.get("tunnel_protocol")) != "amneziawg_2" and not payload.get("awg_version"):
+            raise AppError("INVALID_AWG_VERSION", "Select an AWG version", 400)
+        version = awg.version_value(payload.get("awg_version") or current.awg_version) if tunnel_protocol == TunnelProtocol.amneziawg else None
+        if str(payload.get("tunnel_protocol")) == "amneziawg_2":
+            if payload.get("awg_version") not in (None, "2.0"):
+                raise AppError("INVALID_AWG_VERSION", "Legacy protocol requires AWG 2.0", 400)
+            version = "2.0"
+        if tunnel_protocol == TunnelProtocol.wireguard and payload.get("awg_version"):
+            raise AppError("INVALID_AWG_VERSION", "WireGuard does not use an AWG version", 400)
+        base = current.model_dump(mode="json")
+        adjustments: list[dict[str, object]] = []
+        if version and current.awg_version != version:
+            converted = awg.convert_config_params(base, current.awg_version, version)
+            adjustments = [{"field": key, "reason": "Adapted to AWG " + version} for key, value in converted.items() if base.get(key) != value]
+            converted["awg_options"] = {**current.awg_options, **converted["awg_options"]}
+            base.update(converted)
+        if version:
+            payload = {**payload, "awg_options": awg.merge_options(payload, base, version, True)}
         awg_params = (
-            awg.ensure_config_params({**current.model_dump(mode="json"), **payload})
-            if tunnel_protocol == TunnelProtocol.amneziawg_2
+            (awg.validate_config_params if current.awg_version == version else awg.ensure_config_params)({**base, **payload}, version or "2.0")
+            if tunnel_protocol == TunnelProtocol.amneziawg
             else awg.empty_config_params()
         )
         updated = current.model_copy(
@@ -230,15 +258,35 @@ class ConfigMeshRepositoryMixin:
                 "enabled": payload.get("enabled", current.enabled),
                 "virtual_subnet": str(payload.get("virtual_subnet", current.virtual_subnet)),
                 "default_listen_port": int_value(payload.get("default_listen_port"), current.default_listen_port),
-                "default_mtu": int_or_none(payload.get("default_mtu")),
-                "default_dns": str(payload.get("default_dns") or "") or None,
+                "default_mtu": int_or_none(payload.get("default_mtu")) if "default_mtu" in payload else current.default_mtu,
+                "default_dns": (str(payload.get("default_dns") or "") or None) if "default_dns" in payload else current.default_dns,
                 "auto_sync": payload.get("auto_sync", current.auto_sync),
                 "tunnel_protocol": tunnel_protocol,
+                "awg_version": version,
                 **awg_params,
                 "updated_at": now_utc(),
             }
         )
         validate_config_name(updated.name)
+        nodes = self.list_nodes(config_id)
+        node_updates = payload.get("awg_node_updates") or {}
+        if not isinstance(node_updates, dict) or set(node_updates) - {node.id for node in nodes}:
+            raise AppError("INVALID_AWG_PARAMETER", "AWG node drafts must belong to this configuration", 400)
+        if node_updates and not version:
+            raise AppError("INVALID_AWG_PARAMETER", "WireGuard does not accept AWG node drafts", 400)
+        node_params_by_id = {}
+        if version:
+            for node in nodes:
+                draft = node_updates.get(node.id, {})
+                if not isinstance(draft, dict) or set(draft) - set(awg.empty_node_params()):
+                    raise AppError("INVALID_AWG_PARAMETER", "Unknown AWG node draft field", 400)
+                node_payload = {**node.model_dump(mode="json"), **draft}
+                node_payload["awg_options"] = awg.merge_options(draft, node.model_dump(mode="json"), version, False)
+                if version == "3.1" and updated.awg_options.get("random_trailers") is not None:
+                    node_payload["awg_options"]["random_trailers"] = updated.awg_options["random_trailers"]
+                node_params = (awg.validate_node_params if current.awg_version == version or draft else awg.ensure_node_params)(node_payload, version)
+                awg.validate_mesh_options(awg_params, node_params, version)
+                node_params_by_id[node.id] = node_params
         with connect() as connection:
             existing = connection.execute("SELECT id FROM configs WHERE name = ? AND id != ?", (updated.name, config_id)).fetchone()
             if existing is not None:
@@ -280,14 +328,14 @@ class ConfigMeshRepositoryMixin:
                     UPDATE nodes
                     SET awg_jc = NULL, awg_jmin = NULL, awg_jmax = NULL,
                         awg_i1 = NULL, awg_i2 = NULL, awg_i3 = NULL, awg_i4 = NULL, awg_i5 = NULL,
-                        updated_at = ?
+                        awg_options_json = '{}', updated_at = ?
                     WHERE config_id = ?
                     """,
                     (updated.updated_at.isoformat(), config_id),
                 )
-            if updated.tunnel_protocol == TunnelProtocol.amneziawg_2:
-                for node in self.list_nodes(config_id):
-                    node_params = awg.ensure_node_params(node.model_dump(mode="json"))
+            if updated.tunnel_protocol == TunnelProtocol.amneziawg:
+                for node in nodes:
+                    node_params = node_params_by_id[node.id]
                     connection.execute(
                         """
                         UPDATE nodes
@@ -309,6 +357,8 @@ class ConfigMeshRepositoryMixin:
                             node.id,
                         ),
                     )
+                    connection.execute("UPDATE nodes SET awg_options_json = ? WHERE id = ?", (json.dumps(node_params["awg_options"]), node.id))
+            connection.execute("UPDATE configs SET awg_version = ?, awg_options_json = ? WHERE id = ?", (updated.awg_version, json.dumps(updated.awg_options), config_id))
         node_ids = [node.id for node in self.list_nodes(config_id)]
         affected_node_ids: set[str] = set(node_ids)
         change_hints: list[dict[str, object]] = []
@@ -327,6 +377,7 @@ class ConfigMeshRepositoryMixin:
         config = self.get_config(config_id)
         return {
             **config.model_dump(mode="json"),
+            "adjustments": adjustments,
             "change_hints": change_hints,
             "affected_node_ids": sorted(affected_node_ids),
         }
@@ -410,8 +461,8 @@ class ConfigMeshRepositoryMixin:
         if not node_name:
             raise AppError("INVALID_NODE_NAME", "Name is required", 400)
         awg_params = (
-            awg.ensure_node_params(payload)
-            if config.tunnel_protocol == TunnelProtocol.amneziawg_2
+            awg.ensure_node_params({**payload, "awg_options": awg.merge_options(payload, {}, config.awg_version or "2.0", False)}, config.awg_version or "2.0", config.awg_options)
+            if config.tunnel_protocol == TunnelProtocol.amneziawg
             else awg.empty_node_params()
         )
         node = Node(
@@ -434,6 +485,7 @@ class ConfigMeshRepositoryMixin:
             pre_down=payload_string_list(payload.get("pre_down")),
             post_down=payload_string_list(payload.get("post_down")),
             awg_jc=cast(int | None, awg_params["awg_jc"]),
+            awg_options=cast(dict, awg_params["awg_options"]),
             awg_jmin=cast(int | None, awg_params["awg_jmin"]),
             awg_jmax=cast(int | None, awg_params["awg_jmax"]),
             awg_i1=cast(str | None, awg_params["awg_i1"]),
@@ -443,6 +495,8 @@ class ConfigMeshRepositoryMixin:
             awg_i5=cast(str | None, awg_params["awg_i5"]),
         )
         validation = self.validate_virtual_ip(config_id, node.virtual_ip or "")
+        if config.tunnel_protocol == TunnelProtocol.amneziawg:
+            awg.validate_mesh_options(config.model_dump(mode="json"), awg_params, config.awg_version or "2.0")
         if not validation["valid"]:
             raise AppError("INVALID_VIRTUAL_IP", str(validation["warning"]), 400)
         now = now_utc().isoformat()
@@ -488,6 +542,7 @@ class ConfigMeshRepositoryMixin:
                 ),
             )
             connection.execute("UPDATE configs SET updated_at = ? WHERE id = ?", (now, config_id))
+            connection.execute("UPDATE nodes SET awg_options_json = ? WHERE id = ?", (json.dumps(node.awg_options), node.id))
             connection.execute(
                 "INSERT INTO node_config_state (id, config_id, node_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
                 (new_id("ncs"), config_id, node.id, now, now),
@@ -523,9 +578,11 @@ class ConfigMeshRepositoryMixin:
     def update_node(self, node_id: str, payload: dict[str, object]) -> dict[str, object]:
         current = self.get_node(node_id)
         config = self.get_config(current.config_id)
+        if config.tunnel_protocol == TunnelProtocol.amneziawg:
+            payload = {**payload, "awg_options": awg.merge_options(payload, current.model_dump(mode="json"), config.awg_version or "2.0", False)}
         awg_params = (
-            awg.validate_node_params({**current.model_dump(mode="json"), **payload})
-            if config.tunnel_protocol == TunnelProtocol.amneziawg_2
+            awg.validate_node_params({**current.model_dump(mode="json"), **payload}, config.awg_version or "2.0")
+            if config.tunnel_protocol == TunnelProtocol.amneziawg
             else awg.empty_node_params()
         )
         updated = current.model_copy(
@@ -559,6 +616,8 @@ class ConfigMeshRepositoryMixin:
         if not validation["valid"]:
             raise AppError("INVALID_VIRTUAL_IP", str(validation["warning"]), 400)
         dependency_changes = self._validate_endpoint_references(current.config_id, current, updated)
+        if config.tunnel_protocol == TunnelProtocol.amneziawg:
+            awg.validate_mesh_options(config.model_dump(mode="json"), awg_params, config.awg_version or "2.0")
         with connect() as connection:
             connection.execute(
                 """
@@ -600,6 +659,7 @@ class ConfigMeshRepositoryMixin:
                     node_id,
                 ),
             )
+            connection.execute("UPDATE nodes SET awg_options_json = ? WHERE id = ?", (json.dumps(updated.awg_options), node_id))
             keepalive_clear_ids = cast(list[str], dependency_changes["keepalive_clear_ids"])
             if keepalive_clear_ids:
                 placeholders = ",".join("?" for _ in keepalive_clear_ids)

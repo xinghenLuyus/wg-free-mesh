@@ -8,7 +8,7 @@
 - 配置管理
 - 节点管理
 - Peer Link / Mesh 校验
-- WireGuard / AmneziaWG 2.0 隧道配置预览
+- WireGuard / AmneziaWG 隧道配置预览
 - 系统态与同步态管理
 - 端点运行态、控制日志、批量 probe
 - SSE 实时事件
@@ -40,7 +40,8 @@
 - `endpoint_mode=none` 强制不写 Endpoint。
 - `endpoint_mode=manual` 必须填写 Host 和 Port。
 - WireGuard Endpoint 只有在 Host 是 IPv6 字面量时才加方括号，域名不加。
-- 配置通过 `tunnel_protocol` 选择 `wireguard` 或 `amneziawg_2`。AmneziaWG 2.0 的 S/H 参数属于配置级，J/I 参数属于节点级；切回 WireGuard 时后端清空 AWG 专属字段。节点级随机值会同时生成 J 参数和非空 I1-I5 CPS 签名链。
+- 配置通过 `tunnel_protocol` 选择 `wireguard` 或 `amneziawg`，`awg_version` 独立选择 1.5、2.0 或 3.1。S/H 参数属于配置级，J/I 参数属于节点级，扩展参数存于各自的 `awg_options`；切回 WireGuard 时清空 AWG 专属字段。历史数据库自动迁移为 AWG 2.0，旧 API 的 `amneziawg_2` 输入暂时兼容。MQTT 下行继续使用旧协议标识并附带 `awg_version`。
+- AWG 统一随机接口只生成草稿；方向/强度存于配置 options JSON，新增端点沿用策略。共享 RandomTrailers 在配置层统一，生成后可逐字段编辑；配置与端点草稿复用原保存事务及同步流程，不在预览/下载中重新生成。
 - 客户端绑定不保存隧道协议；服务端在每次 MQTT 控制、探测、诊断和配置下发 payload 中携带当前协议。协议切换时，配置下发还会通过 `previous_tunnel_protocol` 指定原工具链，客户端先注销该工具链下的同 profile 隧道，再按目标协议恢复原运行状态。Linux/macOS 启停隧道使用 `wg-quick` / `awg-quick`，Windows 启停隧道使用 `wireguard.exe` / `amneziawg.exe` 的 tunnel service 命令；状态检查使用 `wg` / `awg`。
 
 可配置项：

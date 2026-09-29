@@ -12,7 +12,7 @@
 - 虚拟网段：所有端点的虚拟 IP 都会从这个网段中分配。
 - 默认监听端口：新端点默认使用的监听端口。
 - 默认 DNS：客户端配置里写入的 DNS。
-- 协议：选择 `WireGuard` 或 `AmneziaWG 2.0`。
+- 协议：选择 `WireGuard` 或 `AmneziaWG`。
 
 如果不确定怎么选，先保持默认 WireGuard。
 

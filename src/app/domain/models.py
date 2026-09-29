@@ -60,7 +60,11 @@ class NodeType(StrEnum):
 
 class TunnelProtocol(StrEnum):
     wireguard = "wireguard"
-    amneziawg_2 = "amneziawg_2"
+    amneziawg = "amneziawg"
+
+    @classmethod
+    def _missing_(cls, value):
+        return cls.amneziawg if value == "amneziawg_2" else None
 
 
 class ConnectivityState(StrEnum):
@@ -129,6 +133,8 @@ class Config(BaseModel):
     default_dns: str | None = None
     auto_sync: bool = True
     tunnel_protocol: TunnelProtocol = TunnelProtocol.wireguard
+    awg_version: str | None = None
+    awg_options: dict[str, str | int | bool | None] = Field(default_factory=dict)
     awg_s1: int | None = None
     awg_s2: int | None = None
     awg_s3: int | None = None
@@ -169,6 +175,7 @@ class Node(BaseModel):
     pre_down: list[str] = Field(default_factory=list)
     post_down: list[str] = Field(default_factory=list)
     awg_jc: int | None = None
+    awg_options: dict[str, str | int | bool | None] = Field(default_factory=dict)
     awg_jmin: int | None = None
     awg_jmax: int | None = None
     awg_i1: str | None = None

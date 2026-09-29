@@ -174,6 +174,14 @@ func (s *Session) subscribe(ctx context.Context) error {
 func (s *Session) handleMessage(m *pahomqtt.Publish) {
 	var env Envelope
 	_ = json.Unmarshal(m.Payload, &env)
+	if err := validateTunnelPayload(env.Payload); err != nil {
+		for _, kind := range []string{"detect", "info", "control", "config/push"} {
+			if m.Topic == s.topic(kind) {
+				_ = s.publish(kind+"/ack", s.envelope(kind+"/ack", env.RequestID, map[string]any{"status": "failed", "message": err.Error()}))
+				return
+			}
+		}
+	}
 	switch m.Topic {
 	case s.topic("detect"):
 		tunnelProtocol := tunnelProtocolFromPayload(env.Payload)
@@ -298,6 +306,9 @@ func (s *Session) applyControlWithProtocol(action string, tunnelProtocol string,
 }
 
 func (s *Session) applyConfigPush(payload map[string]any) error {
+	if err := validateTunnelPayload(payload); err != nil {
+		return err
+	}
 	targetProtocol := tunnelProtocolFromPayload(payload)
 	configText := fmt.Sprint(payload["config_text"])
 	if configText == "" || configText == "<nil>" {
@@ -383,7 +394,7 @@ func normalizeTunnelProtocol(value string) string {
 	switch strings.TrimSpace(value) {
 	case "wireguard":
 		return "wireguard"
-	case "amneziawg_2":
+	case "amneziawg", "amneziawg_2":
 		return "amneziawg_2"
 	default:
 		return ""
@@ -622,10 +633,24 @@ func runCommand(name string, args ...string) error {
 
 func tunnelProtocolFromPayload(payload map[string]any) string {
 	value := strings.TrimSpace(fmt.Sprint(payload["tunnel_protocol"]))
-	if value == "amneziawg_2" {
-		return value
+	if value == "amneziawg" || value == "amneziawg_2" {
+		return "amneziawg_2"
 	}
 	return "wireguard"
+}
+
+func validateTunnelPayload(payload map[string]any) error {
+	for _, key := range []string{"tunnel_protocol", "previous_tunnel_protocol"} {
+		value := strings.TrimSpace(fmt.Sprint(payload[key]))
+		if value != "" && value != "<nil>" && normalizeTunnelProtocol(value) == "" {
+			return fmt.Errorf("unsupported %s: %s", key, value)
+		}
+	}
+	version := strings.TrimSpace(fmt.Sprint(payload["awg_version"]))
+	if version != "" && version != "<nil>" && version != "1.5" && version != "2.0" && version != "3.1" {
+		return fmt.Errorf("unsupported AWG version: %s", version)
+	}
+	return nil
 }
 
 func tunnelTool(tunnelProtocol string) string {

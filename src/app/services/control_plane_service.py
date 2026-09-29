@@ -451,11 +451,11 @@ class ControlPlaneService:
     def create_preshared_key(self):
         return store.create_preshared_key()
 
-    def random_awg_config_params(self) -> dict[str, object]:
-        return awg.random_config_params()
+    def random_awg_config_params(self, version: str = "2.0") -> dict[str, object]:
+        return awg.random_config_params(version)
 
-    def random_awg_node_params(self) -> dict[str, object]:
-        return awg.random_node_params()
+    def random_awg_node_params(self, version: str = "2.0") -> dict[str, object]:
+        return awg.ensure_node_params({}, version)
 
     def derive_public_key(self, private_key: str):
         return store.derive_public_key_from_private(private_key)
@@ -670,10 +670,11 @@ class ControlPlaneService:
             raise AppError("NO_STAGED_CONFIG", "No staged config to push", 409)
         return {
             "action": "push_config",
-            "tunnel_protocol": config.tunnel_protocol.value,
-            "previous_tunnel_protocol": self._previous_tunnel_protocols.get(
+            "tunnel_protocol": awg.wire_protocol(config.tunnel_protocol),
+            "awg_version": config.awg_version,
+            "previous_tunnel_protocol": awg.wire_protocol(self._previous_tunnel_protocols.get(
                 config_id, config.tunnel_protocol.value
-            ),
+            )),
             "interface_name": node_config_interface_name(config.name, node.name),
             "config_version": state.staged_version,
             "config_sha256": state.staged_sha256,
@@ -749,10 +750,11 @@ class ControlPlaneService:
         kind = "info" if action == "wg_show" else "config/push" if action == "push_config" else "control"
         payload_body: dict[str, object] = {"action": action}
         config = store.get_config(config_id)
-        payload_body["tunnel_protocol"] = config.tunnel_protocol.value
-        payload_body["previous_tunnel_protocol"] = self._previous_tunnel_protocols.get(
+        payload_body["tunnel_protocol"] = awg.wire_protocol(config.tunnel_protocol)
+        payload_body["awg_version"] = config.awg_version
+        payload_body["previous_tunnel_protocol"] = awg.wire_protocol(self._previous_tunnel_protocols.get(
             config_id, config.tunnel_protocol.value
-        )
+        ))
         payload = {
             "type": kind,
             "request_id": log.request_id,

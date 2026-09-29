@@ -306,7 +306,7 @@ def _register_write_tools(server: Any) -> None:
             target_name="write_create_config",
             summary="Create a Mesh configuration",
             impact="A new configuration and derived sync state will be created.",
-            writer=lambda: operations.create_config(payload.model_dump()),
+            writer=lambda: operations.create_config(payload.model_dump(exclude_unset=True)),
         )
 
     @server.tool()
@@ -322,7 +322,7 @@ def _register_write_tools(server: Any) -> None:
             target_name="write_update_config",
             summary=f"Update config {config_id}",
             impact="Configuration and affected node sync state can change.",
-            writer=lambda: operations.update_config(config_id, payload.model_dump()),
+            writer=lambda: operations.update_config(config_id, payload.model_dump(exclude_unset=True)),
         )
 
     @server.tool()
@@ -353,7 +353,7 @@ def _register_write_tools(server: Any) -> None:
             target_name="write_create_node",
             summary=f"Create node in config {config_id}",
             impact="A node and derived configuration state will be created.",
-            writer=lambda: operations.create_node(config_id, payload.model_dump()),
+            writer=lambda: operations.create_node(config_id, payload.model_dump(exclude_unset=True)),
         )
 
     @server.tool()
@@ -369,7 +369,7 @@ def _register_write_tools(server: Any) -> None:
             target_name="write_update_node",
             summary=f"Update node {node_id}",
             impact="Node identity, lifecycle hooks, addressing, or generated configs can change.",
-            writer=lambda: operations.update_node(node_id, payload.model_dump()),
+            writer=lambda: operations.update_node(node_id, payload.model_dump(exclude_unset=True)),
         )
 
     @server.tool()

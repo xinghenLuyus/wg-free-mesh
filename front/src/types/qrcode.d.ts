@@ -3,6 +3,7 @@ declare module 'qrcode' {
     errorCorrectionLevel?: 'L' | 'M' | 'Q' | 'H'
     margin?: number
     width?: number
+    scale?: number
   }
 
   const QRCode: {

@@ -20,6 +20,8 @@
 
 启动时后端会执行数据库初始化和迁移，使 SQLite 和 PostgreSQL 都能升级到当前结构。
 
+数据库没有 Alembic 版本记录时，初始化先按表结构识别版本，再沿迁移链补齐到当前结构。AWG 协议、版本和扩展参数的存储规则见 [数据模型参考](/reference/data-model)。
+
 迁移脚本要注意：
 
 - SQLite 和 PostgreSQL 都要可执行。

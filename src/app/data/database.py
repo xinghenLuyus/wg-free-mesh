@@ -46,6 +46,10 @@ def _infer_existing_revision(inspector) -> str:
     node_columns = _column_names(inspector, "nodes")
     client_columns = _column_names(inspector, "node_client_state")
     port_forward_columns = _column_names(inspector, "port_forward_rules")
+    # 0007 also normalizes stored values. For unversioned databases, replay its
+    # idempotent migration rather than inferring completion from columns alone.
+    if inspector.has_table("mcp_tokens") and inspector.has_table("mcp_audit_logs"):
+        return "0006_mcp_access"
     if "enabled" in port_forward_columns:
         return "0005_port_forward_enabled"
     if inspector.has_table("port_forward_rules"):
@@ -78,6 +82,7 @@ def _revision_rank(revision: str) -> int:
         "0004_port_forward_rules": 4,
         "0005_port_forward_enabled": 5,
         "0006_mcp_access": 6,
+        "0007_awg_versions": 7,
     }
     return ranks.get(revision, 0)
 

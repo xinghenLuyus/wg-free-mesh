@@ -11,7 +11,7 @@ A config defines the base rules of one mesh network:
 - Default DNS.
 - Default MTU.
 - Default behavior for newly created nodes.
-- Protocol type: WireGuard or AmneziaWG 2.0.
+- Protocol type: WireGuard or AmneziaWG.
 
 After creation, these base parameters can still be edited. Changes affect generated config content, but they do not override each node's own switches and advanced settings.
 
@@ -19,12 +19,14 @@ After creation, these base parameters can still be edited. Changes affect genera
 
 The default protocol is standard WireGuard. It fits most private networks, cloud servers, and cross-region mesh setups.
 
-When AmneziaWG 2.0 is selected, the config also maintains mesh-level parameters:
+When AmneziaWG is selected, the config also maintains mesh-level parameters:
+
+Select AWG 1.5, 2.0, or 3.1, then review the prefilled parameters for that version. Protocol selection, version changes, and random generation update the page draft only; they take effect together on save. Canceling leaves the actual config unchanged. When switching AWG versions, historical parameters remain in the database but are omitted from config output for versions that do not support them. See [AWG Protocol Compatibility](/en/help/awg-compatibility) for version-specific parameters and toolchain requirements.
 
 - `S1` to `S4`.
 - `H1` to `H4`.
 
-These parameters are part of the protocol identification rules of the mesh and must stay consistent within the same config. The page allows leaving them empty for random generation or randomizing fields individually.
+These parameters identify the Mesh protocol and must remain consistent within one config. Advanced settings provides a shared direction and intensity selector to generate config parameters and independent parameters for all existing endpoints together. Generation updates the draft only. Every field remains editable or clearable; save to apply. Existing shared keys are not regenerated.
 
 Node-level AmneziaWG parameters are maintained in node advanced settings: `Jc`, `Jmin`, `Jmax`, and `I1` to `I5`.
 

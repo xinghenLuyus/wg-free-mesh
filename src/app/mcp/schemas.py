@@ -14,18 +14,20 @@ class McpConfigPayload(BaseModel):
     default_mtu: int | None = Field(default=None, ge=576, le=65535, description="Optional default MTU for generated configs.")
     default_dns: str | None = Field(default=None, description="Optional default DNS value for generated configs.")
     auto_sync: bool = Field(default=True, description="Default auto-sync value for newly created nodes only.")
-    tunnel_protocol: Literal["wireguard", "amneziawg_2"] = Field(
+    tunnel_protocol: Literal["wireguard", "amneziawg", "amneziawg_2"] = Field(
         default="wireguard",
-        description="Tunnel protocol for generated configs. Use amneziawg_2 only when endpoints have AWG tooling.",
+        description="Tunnel protocol for generated configs. Use amneziawg only when endpoints have AWG tooling.",
     )
-    awg_s1: int | None = Field(default=None, description="AmneziaWG S1 config-level obfuscation value. Leave empty for backend random.")
-    awg_s2: int | None = Field(default=None, description="AmneziaWG S2 config-level obfuscation value. Leave empty for backend random.")
-    awg_s3: int | None = Field(default=None, description="AmneziaWG S3 config-level obfuscation value. Leave empty for backend random.")
-    awg_s4: int | None = Field(default=None, description="AmneziaWG S4 config-level obfuscation value. Leave empty for backend random.")
-    awg_h1: str | None = Field(default=None, description="AmneziaWG H1 header value or range. Leave empty for backend random.")
-    awg_h2: str | None = Field(default=None, description="AmneziaWG H2 header value or range. Leave empty for backend random.")
-    awg_h3: str | None = Field(default=None, description="AmneziaWG H3 header value or range. Leave empty for backend random.")
-    awg_h4: str | None = Field(default=None, description="AmneziaWG H4 header value or range. Leave empty for backend random.")
+    awg_version: Literal["1.5", "2.0", "3.1"] | None = None
+    awg_options: dict[str, str | int | bool | None] | None = None
+    awg_s1: int | None = Field(default=None, description="AmneziaWG S1. Generated on creation if missing; null on ordinary updates omits it, subject to shared constraints.")
+    awg_s2: int | None = Field(default=None, description="AmneziaWG S2. Generated on creation if missing; null on ordinary updates omits it, subject to shared constraints.")
+    awg_s3: int | None = Field(default=None, description="AmneziaWG S3. Generated on creation if missing; null on ordinary updates omits it, subject to shared constraints.")
+    awg_s4: int | None = Field(default=None, description="AmneziaWG S4. Generated on creation if missing; null on ordinary updates omits it, subject to shared constraints.")
+    awg_h1: str | None = Field(default=None, description="AmneziaWG H1 value or range. Generated on creation if missing; null on ordinary updates omits it.")
+    awg_h2: str | None = Field(default=None, description="AmneziaWG H2 value or range. Generated on creation if missing; null on ordinary updates omits it.")
+    awg_h3: str | None = Field(default=None, description="AmneziaWG H3 value or range. Generated on creation if missing; null on ordinary updates omits it.")
+    awg_h4: str | None = Field(default=None, description="AmneziaWG H4 value or range. Generated on creation if missing; null on ordinary updates omits it.")
 
 
 class McpNodePayload(BaseModel):
@@ -49,14 +51,15 @@ class McpNodePayload(BaseModel):
     post_up: list[str] = Field(default_factory=list, description="wg-quick/awg-quick PostUp lifecycle commands.")
     pre_down: list[str] = Field(default_factory=list, description="wg-quick/awg-quick PreDown lifecycle commands.")
     post_down: list[str] = Field(default_factory=list, description="wg-quick/awg-quick PostDown lifecycle commands.")
-    awg_jc: int | None = Field(default=None, description="AmneziaWG node-local Jc value. Leave empty for backend random.")
-    awg_jmin: int | None = Field(default=None, description="AmneziaWG node-local Jmin value. Leave empty for backend random.")
-    awg_jmax: int | None = Field(default=None, description="AmneziaWG node-local Jmax value. Leave empty for backend random.")
-    awg_i1: str | None = Field(default=None, description="AmneziaWG node-local I1 CPS string. Leave empty for backend random.")
-    awg_i2: str | None = Field(default=None, description="AmneziaWG node-local I2 CPS string. Leave empty for backend random.")
-    awg_i3: str | None = Field(default=None, description="AmneziaWG node-local I3 CPS string. Leave empty for backend random.")
-    awg_i4: str | None = Field(default=None, description="AmneziaWG node-local I4 CPS string. Leave empty for backend random.")
-    awg_i5: str | None = Field(default=None, description="AmneziaWG node-local I5 CPS string. Leave empty for backend random.")
+    awg_jc: int | None = Field(default=None, description="AmneziaWG node-local Jc. Generated on creation if missing; null on updates omits it.")
+    awg_options: dict[str, str | int | bool | None] | None = None
+    awg_jmin: int | None = Field(default=None, description="AmneziaWG node-local Jmin. Generated on creation if missing; null on updates omits it.")
+    awg_jmax: int | None = Field(default=None, description="AmneziaWG node-local Jmax. Generated on creation if missing; null on updates omits it.")
+    awg_i1: str | None = Field(default=None, description="AmneziaWG node-local I1 CPS. Initialized from the config strategy on creation; null on updates omits it.")
+    awg_i2: str | None = Field(default=None, description="AmneziaWG node-local I2 CPS. Initialized from the config strategy on creation; null on updates omits it.")
+    awg_i3: str | None = Field(default=None, description="AmneziaWG node-local I3 CPS. Initialized from the config strategy on creation; null on updates omits it.")
+    awg_i4: str | None = Field(default=None, description="AmneziaWG node-local I4 CPS. Initialized from the config strategy on creation; null on updates omits it.")
+    awg_i5: str | None = Field(default=None, description="AmneziaWG node-local I5 CPS. Initialized from the config strategy on creation; null on updates omits it.")
 
 
 class McpPeerLinkDirectionPayload(BaseModel):

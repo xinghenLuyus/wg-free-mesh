@@ -38,3 +38,5 @@ Restore clears old business data and imports the snapshot data. The backend then
 ## Compatibility
 
 A snapshot records the current system version so its origin can be identified. The current implementation does not block cross-version restore.
+
+During restore, the protocol value `amneziawg_2` is read as `amneziawg` with `awg_version=2.0`, and missing extension parameters are read as empty objects. These are snapshot format compatibility rules; restore covers all application data.

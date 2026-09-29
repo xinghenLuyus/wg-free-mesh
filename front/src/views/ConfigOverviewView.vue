@@ -35,6 +35,7 @@ const router = useRouter()
 const { t } = useI18n()
 const actions = useAsyncActionGroup()
 const savingConfig = actions.isPending('save-config')
+const changingProtocol = shallowRef(false)
 const deletingConfig = actions.isPending('delete-config')
 const togglingConfigEnabled = actions.isPending('toggle-config-enabled')
 const creatingTag = actions.isPending('create-tag')
@@ -107,6 +108,9 @@ const settingsForm = reactive({
   default_dns: '' as string | null,
   auto_sync: true,
   tunnel_protocol: 'wireguard',
+  awg_version: null as ConfigProtocolModel['awg_version'],
+  awg_options: {} as ConfigProtocolModel['awg_options'],
+  awg_node_updates: {} as NonNullable<ConfigProtocolModel['awg_node_updates']>,
   awg_s1: null,
   awg_s2: null,
   awg_s3: null,
@@ -249,6 +253,9 @@ function fillSettingsForm() {
     default_dns: overview.value.config.default_dns,
     auto_sync: overview.value.config.auto_sync,
     tunnel_protocol: overview.value.config.tunnel_protocol,
+    awg_version: overview.value.config.awg_version,
+    awg_options: { ...overview.value.config.awg_options },
+    awg_node_updates: {},
     awg_s1: overview.value.config.awg_s1,
     awg_s2: overview.value.config.awg_s2,
     awg_s3: overview.value.config.awg_s3,
@@ -394,6 +401,7 @@ async function saveSettings() {
       await load()
       notify.success(t('configOverview.configSaved'))
       notifyChangeHints(result.change_hints)
+      if (result.adjustments?.length) notify.info(t('protocol.adjustments', { fields: result.adjustments.map((item) => item.field).join(', ') }))
     } catch (error) {
       notify.error(error instanceof ApiClientError ? error.message : t('configOverview.configSaveFailed'))
     }
@@ -554,6 +562,7 @@ watch(
       <div class="cfg-top-bar">
         <div class="cfg-name-group">
           <span class="cfg-name">{{ overview.config.name }}</span>
+          <el-tag>{{ overview.config.tunnel_protocol === 'amneziawg' ? `AmneziaWG ${overview.config.awg_version}` : 'WireGuard' }}</el-tag>
           <el-tag v-if="topologyInvalid" type="danger" effect="dark">{{ t('configOverview.topologyFailed') }}</el-tag>
         </div>
         <div class="cfg-actions">
@@ -842,7 +851,7 @@ watch(
         </div>
       </el-form>
       </template>
-      <ConfigProtocolForm v-else v-model="settingsProtocolForm" />
+      <ConfigProtocolForm v-else v-model="settingsProtocolForm" v-model:busy="changingProtocol" :nodes="fullNodes" />
       <div class="settings-danger-zone">
         <div>
           <div class="settings-danger-zone__title">{{ t('configOverview.deleteConfig') }}</div>
@@ -852,7 +861,7 @@ watch(
       </div>
       <template #footer>
         <el-button @click="settingsVisible = false">{{ t('common.cancel') }}</el-button>
-        <el-button type="primary" :loading="savingConfig" @click="saveSettings">{{ t('common.save') }}</el-button>
+        <el-button type="primary" :loading="savingConfig" :disabled="changingProtocol || (settingsProtocolForm.tunnel_protocol === 'amneziawg' && !settingsProtocolForm.awg_version)" @click="saveSettings">{{ t('common.save') }}</el-button>
       </template>
     </el-dialog>
 

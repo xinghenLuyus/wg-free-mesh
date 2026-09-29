@@ -15,6 +15,10 @@ To download an endpoint config:
 
 The token is bound to that `config_id + node_id` and cannot download another endpoint config.
 
+The download page encodes the staged config text directly into a QR code. Import it with a WireGuard or AmneziaWG mobile client supporting the configured protocol and version. Config refreshes or endpoint changes invalidate the QR cache; an expanded QR panel regenerates it. The page distinguishes empty configs, generation in progress, capacity limits, and generation failures. Use the `.conf` file for configs exceeding a single QR code's capacity; protocol parameters are not removed.
+
+Each module in the original QR image is 6 pixels, with a 4-module quiet zone on every side. Image dimensions grow with the required module count. The page preview is limited to 480 pixels wide and scales proportionally to fit its container, displaying the entire code. Click to open a white-background full-screen view. The entire code scales proportionally to fit the visible area below the title bar and within the margins, without scrolling; use the close button or Esc to exit.
+
 ## Client artifacts
 
 Client artifacts support two sources:

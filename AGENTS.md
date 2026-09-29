@@ -1,4 +1,4 @@
-# AGENT.md
+# AGENTS.md
 
 本文件约束 Codex / 自动化编码助手在本仓库内的行为。所有自动化协作必须同时遵守 [docs/developer/collaboration.md](docs/developer/collaboration.md)。
 
@@ -46,6 +46,8 @@
 ## 文档协作
 
 - 代码变更完成前，检查是否需要同步 `docs/`、`src/README.md`、`front/README.md`、`client/README.md` 或 `docker/README.md`。
+- `docs/` 下的 Markdown 文档必须从系统整体和读者使用的角度描述当前能力、操作、规则与边界，不写本次变更过程、字段沿革或升级前后对比。必要的兼容行为应作为当前契约说明，不写成变更记录。
+- `README.md` 面向开发者，可以使用迁移、新增、调整等变更类术语；该例外不适用于 `docs/` 下的其他 Markdown 文档。中英文文档遵守同一准则并保持内容对齐。
 - 不在文档中保留过时的阶段性语境、旧架构命名或已经删除的目录描述。
 - 不把临时调试结论写成正式能力说明。
 - 文档应描述当前事实，不使用“未来版本”“v1/v2”等开发阶段遗留说法。

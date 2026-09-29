@@ -6,6 +6,7 @@ from collections.abc import Sequence
 
 from app.core.errors import AppError
 from app.core.features import effective_node_type, mqtt_services_enabled
+from app.domain import awg
 from app.domain.models import Config, ConfigSyncState, ControlStatus, Node, PeerLink, TunnelProtocol, derive_public_key, generate_key_pair, generate_private_key, now_utc, sha256_text
 from app.data.database import connect
 from app.projections.config_overview_projection import config_overview_projection
@@ -46,27 +47,8 @@ class SyncSettingsRepositoryMixin:
                 managed_command = managed.get("command")
                 if managed_command:
                     lines.append(f"{key} = {managed_command}")
-        if config.tunnel_protocol == TunnelProtocol.amneziawg_2:
-            for key, value in (
-                ("Jc", node.awg_jc),
-                ("Jmin", node.awg_jmin),
-                ("Jmax", node.awg_jmax),
-                ("S1", config.awg_s1),
-                ("S2", config.awg_s2),
-                ("S3", config.awg_s3),
-                ("S4", config.awg_s4),
-                ("H1", config.awg_h1),
-                ("H2", config.awg_h2),
-                ("H3", config.awg_h3),
-                ("H4", config.awg_h4),
-                ("I1", node.awg_i1),
-                ("I2", node.awg_i2),
-                ("I3", node.awg_i3),
-                ("I4", node.awg_i4),
-                ("I5", node.awg_i5),
-            ):
-                if value is not None and value != "":
-                    lines.append(f"{key} = {value}")
+        if config.tunnel_protocol == TunnelProtocol.amneziawg:
+            lines.extend(awg.render_lines(config, node))
         for link in links:
             peer_node = nodes_by_id.get(link.peer_node_id)
             if peer_node is None or not peer_node.enabled:

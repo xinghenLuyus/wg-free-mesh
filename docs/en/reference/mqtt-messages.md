@@ -152,6 +152,8 @@ Supported `tunnel_protocol` values:
 
 `previous_tunnel_protocol` identifies the original toolchain that the client must inspect and clean before replacing the config. It is the same as `tunnel_protocol` when the protocol has not changed.
 
+Business APIs use `amneziawg`. MQTT messages use `amneziawg_2` for the AWG toolchain, with the specific version set by `awg_version` (1.5, 2.0, or 3.1). Clients also accept the protocol value `amneziawg`; invalid protocols or versions fail explicitly, and messages may omit the version field.
+
 The client inspects both `previous_tunnel_protocol` and the target protocol for the current profile. Before overwriting the config, it stops every running matching interface with its corresponding toolchain and returns `failed` if any stop fails. After all interfaces stop, it writes the new config. If an interface was running before the update, it restarts with the target toolchain; otherwise it only writes the config. Only the complete sequence returns `applied`.
 
 ## Control

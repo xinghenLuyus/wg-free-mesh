@@ -127,6 +127,35 @@ export interface QuickMeshGenerateRead {
 
 export type SessionRead = AuthStateRead
 
+export type AwgVersion = '1.5' | '2.0' | '3.1'
+export type AwgOptions = Record<string, string | number | boolean | null>
+export interface AwgNodeParams {
+  awg_options: AwgOptions
+  awg_jc: number | null
+  awg_jmin: number | null
+  awg_jmax: number | null
+  awg_i1: string | null
+  awg_i2: string | null
+  awg_i3: string | null
+  awg_i4: string | null
+  awg_i5: string | null
+}
+export interface AwgGenerationRead {
+  config: Record<string, unknown>
+  nodes: Record<string, AwgNodeParams>
+}
+export interface AwgCapabilities {
+  s_fields: string[]
+  h_format: 'integer' | 'range'
+  config_options: Record<string, string>
+  node_options: Record<string, string>
+}
+export interface ProtocolOptions {
+  default_awg_version: AwgVersion
+  awg_versions: AwgVersion[]
+  versions: Record<AwgVersion, AwgCapabilities>
+}
+
 export interface ConfigRead {
   id: string
   name: string
@@ -137,7 +166,9 @@ export interface ConfigRead {
   default_mtu: number | null
   default_dns: string | null
   auto_sync: boolean
-  tunnel_protocol: 'wireguard' | 'amneziawg_2'
+  tunnel_protocol: 'wireguard' | 'amneziawg'
+  awg_version: AwgVersion | null
+  awg_options: AwgOptions
   awg_s1: number | null
   awg_s2: number | null
   awg_s3: number | null
@@ -165,6 +196,7 @@ export interface ChangeHintRead {
 }
 
 export interface ConfigMutationRead extends ConfigRead {
+  adjustments: { field: string; reason: string }[]
   change_hints: ChangeHintRead[]
   affected_node_ids: string[]
 }
@@ -226,6 +258,7 @@ export interface ConfigOverviewRead {
 }
 
 export interface NodeRead {
+  awg_options: AwgOptions
   id: string
   config_id: string
   name: string

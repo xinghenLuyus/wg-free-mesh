@@ -16,7 +16,7 @@
 - [下载与文件 token](./downloads)：客户端产物、配置包、快照导出和短期下载 URL。
 - [快照](./snapshot)：应用级快照内容、加密和恢复边界。
 - [数据模型](./data-model)：配置、端点、Mesh 对、运行态和同步态。
-- [协议参数](./protocols)：WireGuard、AmneziaWG 2.0 和 AWG 参数规则。
+- [协议参数](./protocols)：WireGuard、AmneziaWG 和 AWG 参数规则。
 - [快速组网](./quick-mesh)：网关节点式、全连接和 Free Mesh 的生成规则。
 
 ## 运行边界

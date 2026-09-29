@@ -15,9 +15,13 @@ A config is the root object of a Mesh.
 | `default_mtu` | Default MTU. |
 | `default_dns` | Default DNS. |
 | `auto_sync` | Controls only the default auto-sync value for newly created endpoints. |
-| `tunnel_protocol` | `wireguard` or `amneziawg_2`. |
+| `tunnel_protocol` | `wireguard` or `amneziawg`. |
+| `awg_version` | AWG `1.5`, `2.0`, or `3.1`; null for WireGuard. |
+| `awg_options` | Config-level version extensions, stored as `awg_options_json`. |
 | `awg_s1..awg_s4` | Config-level AmneziaWG S parameters. |
 | `awg_h1..awg_h4` | Config-level AmneziaWG H parameters. |
+
+Config `awg_options` also stores `_random_direction` and `_random_intensity`, used only for explicit generation and initial values of new endpoints, never emitted to tool configs. The shared 3.1 `random_trailers` overrides the same endpoint option; saving a shared switch aligns endpoint values. Endpoint values apply when no shared value is set.
 
 ## Node
 
@@ -37,6 +41,7 @@ An endpoint represents a device that joins the Mesh.
 | `pre_up/post_up/pre_down/post_down` | Lifecycle commands. |
 | `awg_jc/awg_jmin/awg_jmax` | Endpoint-local AmneziaWG junk parameters. |
 | `awg_i1..awg_i5` | AmneziaWG CPS decoy-packet parameters. |
+| `awg_options` | Endpoint-level version extensions, stored as `awg_options_json`. |
 
 ## PeerLink
 

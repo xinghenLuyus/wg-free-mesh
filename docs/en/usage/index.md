@@ -6,7 +6,7 @@ For a few nodes, handwritten configs can still work. Once the network grows, add
 
 ## Start with a Config
 
-A network starts with a config. It defines the virtual subnet, default port, DNS, MTU, and whether the network uses standard WireGuard or AmneziaWG 2.0.
+A network starts with a config. It defines the virtual subnet, default port, DNS, MTU, and whether the network uses standard WireGuard or AmneziaWG.
 
 Then add devices as nodes. A node stores virtual IP, public address, tags, client binding state, and advanced parameters. Public nodes can participate in more automatic topology modes, while private nodes can still join as leaves.
 

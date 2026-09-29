@@ -20,6 +20,7 @@ const router = useRouter()
 const { t } = useI18n()
 const actions = useAsyncActionGroup()
 const creatingConfig = actions.isPending('create-config')
+const changingProtocol = shallowRef(false)
 const { statusFilter, sortKey, layoutMode } = useHomePrefs()
 
 const configs = shallowRef<ConfigRead[]>([])
@@ -43,6 +44,8 @@ const form = reactive({
   default_dns: '1.1.1.1',
   auto_sync: true,
   tunnel_protocol: 'wireguard',
+  awg_version: null as ConfigProtocolModel['awg_version'],
+  awg_options: {} as ConfigProtocolModel['awg_options'],
   awg_s1: null,
   awg_s2: null,
   awg_s3: null,
@@ -256,7 +259,10 @@ watch(
       </div>
 
       <div class="config-card__body">
-        <h3>{{ config.name }}</h3>
+        <div class="config-card__title">
+          <h3>{{ config.name }}</h3>
+          <span class="config-protocol-bubble">{{ config.tunnel_protocol === 'amneziawg' ? `AmneziaWG ${config.awg_version}` : 'WireGuard' }}</span>
+        </div>
         <p>{{ config.description || t('home.noDescription') }}</p>
       </div>
 
@@ -290,6 +296,7 @@ watch(
         <div>
           <div class="config-list-row__title">
             <h3>{{ config.name }}</h3>
+            <span class="config-protocol-bubble">{{ config.tunnel_protocol === 'amneziawg' ? `AmneziaWG ${config.awg_version}` : 'WireGuard' }}</span>
             <div class="config-card__status-tags">
               <el-tag v-if="config.topology_invalid" type="danger">{{ t('configOverview.topologyFailed') }}</el-tag>
               <el-tag :type="config.enabled ? 'success' : 'info'">{{ config.enabled ? t('home.enabled') : t('home.disabled') }}</el-tag>
@@ -388,11 +395,11 @@ watch(
       </div>
     </el-form>
     </template>
-    <ConfigProtocolForm v-else v-model="protocolForm" />
+    <ConfigProtocolForm v-else v-model="protocolForm" v-model:busy="changingProtocol" />
 
     <template #footer>
       <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
-      <el-button type="primary" :icon="Plus" :loading="creatingConfig" @click="submit">{{ t('home.create') }}</el-button>
+      <el-button type="primary" :icon="Plus" :loading="creatingConfig" :disabled="changingProtocol || (protocolForm.tunnel_protocol === 'amneziawg' && !protocolForm.awg_version)" @click="submit">{{ t('home.create') }}</el-button>
     </template>
   </el-dialog>
 </template>
@@ -733,6 +740,33 @@ watch(
   font-size: 20px;
   line-height: 1.25;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.config-card__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.config-card__title h3 {
+  min-width: 0;
+}
+
+.config-protocol-bubble {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 2px;
+  padding: 3px 8px;
+  border: 1px solid var(--app-border-soft);
+  border-radius: 999px;
+  background: var(--app-surface-sunken);
+  color: var(--app-muted);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.2;
   white-space: nowrap;
 }
 

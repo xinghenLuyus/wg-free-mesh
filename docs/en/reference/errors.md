@@ -97,6 +97,7 @@ Error responses always include:
 | --- | --- |
 | `INVALID_TUNNEL_PROTOCOL` | The tunnel protocol is invalid. |
 | `INVALID_AWG_PARAMETER` | An AWG parameter is outside its valid range. |
+| `INVALID_AWG_VERSION` | AWG version is unsupported, missing, or conflicts with the protocol. |
 | `INVALID_AWG_H_RANGE` | An H parameter has an invalid format, range, or overlap. |
 | `INVALID_AWG_J_RANGE` | Jmax must be greater than Jmin. |
 

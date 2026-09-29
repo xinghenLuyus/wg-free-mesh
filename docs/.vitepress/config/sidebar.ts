@@ -37,6 +37,7 @@ const zhGuideSidebar: DefaultTheme.SidebarItem[] = [
     collapsed: false,
     items: [
       { text: 'WG 环境安装', link: '/help/wg-environment' },
+      { text: 'AWG 协议适配说明', link: '/help/awg-compatibility' },
     ],
   },
 ]
@@ -121,6 +122,7 @@ const enGuideSidebar: DefaultTheme.SidebarItem[] = [
     collapsed: false,
     items: [
       { text: 'WG Environment Install', link: '/en/help/wg-environment' },
+      { text: 'AWG Protocol Compatibility', link: '/en/help/awg-compatibility' },
     ],
   },
 ]

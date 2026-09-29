@@ -8,8 +8,9 @@ import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import FieldHelpLabel from '@/components/common/FieldHelpLabel.vue'
 import HookListEditor from '@/components/node/HookListEditor.vue'
+import AwgOptionsForm from '@/components/config/AwgOptionsForm.vue'
 import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
-import type { ConfigRead, NodeRead } from '@/types/api'
+import type { AwgOptions, ProtocolOptions, ConfigRead, NodeRead } from '@/types/api'
 import { toNodeUpdatePayload } from '@/utils/nodePayload'
 import { notify } from '@/utils/notify'
 
@@ -22,6 +23,10 @@ const randomizing = actions.isPending('random-awg-node')
 const config = shallowRef<ConfigRead | null>(null)
 const node = shallowRef<NodeRead | null>(null)
 const loadError = shallowRef('')
+const protocolOptions = shallowRef<ProtocolOptions | null>(null)
+const optionFields = computed(() => protocolOptions.value?.versions[config.value?.awg_version ?? '2.0'].node_options ?? {})
+const optionHelp = computed(() => config.value?.awg_version === '3.1'
+  ? Object.fromEntries(Object.keys(optionFields.value).map((key) => [key, t(`protocol.help.${key}`)])) : {})
 
 const form = reactive({
   pre_up: [] as string[],
@@ -29,6 +34,7 @@ const form = reactive({
   pre_down: [] as string[],
   post_down: [] as string[],
   awg_jc: null as number | null,
+  awg_options: {} as AwgOptions,
   awg_jmin: null as number | null,
   awg_jmax: null as number | null,
   awg_i1: '',
@@ -38,7 +44,7 @@ const form = reactive({
   awg_i5: '',
 })
 
-const isAwg = computed(() => config.value?.tunnel_protocol === 'amneziawg_2')
+const isAwg = computed(() => config.value?.tunnel_protocol === 'amneziawg')
 const pageDescription = computed(() => t(isAwg.value ? 'nodeAdvanced.descriptionAwg' : 'nodeAdvanced.descriptionWireguard'))
 const jFields = ['awg_jc', 'awg_jmin', 'awg_jmax'] as const
 const jLabels = ['Jc', 'Jmin', 'Jmax'] as const
@@ -52,6 +58,7 @@ function fillForm(nextNode: NodeRead) {
     pre_down: [...nextNode.pre_down],
     post_down: [...nextNode.post_down],
     awg_jc: nextNode.awg_jc,
+    awg_options: { ...nextNode.awg_options },
     awg_jmin: nextNode.awg_jmin,
     awg_jmax: nextNode.awg_jmax,
     awg_i1: nextNode.awg_i1 || '',
@@ -71,7 +78,8 @@ async function load() {
   try {
     const configId = String(route.params.configId)
     const nodeId = String(route.params.nodeId)
-    const [configs, nextNode] = await Promise.all([api.configs(), api.node(nodeId)])
+    const [configs, nextNode, options] = await Promise.all([api.configs(), api.node(nodeId), api.protocolOptions()])
+    protocolOptions.value = options
     config.value = configs.find((item) => item.id === configId) ?? null
     node.value = nextNode
     fillForm(nextNode)
@@ -81,24 +89,36 @@ async function load() {
 }
 
 async function randomizeAwg() {
+  if (!node.value || !config.value || savingAwg.value || savingHooks.value) return
+  const target = node.value
+  const currentConfig = config.value
   await actions.run('random-awg-node', async () => {
-    const values = await api.randomAwgNode()
-    Object.assign(form, values)
-  })
-}
-
-async function randomizeAwgField(field: typeof jFields[number] | typeof iFields[number]) {
-  await actions.run('random-awg-node', async () => {
-    const values = await api.randomAwgNode()
-    form[field] = values[field] as never
+    try {
+      const result = await api.generateAwg({
+        awg_version: currentConfig.awg_version,
+        scope: 'node',
+        direction: currentConfig.awg_options._random_direction ?? 'generic',
+        intensity: currentConfig.awg_options._random_intensity ?? 'balanced',
+        config: currentConfig,
+        nodes: { [target.id]: { awg_options: { ...form.awg_options } } },
+      })
+      if (node.value?.id !== target.id || String(route.params.nodeId) !== target.id) return
+      const params = result.nodes[target.id]
+      Object.assign(form, params, Object.fromEntries(iFields.map((field) => [field, params[field] ?? ''])))
+      notify.info(t('protocol.generatedNodeDraft'))
+    } catch (error) {
+      notify.error(error instanceof Error ? error.message : t('nodeAdvanced.randomFailed'))
+    }
   })
 }
 
 async function saveHooks() {
+  if (randomizing.value) return
   if (!node.value) return
   await actions.run('save-node-hooks', async () => {
     try {
       const pendingAwg = {
+        awg_options: { ...form.awg_options },
         awg_jc: form.awg_jc,
         awg_jmin: form.awg_jmin,
         awg_jmax: form.awg_jmax,
@@ -126,6 +146,7 @@ async function saveHooks() {
 }
 
 async function saveAwg() {
+  if (randomizing.value) return
   if (!node.value) return
   await actions.run('save-node-awg', async () => {
     try {
@@ -134,6 +155,7 @@ async function saveAwg() {
         awg_jmin: form.awg_jmin,
         awg_jmax: form.awg_jmax,
         awg_i1: form.awg_i1 || null,
+        awg_options: form.awg_options,
         awg_i2: form.awg_i2 || null,
         awg_i3: form.awg_i3 || null,
         awg_i4: form.awg_i4 || null,
@@ -176,7 +198,7 @@ onMounted(load)
           <HookListEditor v-model="form.post_down" label="PostDown" :help="t('protocol.help.post_down')" :managed="node?.managed_hooks.post_down" @managed-delete="warnManagedHookDelete" />
         </div>
         <div class="node-param-section__actions">
-          <el-button type="primary" :loading="savingHooks" @click="saveHooks">{{ t('common.save') }}</el-button>
+          <el-button type="primary" :loading="savingHooks" :disabled="randomizing" @click="saveHooks">{{ t('common.save') }}</el-button>
         </div>
       </section>
 
@@ -186,27 +208,25 @@ onMounted(load)
             <h3>{{ t('nodeAdvanced.awgTitle') }}</h3>
             <p>{{ t('nodeAdvanced.awgDescription') }}</p>
           </div>
-          <el-button :icon="Refresh" :loading="randomizing" @click="randomizeAwg">{{ t('protocol.randomAll') }}</el-button>
+          <el-button :icon="Refresh" :loading="randomizing" :disabled="savingAwg || savingHooks || !node || !config" @click="randomizeAwg">{{ t('protocol.randomOne') }}</el-button>
         </div>
         <div class="node-param-table">
           <div class="node-param-table__head">
             <span>{{ t('protocol.parameter') }}</span>
             <span>{{ t('protocol.value') }}</span>
-            <span>{{ t('protocol.action') }}</span>
           </div>
           <div v-for="(field, index) in jFields" :key="field" class="node-param-table__row">
             <FieldHelpLabel :label="jLabels[index]" :help="t(`protocol.help.${field}`)" />
-            <el-input-number v-model="form[field]" :min="field === 'awg_jc' ? 0 : 64" :max="field === 'awg_jc' ? 10 : 1024" class="node-param-table__control" />
-            <el-button :icon="Refresh" :loading="randomizing" @click="randomizeAwgField(field)">{{ t('protocol.randomOne') }}</el-button>
+            <el-input-number v-model="form[field]" :disabled="randomizing" :min="0" :max="65535" class="node-param-table__control" />
           </div>
           <div v-for="(field, index) in iFields" :key="field" class="node-param-table__row">
             <FieldHelpLabel :label="iLabels[index]" :help="t(`protocol.help.${field}`)" />
-            <el-input v-model="form[field]" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }" />
-            <el-button :icon="Refresh" :loading="randomizing" @click="randomizeAwgField(field)">{{ t('protocol.randomOne') }}</el-button>
+            <el-input v-model="form[field]" :disabled="randomizing" type="textarea" :autosize="{ minRows: 1, maxRows: 4 }" />
           </div>
         </div>
+        <AwgOptionsForm v-model="form.awg_options" :fields="optionFields" :help="optionHelp" :disabled="randomizing" />
         <div class="node-param-section__actions">
-          <el-button type="primary" :loading="savingAwg" @click="saveAwg">{{ t('common.save') }}</el-button>
+          <el-button type="primary" :loading="savingAwg" :disabled="randomizing" @click="saveAwg">{{ t('common.save') }}</el-button>
         </div>
       </section>
     </article>
@@ -233,7 +253,7 @@ onMounted(load)
 .node-param-section__actions { display: flex; justify-content: flex-end; }
 .node-param-table { overflow: hidden; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface); }
 .node-param-table__head,
-.node-param-table__row { display: grid; grid-template-columns: 96px minmax(0, 1fr) 112px; align-items: center; gap: 12px; padding: 10px 12px; }
+.node-param-table__row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: 12px; padding: 10px 12px; }
 .node-param-table__head { background: var(--app-surface-sunken); color: var(--app-muted); font-size: 12px; font-weight: 700; }
 .node-param-table__row + .node-param-table__row { border-top: 1px solid var(--app-border-soft); }
 .node-param-table__control { width: 100%; }

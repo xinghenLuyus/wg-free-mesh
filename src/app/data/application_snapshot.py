@@ -48,6 +48,16 @@ def import_database_payload(payload: str) -> None:
             if not isinstance(rows, list):
                 raise AppError("SNAPSHOT_INVALID_ARCHIVE", "Snapshot archive is invalid", 400)
             if rows:
+                if table.name in ("configs", "nodes"):
+                    rows = [dict(row) for row in rows]
+                    for row in rows:
+                        row.setdefault("awg_options_json", "{}")
+                        if table.name == "configs":
+                            protocol = row.get("tunnel_protocol", "wireguard")
+                            if protocol == "amneziawg_2":
+                                row["tunnel_protocol"] = "amneziawg"
+                            if row.get("awg_version") is None:
+                                row["awg_version"] = "2.0" if protocol in ("amneziawg", "amneziawg_2") else None
                 connection.execute(insert(table), rows)
         if preserved_settings:
             connection.execute(insert(system_settings), preserved_settings)

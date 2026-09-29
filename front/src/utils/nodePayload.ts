@@ -21,6 +21,7 @@ export function toNodeUpdatePayload(node: NodeRead, overrides: Partial<NodeRead>
     pre_down: next.pre_down,
     post_down: next.post_down,
     awg_jc: next.awg_jc,
+    awg_options: next.awg_options,
     awg_jmin: next.awg_jmin,
     awg_jmax: next.awg_jmax,
     awg_i1: next.awg_i1,

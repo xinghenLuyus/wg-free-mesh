@@ -89,8 +89,19 @@ Authorization: Bearer <admin-session-token>
 | `DELETE` | `/api/v1/configs/{config_id}` | 删除配置。 |
 | `GET` | `/api/v1/configs/{config_id}/overview` | 读取配置概览投影。 |
 | `POST` | `/api/v1/configs/awg/random` | 生成配置级 AmneziaWG 参数。 |
+| `POST` | `/api/v1/configs/awg/generate` | 纯生成共享配置和全部端点参数草稿，不读写数据库或发送 MQTT。 |
+| `GET` | `/api/v1/configs/protocol-options` | 读取 AWG 版本列表、默认版本及各版本参数能力。 |
+| `POST` | `/api/v1/configs/awg/convert` | 预填目标版本的 AWG 参数草稿，扩展参数仅返回目标版本支持的字段和随机策略，不写库。 |
+
+AWG 配置写入使用 `tunnel_protocol=amneziawg` 和 `awg_version=1.5/2.0/3.1`；首次选择 AWG 时必须指定版本。接口也接受 `tunnel_protocol=amneziawg_2`，按 AWG 2.0 解析。配置和端点的扩展参数放入 `awg_options`。版本转换传当前参数、`source_version`（可为 null）和目标 `awg_version`；配置更新响应含 `adjustments`，列出后端自动调整的字段。
+
+配置级和端点级 `/awg/random` 接口接受 `awg_version` 查询参数，默认值为 2.0。配置随机接口默认只生成 S/H；`regenerate_key=true` 专门生成 3.1 共享密钥。MCP 写入复用相同版本与参数规则。
+
+统一生成使用 `POST /configs/awg/generate`：请求含 `awg_version`、`direction`（`generic/dns/stun/rtp/quic`）、`intensity`（`low/balanced/high`）、当前 `config` 参数对象和 `nodes`（端点 ID → 当前 AWG 参数）。响应为 `{config, nodes}`，仅供编辑。配置更新可附带 `awg_node_updates`（端点 ID → J/I 与 awg_options），与共享参数在同一事务写入。拒绝不属于该配置的端点 ID 和非 AWG 节点字段；空 I 不输出，不会被重新随机填充。版本切换前端会丢弃未保存的端点草稿。页面随机生成使用此接口。
 
 ## 端点 API
+
+上述生成接口还接受 `scope=node`（默认 `all`），此时 `nodes` 必须且只能包含一个端点。后端使用现有共享参数进行校验，不生成 S/H、共享密钥或改写机制开关；响应中的 `config` 仅回显校验后的共享参数。端点页只取 `nodes` 中的草稿，通过 `PUT /api/v1/nodes/{node_id}` 保存。
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |

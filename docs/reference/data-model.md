@@ -15,9 +15,13 @@
 | `default_mtu` | 默认 MTU。 |
 | `default_dns` | 默认 DNS。 |
 | `auto_sync` | 只影响新建端点的默认自动同步值。 |
-| `tunnel_protocol` | `wireguard` 或 `amneziawg_2`。 |
+| `tunnel_protocol` | `wireguard` 或 `amneziawg`。 |
+| `awg_version` | AWG 的 `1.5`、`2.0` 或 `3.1`，WireGuard 为 null。 |
+| `awg_options` | 配置级版本扩展参数，数据库存为 `awg_options_json`。 |
 | `awg_s1..awg_s4` | AmneziaWG 配置级 S 参数。 |
 | `awg_h1..awg_h4` | AmneziaWG 配置级 H 参数。 |
+
+配置 `awg_options` 还保存 `_random_direction` 和 `_random_intensity`，仅用于显式生成及新建端点的初始随机参数，不输出到工具配置。3.1 的共享 `random_trailers` 优先于端点同名参数；保存共享开关时统一更新端点值。未设置共享值时使用端点值。
 
 ## Node
 
@@ -37,6 +41,7 @@
 | `pre_up/post_up/pre_down/post_down` | 生命周期命令。 |
 | `awg_jc/awg_jmin/awg_jmax` | AmneziaWG 端点本地扰动参数。 |
 | `awg_i1..awg_i5` | AmneziaWG CPS 伪装包参数。 |
+| `awg_options` | 端点级版本扩展参数，数据库存为 `awg_options_json`。 |
 
 ## PeerLink
 

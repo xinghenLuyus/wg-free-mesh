@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.v1.routing import SessionProtectedAPIRouter
+from app.core.errors import AppError
 from app.core.responses import ApiResponse, ok
 from app.core.validation import normalize_cidr, strip_optional_text, strip_required_text
+from app.domain import awg
 from app.services.control_plane_service import control_plane_service
 
 router = SessionProtectedAPIRouter(prefix="/configs", tags=["configs"])
@@ -22,6 +24,8 @@ class ConfigCreateRequest(BaseModel):
     default_dns: str | None = None
     auto_sync: bool = True
     tunnel_protocol: str = "wireguard"
+    awg_version: str | None = None
+    awg_options: dict[str, Any] | None = None
     awg_s1: int | None = None
     awg_s2: int | None = None
     awg_s3: int | None = None
@@ -53,7 +57,7 @@ class ConfigCreateRequest(BaseModel):
 
 
 class ConfigUpdateRequest(ConfigCreateRequest):
-    pass
+    awg_node_updates: dict[str, dict[str, Any]] | None = None
 
 
 @router.get("")
@@ -63,9 +67,39 @@ def list_configs() -> ApiResponse[list[dict[str, Any]]]:
 
 @router.post("")
 async def create_config(payload: ConfigCreateRequest) -> ApiResponse[dict[str, Any]]:
-    config = control_plane_service.create_config(payload.model_dump())
+    config = control_plane_service.create_config(payload.model_dump(exclude_unset=True))
     await control_plane_service.schedule_config_refresh(config.id, control_plane_service.plan_for_config_change(config.id))
     return ok(config.model_dump(mode="json"))
+
+
+@router.get("/protocol-options")
+def protocol_options() -> ApiResponse[dict[str, object]]:
+    return ok(awg.protocol_options())
+
+
+class AwgConvertRequest(ConfigCreateRequest):
+    name: str = "conversion"
+    awg_version: str
+    source_version: str | None = None
+
+
+@router.post("/awg/convert")
+def convert_awg_config(payload: AwgConvertRequest) -> ApiResponse[dict[str, object]]:
+    return ok(awg.convert_config_params(payload.model_dump(), payload.source_version, awg.version_value(payload.awg_version)))
+
+
+class AwgGenerateRequest(BaseModel):
+    awg_version: str
+    scope: Literal["all", "node"] = "all"
+    direction: str = "generic"
+    intensity: str = "balanced"
+    config: dict[str, Any] = Field(default_factory=dict)
+    nodes: dict[str, dict[str, Any]] = Field(default_factory=dict)
+
+
+@router.post("/awg/generate")
+def generate_awg_draft(payload: AwgGenerateRequest) -> ApiResponse[dict[str, object]]:
+    return ok(awg.generate_draft(payload.config, payload.nodes, payload.awg_version, payload.direction, payload.intensity, payload.scope))
 
 
 @router.get("/{config_id}")
@@ -75,7 +109,7 @@ def get_config(config_id: str) -> ApiResponse[dict[str, Any]]:
 
 @router.put("/{config_id}")
 async def update_config(config_id: str, payload: ConfigUpdateRequest) -> ApiResponse[dict[str, Any]]:
-    result = control_plane_service.update_config(config_id, payload.model_dump())
+    result = control_plane_service.update_config(config_id, payload.model_dump(exclude_unset=True))
     await control_plane_service.schedule_config_refresh(
         config_id,
         control_plane_service.plan_for_config_change(config_id, [str(item) for item in result.get("affected_node_ids", [])])
@@ -98,5 +132,10 @@ def config_overview(config_id: str) -> ApiResponse[dict[str, Any]]:
 
 
 @router.post("/awg/random")
-def random_awg_config() -> ApiResponse[dict[str, object]]:
-    return ok(control_plane_service.random_awg_config_params())
+def random_awg_config(awg_version: str = "2.0", regenerate_key: bool = False) -> ApiResponse[dict[str, object]]:
+    values = control_plane_service.random_awg_config_params(awg_version)
+    if regenerate_key:
+        if awg.version_value(awg_version) != "3.1":
+            raise AppError("INVALID_AWG_VERSION", "Header Protection requires AWG 3.1", 400)
+        values["awg_options"] = awg.ensure_config_params({}, "3.1")["awg_options"]
+    return ok(values)

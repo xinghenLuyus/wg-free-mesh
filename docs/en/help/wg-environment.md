@@ -12,7 +12,7 @@ If the config uses standard WireGuard, install WireGuard. The simplest path is t
 
 ## AmneziaWG Toolchain
 
-If the config uses AmneziaWG 2.0, install the AmneziaWG client or the `awg` toolchain. You can also start from the [Amnezia official documentation](https://docs.amnezia.org/documentation/alternative-clients/) and choose the matching platform.
+If the config uses AmneziaWG, install the AmneziaWG client or the `awg` toolchain. You can also start from the [Amnezia official documentation](https://docs.amnezia.org/documentation/alternative-clients/) and choose the matching platform.
 
 Common platform links:
 

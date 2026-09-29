@@ -12,6 +12,7 @@ import aiomqtt
 
 from app.core.config import settings
 from app.data.store import store
+from app.domain import awg
 from app.services.emqx_reconcile_service import emqx_reconcile_service
 from app.services.node_runtime_service import node_runtime_service
 from app.services.realtime_service import realtime_service
@@ -248,7 +249,7 @@ class MqttIngressService:
             "boot_id": "",
             "session_id": "",
             "sent_at": datetime.now(UTC).isoformat(),
-            "payload": {"tunnel_protocol": store.get_config(config_id).tunnel_protocol.value},
+            "payload": {"tunnel_protocol": awg.wire_protocol(store.get_config(config_id).tunnel_protocol), "awg_version": store.get_config(config_id).awg_version},
         }
         try:
             await self.publish_to_node(config_id=config_id, node_id=node_id, kind="detect", payload=payload)

@@ -32,6 +32,7 @@ class NodeRequest(BaseModel):
     pre_down: list[str] = Field(default_factory=list)
     post_down: list[str] = Field(default_factory=list)
     awg_jc: int | None = None
+    awg_options: dict[str, object] | None = None
     awg_jmin: int | None = None
     awg_jmax: int | None = None
     awg_i1: str | None = None
@@ -227,8 +228,8 @@ def generate_keys() -> ApiResponse[dict[str, str]]:
 
 
 @router.post("/nodes/awg/random")
-def random_awg_node() -> ApiResponse[dict[str, object]]:
-    return ok(control_plane_service.random_awg_node_params())
+def random_awg_node(awg_version: str = "2.0") -> ApiResponse[dict[str, object]]:
+    return ok(control_plane_service.random_awg_node_params(awg_version))
 
 
 @router.post("/nodes/keys/derive-public")

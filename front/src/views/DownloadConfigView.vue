@@ -19,6 +19,9 @@ const { t } = useI18n()
 const downloadPackage = shallowRef<DownloadPackageRead | null>(null)
 const qrCodeDataUrl = shallowRef('')
 const qrExpanded = shallowRef(false)
+const qrFullscreen = shallowRef(false)
+const generatingQr = shallowRef(false)
+const qrError = shallowRef<'capacity' | 'generation' | ''>('')
 const loading = shallowRef(false)
 const loadError = shallowRef('')
 const generatingLink = shallowRef(false)
@@ -27,6 +30,7 @@ const downloadingConf = shallowRef(false)
 const downloadUrl = shallowRef('')
 const shellCommand = shallowRef('')
 let loadTicket = 0
+let qrTicket = 0
 const tokenCache = reactive({
   downloadUrl: '',
   shellUrl: '',
@@ -46,19 +50,56 @@ const qrHelpText = computed(() =>
     ? t('download.qrDescription')
     : t('download.qrEmpty'),
 )
+const qrStatusText = computed(() => {
+  if (loading.value || generatingQr.value) return t('download.qrGenerating')
+  if (!downloadPackage.value?.content.trim()) return t('download.qrEmpty')
+  if (qrError.value === 'capacity') return t('download.qrTooLarge')
+  return t('download.qrFailed')
+})
 const linkExpiresAtText = computed(() => formatDateTime(tokenCache.linkExpiresAt, ''))
 const shellExpiresAtText = computed(() => formatDateTime(tokenCache.shellExpiresAt, ''))
 
+function resetQrCode() {
+  qrTicket += 1
+  qrFullscreen.value = false
+  qrCodeDataUrl.value = ''
+  qrError.value = ''
+  generatingQr.value = false
+}
+
 async function generateQrCode(content: string) {
-  if (!content.trim()) {
-    qrCodeDataUrl.value = ''
-    return
+  if (!content.trim()) return
+  const ticket = ++qrTicket
+  const configId = String(route.params.configId)
+  const nodeId = String(route.params.nodeId)
+  const isCurrent = () => ticket === qrTicket
+    && configId === String(route.params.configId)
+    && nodeId === String(route.params.nodeId)
+    && content === downloadPackage.value?.content
+  generatingQr.value = true
+  qrError.value = ''
+  try {
+    const dataUrl = await QRCode.toDataURL(content, {
+      errorCorrectionLevel: 'M',
+      margin: 4,
+      scale: 6,
+    })
+    if (isCurrent()) qrCodeDataUrl.value = dataUrl
+  } catch (error) {
+    if (!isCurrent()) return
+    const capacityExceeded = error instanceof Error
+      && /amount of data is too big to be stored in a QR Code/i.test(error.message)
+    qrError.value = capacityExceeded ? 'capacity' : 'generation'
+    // Do not log the exception or config: either may contain private keys.
+    console.warn('Config QR generation failed', {
+      reason: qrError.value,
+      contentBytes: new TextEncoder().encode(content).length,
+      errorType: error instanceof TypeError ? 'TypeError' : error instanceof RangeError ? 'RangeError' : 'Error',
+    })
+    notify.error(t(capacityExceeded ? 'download.qrTooLarge' : 'download.qrFailed'))
+  } finally {
+    if (ticket === qrTicket) generatingQr.value = false
   }
-  qrCodeDataUrl.value = await QRCode.toDataURL(content, {
-    errorCorrectionLevel: 'M',
-    margin: 1,
-    width: 320,
-  })
 }
 
 function resetGeneratedOutputs() {
@@ -87,6 +128,7 @@ async function issueDownloadUrl(target: 'link' | 'shell' | 'browser') {
 
 async function loadDownloadPackage() {
   const ticket = ++loadTicket
+  resetQrCode()
   loading.value = true
   loadError.value = ''
   const configId = String(route.params.configId)
@@ -102,7 +144,7 @@ async function loadDownloadPackage() {
     if (ticket !== loadTicket) return
     downloadPackage.value = nextPackage
     resetGeneratedOutputs()
-    if (!qrExpanded.value) qrCodeDataUrl.value = ''
+    if (qrExpanded.value) await generateQrCode(nextPackage.content)
     return true
   } catch (error) {
     if (ticket !== loadTicket) return
@@ -187,12 +229,9 @@ async function createAndCopyShellCommand() {
 
 async function toggleQrPanel() {
   qrExpanded.value = !qrExpanded.value
+  if (!qrExpanded.value) qrFullscreen.value = false
   if (qrExpanded.value && !qrCodeDataUrl.value && downloadPackage.value?.content.trim()) {
-    try {
-      await generateQrCode(downloadPackage.value.content)
-    } catch {
-      notify.error(t('download.qrFailed'))
-    }
+    await generateQrCode(downloadPackage.value.content)
   }
 }
 
@@ -266,14 +305,19 @@ onMounted(async () => {
                 <strong>{{ t('download.qrTitle') }}</strong>
               </div>
             </div>
-            <el-button class="download-action" plain :icon="PictureFilled" @click="toggleQrPanel">
+            <el-button class="download-action" plain :icon="PictureFilled" :disabled="loading || generatingQr" @click="toggleQrPanel">
               {{ qrExpanded ? t('download.qrClose') : t('download.qrOpen') }}
             </el-button>
           </div>
           <p class="download-card__description">{{ qrHelpText }}</p>
           <div v-if="qrExpanded" class="qr-panel">
-            <img v-if="qrCodeDataUrl" :src="qrCodeDataUrl" alt="WireGuard config QR code" class="qr-panel__image" />
-            <div v-else class="qr-panel__empty">{{ t('download.qrEmpty') }}</div>
+            <template v-if="qrCodeDataUrl">
+              <button type="button" class="qr-panel__preview" :aria-label="t('download.qrFullscreen')" @click="qrFullscreen = true">
+                <img :src="qrCodeDataUrl" :alt="t('download.qrTitle')" class="qr-panel__image" />
+              </button>
+              <p class="qr-panel__hint">{{ t('download.qrFullscreen') }}</p>
+            </template>
+            <div v-else class="qr-panel__empty">{{ qrStatusText }}</div>
           </div>
         </article>
 
@@ -303,6 +347,11 @@ onMounted(async () => {
         </article>
       </div>
     </div>
+    <el-dialog v-model="qrFullscreen" class="qr-fullscreen" modal-class="qr-fullscreen-overlay" :title="t('download.qrTitle')" fullscreen append-to-body destroy-on-close :close-on-press-escape="true">
+      <div class="qr-fullscreen__stage">
+        <img v-if="qrCodeDataUrl" :src="qrCodeDataUrl" :alt="t('download.qrTitle')" class="qr-fullscreen__image" />
+      </div>
+    </el-dialog>
   </section>
 </template>
 
@@ -393,18 +442,82 @@ onMounted(async () => {
   box-shadow: none;
 }
 .qr-panel {
-  display: grid;
-  place-items: center;
+  min-width: 0;
   min-height: 280px;
   padding: 16px;
   border: 1px solid var(--app-border-soft);
   border-radius: 8px;
   background: var(--app-surface-sunken);
 }
+.qr-panel__preview {
+  display: block;
+  width: min(100%, 480px);
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  background: #fff;
+  cursor: zoom-in;
+}
+.qr-panel__preview:focus-visible {
+  outline: 2px solid var(--app-primary);
+  outline-offset: 4px;
+}
 .qr-panel__image {
-  width: min(100%, 320px);
+  display: block;
+  width: 100%;
   height: auto;
-  border-radius: 8px;
+}
+.qr-panel__hint {
+  margin: 12px 0 0;
+  color: var(--app-muted);
+  text-align: center;
+  font-size: 13px;
+}
+:global(.qr-fullscreen-overlay) {
+  overflow: hidden;
+}
+:global(.qr-fullscreen-overlay .el-overlay-dialog) {
+  padding: 0;
+  height: 100dvh;
+  overflow: hidden;
+}
+:global(.qr-fullscreen-overlay .qr-fullscreen.el-dialog) {
+  display: flex;
+  flex-direction: column;
+  width: 100% !important;
+  height: 100%;
+  margin: 0 !important;
+  border: 0;
+  border-radius: 0;
+  background: #fff;
+}
+:global(.qr-fullscreen-overlay .qr-fullscreen .el-dialog__header) {
+  flex-shrink: 0;
+  background: #fff;
+}
+:global(.qr-fullscreen-overlay .qr-fullscreen .el-dialog__title),
+:global(.qr-fullscreen-overlay .qr-fullscreen .el-dialog__headerbtn .el-dialog__close) {
+  color: #222;
+}
+:global(.qr-fullscreen-overlay .qr-fullscreen .el-dialog__body) {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.qr-fullscreen__stage {
+  position: absolute;
+  inset: 16px;
+  overflow: hidden;
+  background: #fff;
+}
+.qr-fullscreen__image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
 .qr-panel__empty {
   color: var(--app-muted);

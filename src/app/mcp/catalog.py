@@ -140,9 +140,11 @@ def schemas() -> dict[str, object]:
         "config_payload": {
             "used_by": ["write_create_config", "write_update_config"],
             "notes": [
-                "tunnel_protocol is wireguard or amneziawg_2.",
+                "tunnel_protocol is wireguard or amneziawg.",
+                "Select awg_version 1.5, 2.0 or 3.1 when choosing amneziawg; legacy amneziawg_2 input maps to 2.0.",
+                "Version-specific extensions use awg_options; unsupported changes are rejected.",
                 "When switching to wireguard, AWG-specific fields are cleared by backend rules.",
-                "When switching to amneziawg_2, leave AWG fields empty to let the backend generate safe defaults.",
+                "When switching to amneziawg, leave AWG fields empty to let the backend generate safe defaults.",
             ],
         },
         "node_payload": {

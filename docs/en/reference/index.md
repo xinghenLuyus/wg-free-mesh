@@ -16,7 +16,7 @@ Reference pages document stable APIs, protocol fields, errors, and security boun
 - [Downloads](./downloads): client artifacts, config packages, snapshot exports, and short-lived URLs.
 - [Snapshots](./snapshot): application-level snapshot contents, encryption, and restore boundaries.
 - [Data Model](./data-model): configs, nodes, peer links, runtime state, and sync state.
-- [Protocols](./protocols): WireGuard, AmneziaWG 2.0, and AWG parameter rules.
+- [Protocols](./protocols): WireGuard, AmneziaWG, and AWG parameter rules.
 - [Quick Mesh](./quick-mesh): gateway, full mesh, and Free Mesh generation rules.
 
 ## Runtime boundaries

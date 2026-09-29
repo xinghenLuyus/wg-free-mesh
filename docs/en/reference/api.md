@@ -89,8 +89,19 @@ When an external system is unavailable, database semantics should remain explici
 | `DELETE` | `/api/v1/configs/{config_id}` | Delete a config. |
 | `GET` | `/api/v1/configs/{config_id}/overview` | Read the config overview projection. |
 | `POST` | `/api/v1/configs/awg/random` | Generate config-level AmneziaWG parameters. |
+| `POST` | `/api/v1/configs/awg/generate` | Generate shared and endpoint drafts without database access or MQTT. |
+| `GET` | `/api/v1/configs/protocol-options` | Read AWG versions, the default version, and per-version parameter capabilities. |
+| `POST` | `/api/v1/configs/awg/convert` | Prefill an AWG draft for the target version; extensions include only supported fields and randomization strategy, without database writes. |
+
+AWG config writes use `tunnel_protocol=amneziawg` and `awg_version=1.5/2.0/3.1`. Selecting AWG for the first time requires a version. The API also accepts `tunnel_protocol=amneziawg_2`, parsed as AWG 2.0. Config and endpoint extensions use `awg_options`. Conversion accepts current parameters, `source_version` (nullable), and the target `awg_version`. Config update responses include `adjustments` describing backend-adjusted fields.
+
+Config-level and endpoint-level `/awg/random` endpoints accept an `awg_version` query parameter, defaulting to 2.0. Config randomization normally generates S/H only; `regenerate_key=true` generates the shared 3.1 key separately. MCP writes follow the same version and parameter rules.
+
+Unified generation uses `POST /configs/awg/generate` with `awg_version`, `direction` (`generic/dns/stun/rtp/quic`), `intensity` (`low/balanced/high`), current `config` parameters, and `nodes` (endpoint ID → current AWG parameters). It returns `{config, nodes}` for editing only. Config updates accept `awg_node_updates` (endpoint ID → J/I and awg_options), written atomically with shared parameters. IDs outside the config and non-AWG endpoint fields are rejected. Cleared I values are omitted, not randomly refilled. The frontend discards unsaved endpoint drafts when changing version. Pages use this endpoint for random generation.
 
 ## Endpoint API
+
+The generation endpoint also accepts `scope=node` (default `all`), requiring exactly one endpoint in `nodes`. Existing shared parameters are validated without generating S/H, shared keys, or changing mechanism switches. Response `config` only echoes validated shared parameters. The endpoint page uses only the returned node draft and saves through `PUT /api/v1/nodes/{node_id}`.
 
 | Method | Path | Description |
 | --- | --- | --- |

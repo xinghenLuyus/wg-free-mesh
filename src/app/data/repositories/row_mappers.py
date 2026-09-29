@@ -65,6 +65,10 @@ def config_from_row(row: Any) -> Config:
         default_dns=row["default_dns"],
         auto_sync=bool_value(row["auto_sync"]),
         tunnel_protocol=row["tunnel_protocol"] if "tunnel_protocol" in keys else "wireguard",
+        awg_version=(row["awg_version"] if "awg_version" in keys else None) or (
+            "2.0" if "tunnel_protocol" in keys and row["tunnel_protocol"] in ("amneziawg", "amneziawg_2") else None
+        ),
+        awg_options=json.loads(row["awg_options_json"] or "{}") if "awg_options_json" in keys else {},
         awg_s1=row["awg_s1"] if "awg_s1" in keys else None,
         awg_s2=row["awg_s2"] if "awg_s2" in keys else None,
         awg_s3=row["awg_s3"] if "awg_s3" in keys else None,
@@ -108,6 +112,7 @@ def node_from_row(row: Any) -> Node:
         pre_down=json_list(row["pre_down_json"]) if "pre_down_json" in keys else [],
         post_down=json_list(row["post_down_json"]) if "post_down_json" in keys else [],
         awg_jc=row["awg_jc"] if "awg_jc" in keys else None,
+        awg_options=json.loads(row["awg_options_json"] or "{}") if "awg_options_json" in keys else {},
         awg_jmin=row["awg_jmin"] if "awg_jmin" in keys else None,
         awg_jmax=row["awg_jmax"] if "awg_jmax" in keys else None,
         awg_i1=row["awg_i1"] if "awg_i1" in keys else None,

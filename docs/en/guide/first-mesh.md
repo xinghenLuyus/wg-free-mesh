@@ -12,7 +12,7 @@ Key fields:
 - Virtual subnet: virtual IPs are assigned from this subnet.
 - Default listen port: the default WireGuard listen port for new nodes.
 - Default DNS: DNS written into generated client configs.
-- Protocol: `WireGuard` or `AmneziaWG 2.0`.
+- Protocol: `WireGuard` or `AmneziaWG`.
 
 If you are unsure, keep the default WireGuard protocol.
 
