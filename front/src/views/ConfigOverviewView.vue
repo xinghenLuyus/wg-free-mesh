@@ -56,7 +56,7 @@ const tagSearch = shallowRef('')
 const newTagName = shallowRef('')
 const selectedTagForAssignment = shallowRef('')
 const selectedNodeIds = shallowRef<string[]>([])
-const loading = shallowRef(false)
+const loading = shallowRef(true)
 const loadError = shallowRef('')
 const mqttServicesEnabled = shallowRef(true)
 let loadTicket = 0
@@ -555,7 +555,38 @@ watch(
 
 <template>
   <div class="config-overview">
-    <div v-if="loading && !overview" class="view-feedback view-feedback--silent" aria-hidden="true"></div>
+    <div v-if="loading && !overview" class="config-overview__placeholder" aria-hidden="true">
+      <div class="config-header-card">
+        <div class="cfg-top-bar">
+          <el-skeleton-item variant="h1" style="width: 32%" />
+          <el-skeleton-item variant="button" style="width: 96px" />
+        </div>
+        <el-skeleton-item variant="text" style="width: 48%; margin-top: 16px" />
+        <div class="cfg-props-grid">
+          <div v-for="index in 4" :key="index" class="cfg-prop-item">
+            <el-skeleton-item variant="text" style="width: 50%" />
+            <el-skeleton-item variant="text" style="width: 76%" />
+          </div>
+        </div>
+        <div class="node-toolbar">
+          <el-skeleton-item variant="button" style="width: 128px" />
+          <el-skeleton-item variant="button" style="width: 128px" />
+        </div>
+      </div>
+      <div v-if="viewMode === 'grid'" class="node-grid config-overview__placeholder-list">
+        <div v-for="index in 2" :key="index" class="node-card">
+          <el-skeleton-item variant="h3" style="width: 42%" />
+          <el-skeleton-item variant="text" style="width: 72%" />
+          <el-skeleton-item variant="text" style="width: 55%" />
+        </div>
+      </div>
+      <div v-else class="node-strip-grid config-overview__placeholder-list">
+        <div class="node-strip-card">
+          <el-skeleton-item variant="h3" style="width: 32%" />
+          <el-skeleton-item variant="text" style="width: 58%" />
+        </div>
+      </div>
+    </div>
     <div v-else-if="loadError && !overview" class="view-feedback view-feedback--error">{{ loadError }}</div>
     <template v-else-if="overview">
     <div class="config-header-card" :class="{ 'config-header-card--danger': topologyInvalid }">
@@ -797,7 +828,7 @@ watch(
       </div>
     </section>
 
-    <el-dialog v-model="settingsVisible" width="560px">
+    <el-dialog v-model="settingsVisible" width="560px" :class="{ 'protocol-dialog--advanced': settingsAdvanced }">
       <template #header="{ titleId, titleClass }">
         <div class="settings-dialog-header">
           <nav class="settings-dialog-tabs" :aria-label="t('configOverview.configSettings')">
@@ -1003,6 +1034,10 @@ watch(
 
 <style scoped>
 .config-overview { display: grid; gap: 20px; }
+.config-overview__placeholder { display: grid; gap: 20px; }
+.config-overview__placeholder-list .node-card { min-height: 150px; }
+.config-overview__placeholder-list .node-card,
+.config-overview__placeholder-list .node-strip-card { pointer-events: none; }
 .view-feedback { padding: 18px 20px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-sunken); color: var(--app-muted); box-shadow: var(--app-shadow-sm); }
 .view-feedback--silent { min-height: 96px; background: transparent; border-color: transparent; box-shadow: none; }
 .view-feedback--error { border-color: var(--app-danger-border); background: color-mix(in srgb, var(--app-danger-border) 12%, var(--app-surface-elevated)); color: var(--app-danger-text); }

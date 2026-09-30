@@ -15,6 +15,8 @@ A config defines the base rules of one mesh network:
 
 After creation, these base parameters can still be edited. Changes affect generated config content, but they do not override each node's own switches and advanced settings.
 
+When opening a config or node page, loading areas keep the page layout in place. If the config's advanced settings contain many parameters, scroll within the dialog to review them.
+
 ## Protocol Choice
 
 The default protocol is standard WireGuard. It fits most private networks, cloud servers, and cross-region mesh setups.

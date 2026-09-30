@@ -313,6 +313,24 @@ body {
   padding: 20px 22px;
 }
 
+.el-dialog.protocol-dialog--advanced {
+  display: flex;
+  flex-direction: column;
+  height: min(760px, calc(100dvh - 32px));
+  margin: max(16px, calc((100dvh - 760px) / 2)) auto 16px;
+}
+
+.el-dialog.protocol-dialog--advanced .el-dialog__header,
+.el-dialog.protocol-dialog--advanced .el-dialog__footer {
+  flex-shrink: 0;
+}
+
+.el-dialog.protocol-dialog--advanced .el-dialog__body {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .el-dialog__footer {
   padding: 14px 22px 20px;
   border-top: 1px solid var(--app-border-soft);
@@ -763,88 +781,72 @@ body {
   background: var(--app-surface-interactive);
 }
 
+.route-page,
+.route-stage {
+  position: relative;
+  min-width: 0;
+}
+
+.route-stage--main {
+  min-height: calc(100dvh - 52px);
+}
+
 .route-shell-enter-active,
-.route-shell-leave-active,
 .route-panel-enter-active,
-.route-panel-leave-active,
-.route-template-enter-active,
-.route-template-leave-active {
-  transform-origin: 48% 18%;
-  will-change: opacity, transform, filter;
-}
-
-.route-shell-enter-active {
-  transition:
-    opacity 190ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 190ms cubic-bezier(0.22, 1, 0.36, 1),
-    filter 190ms ease;
-}
-
-.route-shell-leave-active {
-  transition:
-    opacity 120ms ease,
-    transform 120ms ease,
-    filter 120ms ease;
-}
-
-.route-shell-enter-from {
-  opacity: 0;
-  filter: blur(5px);
-  transform: translateY(12px) scale(0.985);
-}
-
-.route-shell-leave-to {
-  opacity: 0;
-  filter: blur(3px);
-  transform: translateY(-8px) scale(0.992);
-}
-
-.route-panel-enter-active {
-  transition:
-    opacity 180ms cubic-bezier(0.2, 0.9, 0.2, 1),
-    transform 180ms cubic-bezier(0.2, 0.9, 0.2, 1),
-    filter 180ms ease;
-}
-
-.route-panel-leave-active {
-  transition:
-    opacity 110ms ease,
-    transform 110ms ease,
-    filter 110ms ease;
-}
-
-.route-panel-enter-from {
-  opacity: 0;
-  filter: blur(4px);
-  transform: translate3d(14px, 10px, 0) scale(0.988);
-}
-
-.route-panel-leave-to {
-  opacity: 0;
-  filter: blur(2px);
-  transform: translate3d(-8px, -4px, 0) scale(0.994);
-}
-
 .route-template-enter-active {
-  transition:
-    opacity 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+  pointer-events: none;
+  transition: opacity 130ms ease-out 90ms;
 }
 
+.route-shell-leave-active,
+.route-panel-leave-active,
 .route-template-leave-active {
-  transition:
-    opacity 95ms ease,
-    transform 95ms ease;
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  pointer-events: none;
+  transition: opacity 90ms ease-in;
 }
 
-.route-template-enter-from {
-  opacity: 0;
-  transform: translate3d(0, 10px, 0) scale(0.992);
-}
-
+.route-shell-enter-from,
+.route-panel-enter-from,
+.route-template-enter-from,
+.route-shell-leave-to,
+.route-panel-leave-to,
 .route-template-leave-to {
   opacity: 0;
-  transform: translate3d(0, -6px, 0) scale(0.996);
+}
+
+.route-progress {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 12px;
+  left: 0;
+  height: 2px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.route-progress--visible {
+  opacity: 1;
+}
+
+.route-progress::after {
+  position: absolute;
+  width: 35%;
+  height: 100%;
+  background: var(--app-primary);
+  content: '';
+  animation: route-progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes route-progress-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -853,6 +855,7 @@ body {
   *::after {
     scroll-behavior: auto !important;
     transition-duration: 1ms !important;
+    transition-delay: 0ms !important;
     animation-duration: 1ms !important;
     animation-iteration-count: 1 !important;
   }
@@ -864,9 +867,12 @@ body {
   .route-template-enter-from,
   .route-template-leave-to {
     opacity: 1 !important;
-    filter: none !important;
-    transform: none !important;
   }
+}
+
+@media (max-width: 960px) {
+  .route-stage--main { min-height: 60dvh; }
+  .route-progress { right: 18px; left: 18px; }
 }
 
 @media (max-width: 780px) {

@@ -9,6 +9,7 @@ import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useRealtime } from '@/composables/useRealtime'
 import { useAuthStore } from '@/stores/auth'
 import { usePreferencesStore } from '@/stores/preferences'
+import { completePageFadeOut, navigationPending } from '@/router/navigationProgress'
 import type {
   ConfigListUpdatedPayload,
   ConfigOverviewUpdatedPayload,
@@ -277,14 +278,16 @@ watch(
     </aside>
 
     <main class="main">
-      <RouterView v-slot="{ Component, route: viewRoute }">
-        <Transition name="route-panel" appear>
-          <component
-            :is="Component"
-            :key="`${viewRoute.matched[1]?.path || viewRoute.path}:${String(viewRoute.params.configId || '')}`"
-          />
-        </Transition>
-      </RouterView>
+      <div class="route-progress" :class="{ 'route-progress--visible': navigationPending }" aria-hidden="true"></div>
+      <div class="route-stage route-stage--main">
+        <RouterView v-slot="{ Component, route: viewRoute }">
+          <Transition name="route-panel" @after-leave="completePageFadeOut">
+            <div :key="`${viewRoute.matched[1]?.path || viewRoute.path}:${String(viewRoute.params.configId || '')}`" class="route-page">
+              <component :is="Component" />
+            </div>
+          </Transition>
+        </RouterView>
+      </div>
     </main>
   </div>
 </template>
@@ -346,7 +349,7 @@ watch(
 .sidebar-system-status__dot[data-type='danger'] { background: var(--app-danger-text); box-shadow: 0 0 0 4px color-mix(in srgb, var(--app-danger-text) 16%, transparent); }
 .sidebar-system-status__text { color: var(--app-text-strong); font-size: 13px; font-weight: 750; }
 .sidebar-system-status__meta { margin-top: 8px; color: var(--app-muted); font-size: 12px; }
-.main { min-width: 0; padding: 12px 12px 12px 0; }
+.main { position: relative; min-width: 0; padding: 12px 12px 12px 0; }
 @media (max-width: 960px) {
   .shell { grid-template-columns: 1fr; padding: 0; gap: 0; }
   .sidebar { position: static; top: auto; height: auto; min-height: auto; border: 0; border-bottom: 1px solid var(--app-border); border-radius: 0; box-shadow: none; }

@@ -3,6 +3,12 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { api } from '@/api/modules'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
+import {
+  cancelPageFadeOut,
+  finishNavigationProgress,
+  startNavigationProgress,
+  waitForPageFadeOut,
+} from './navigationProgress'
 
 const ApplyView = () => import('@/views/ApplyView.vue')
 const ClientDownloadView = () => import('@/views/ClientDownloadView.vue')
@@ -29,6 +35,12 @@ const SystemView = () => import('@/views/SystemView.vue')
 
 export const router = createRouter({
   history: createWebHistory(),
+  scrollBehavior(to, from, savedPosition) {
+    if (to.path === from.path) return savedPosition || false
+    const position = savedPosition || { top: 0 }
+    if (!from.matched.length) return position
+    return waitForPageFadeOut().then((completed) => (completed ? position : false))
+  },
   routes: [
     { path: '/login', component: LoginView },
     { path: '/setup', component: SetupView },
@@ -41,6 +53,7 @@ export const router = createRouter({
         {
           path: 'configs/:configId',
           component: ConfigWorkspaceLayout,
+          props: (route) => ({ workspaceRoute: route }),
           children: [
             { path: '', component: ConfigOverviewView },
             { path: 'nodes', component: NodesView },
@@ -50,6 +63,7 @@ export const router = createRouter({
             {
               path: 'nodes/:nodeId',
               component: NodeWorkspaceLayout,
+              props: (route) => ({ workspaceRoute: route }),
               redirect: (to) => `/configs/${to.params.configId}/nodes/${to.params.nodeId}/mesh`,
               children: [
                 { path: 'mesh', component: MeshView },
@@ -79,6 +93,14 @@ export const router = createRouter({
     },
   ],
 })
+
+router.beforeEach((to, from) => {
+  cancelPageFadeOut()
+  if (from.matched.length && to.path !== from.path) startNavigationProgress()
+})
+
+router.afterEach(finishNavigationProgress)
+router.onError(finishNavigationProgress)
 
 router.beforeEach(async (to) => {
   const authStore = useAuthStore()

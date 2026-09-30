@@ -330,7 +330,7 @@ watch(
     <el-button type="primary" :icon="Plus" @click="openCreateDialog">{{ t('home.createConfig') }}</el-button>
   </section>
 
-  <el-dialog v-model="dialogVisible" width="620px">
+  <el-dialog v-model="dialogVisible" width="620px" :class="{ 'protocol-dialog--advanced': dialogAdvanced }">
     <template #header="{ titleId, titleClass }">
       <div class="create-dialog-header">
         <nav class="create-dialog-tabs" :aria-label="t('home.dialogTitle')">

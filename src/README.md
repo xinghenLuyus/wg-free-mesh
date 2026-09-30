@@ -97,16 +97,16 @@ MCP 不提供快照创建、导入、恢复或删除能力，也不接收任何�
 
 安装依赖：
 
-```powershell
+```bash
 cd src
-python -m pip install -e .[dev]
+python -m pip install -e '.[dev]'
 ```
 
 该命令会安装 FastAPI、数据库迁移、快照加密和 MCP SDK 等后端声明依赖。仓库自动化助手不得代替维护者修改本机 Python 环境。
 
 开发启动后端：
 
-```powershell
+```bash
 cd src
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --timeout-graceful-shutdown 1
 ```
@@ -120,7 +120,7 @@ python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --timeout-g
 
 推荐开发启动命令：
 
-```powershell
+```bash
 cd src
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-exclude data --timeout-graceful-shutdown 1
 ```

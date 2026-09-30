@@ -2,6 +2,8 @@
 
 Snapshots are application-level backups for WG Free Mesh. They do not depend on a specific database file, so they can migrate data between SQLite and PostgreSQL.
 
+The snapshot list in system settings shows a loading placeholder while it is being retrieved, then displays the available snapshots or an empty-list message.
+
 ## What Snapshots Include
 
 Except for the administrator password, business data in the application database should be included:

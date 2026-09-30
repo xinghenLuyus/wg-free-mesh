@@ -2,6 +2,8 @@
 
 WG Free Mesh puts the common work of a WireGuard network into one console: create configs, add nodes, generate mesh links, download clients, push config, check status, and make backups.
 
+During page navigation, the previous page fades out before the next page fades in, and the new page starts at the top. Browser Back can restore the previous scroll position. The progress indicator shows that the page is opening; its content may continue loading after it appears.
+
 For a few nodes, handwritten configs can still work. Once the network grows, addresses, ports, PSKs, AllowedIPs, client status, and config sync become easy to lose track of. WG Free Mesh is built to remove that repetitive work.
 
 ## Start with a Config

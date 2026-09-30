@@ -100,6 +100,7 @@ const passwordRules: FormRules<typeof passwordForm> = {
 }
 
 const snapshots = shallowRef<SnapshotRead[]>([])
+const snapshotsLoading = shallowRef(true)
 const realtime = useRealtime((event: RealtimeEvent) => {
   if (event.type === 'snapshot.list.updated') {
     snapshots.value = (event.payload as unknown as SnapshotListUpdatedPayload).snapshots
@@ -110,15 +111,21 @@ const realtime = useRealtime((event: RealtimeEvent) => {
 })
 
 async function load() {
-  const uiSettings = await preferencesStore.load()
-  const health = await api.health()
+  const [uiSettings, health] = await Promise.all([preferencesStore.load(), api.health()])
   selectedLocale.value = uiSettings.locale
   selectedThemeMode.value = uiSettings.theme_mode
   mqttServicesEnabled.value = health.mqtt_services_enabled
   if (mqttServicesEnabled.value) {
     Object.assign(mqttForm, await api.mqttSettings())
   }
-  snapshots.value = await api.snapshots()
+}
+
+async function loadSnapshots() {
+  try {
+    snapshots.value = await api.snapshots()
+  } finally {
+    snapshotsLoading.value = false
+  }
 }
 
 const themeOptions: Array<{ value: AppThemeMode; labelKey: string }> = [
@@ -366,7 +373,7 @@ async function promptSnapshotPassword(prompt: string) {
 
 onMounted(async () => {
   try {
-    await load()
+    await Promise.all([load(), loadSnapshots()])
     realtime.connect()
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('settings.loadFailed'))
@@ -532,6 +539,18 @@ onMounted(async () => {
       </div>
 
       <div class="snapshot-list">
+        <template v-if="snapshotsLoading && !snapshots.length">
+          <div v-for="index in 2" :key="index" class="snapshot-card" aria-hidden="true">
+            <div class="snapshot-card__main">
+              <el-skeleton-item variant="circle" style="width: 42px; height: 42px" />
+              <div class="snapshot-loading-lines">
+                <el-skeleton-item variant="text" style="width: 55%" />
+                <el-skeleton-item variant="text" style="width: 72%" />
+              </div>
+            </div>
+            <el-skeleton-item variant="button" style="width: 210px" />
+          </div>
+        </template>
         <div v-for="snapshot in snapshots" :key="snapshot.id" class="snapshot-card">
           <div class="snapshot-card__main">
             <span class="snapshot-card__icon"><el-icon><Files /></el-icon></span>
@@ -551,7 +570,7 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div v-if="!snapshots.length" class="snapshot-empty">
+        <div v-if="!snapshotsLoading && !snapshots.length" class="snapshot-empty">
           <span class="settings-card__icon"><el-icon><Files /></el-icon></span>
           <strong>{{ t('settings.noSnapshots') }}</strong>
           <span>{{ t('settings.snapshotEmptyDescription') }}</span>
@@ -820,6 +839,7 @@ onMounted(async () => {
   display: grid;
   gap: 12px;
 }
+.snapshot-loading-lines { display: grid; flex: 1; gap: 10px; }
 
 .snapshot-import-input {
   display: none;

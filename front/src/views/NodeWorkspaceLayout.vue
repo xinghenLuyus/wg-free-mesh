@@ -3,6 +3,7 @@ import { ArrowLeft, Delete, Key, Setting } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
+import type { RouteLocationNormalizedLoaded } from 'vue-router'
 import { ElMessageBox } from 'element-plus'
 import { useI18n } from 'vue-i18n'
 
@@ -10,6 +11,7 @@ import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useRealtime } from '@/composables/useRealtime'
+import { completePageFadeOut } from '@/router/navigationProgress'
 import type {
   ConfigRead,
   EndpointStatusRead,
@@ -24,8 +26,19 @@ import { requiredTextRule } from '@/utils/formRules'
 import { normalizeTags, toNodeUpdatePayload } from '@/utils/nodePayload'
 import { notify } from '@/utils/notify'
 
+const props = defineProps<{ workspaceRoute: RouteLocationNormalizedLoaded }>()
 const route = useRoute()
 const router = useRouter()
+const displayedConfigId = String(props.workspaceRoute.params.configId)
+const displayedNodeId = String(props.workspaceRoute.params.nodeId)
+const displayedRoute = shallowRef(props.workspaceRoute)
+
+watch(() => props.workspaceRoute, (next) => {
+  if (String(next.params.configId) === displayedConfigId && String(next.params.nodeId) === displayedNodeId) {
+    displayedRoute.value = next
+  }
+})
+
 const { t } = useI18n()
 const actions = useAsyncActionGroup()
 const generatingKeys = actions.isPending('generate-keys')
@@ -38,7 +51,7 @@ const configTags = shallowRef<TagRead[]>([])
 const endpointStatus = shallowRef<EndpointStatusRead | null>(null)
 const settingsVisible = shallowRef(false)
 const settingsFormRef = shallowRef<FormInstance>()
-const loading = shallowRef(false)
+const loading = shallowRef(true)
 const loadError = shallowRef('')
 let loadTicket = 0
 let lastRealtimeVersion = 0
@@ -358,6 +371,7 @@ onMounted(async () => {
         <div class="node-header-card__actions">
           <span class="node-header-card__config">{{ config?.name || t('nodeWorkspace.localConfig') }}</span>
           <el-button v-if="node" type="primary" plain :icon="Setting" @click="openSettings">{{ t('nodeWorkspace.endpointSettings') }}</el-button>
+          <el-skeleton-item v-else-if="loading" variant="button" style="width: 120px" aria-hidden="true" />
         </div>
       </div>
 
@@ -372,6 +386,12 @@ onMounted(async () => {
             </el-tag>
             <el-tag v-for="tag in node.tags" :key="tag" type="info">{{ tag }}</el-tag>
           </div>
+        </div>
+      </div>
+      <div v-else-if="loading" class="node-header-card__main" aria-hidden="true">
+        <div class="node-workspace__placeholder-heading">
+          <el-skeleton-item variant="h1" style="width: 210px" />
+          <el-skeleton-item variant="text" style="width: 120px" />
         </div>
       </div>
 
@@ -395,6 +415,12 @@ onMounted(async () => {
         <div class="node-prop-item">
           <span class="node-prop-label">{{ t('nodeWorkspace.wgState') }}</span>
           <span class="node-prop-value">{{ wgRuntimeLabel(endpointStatus?.runtime.wg_runtime_state) }}</span>
+        </div>
+      </div>
+      <div v-else-if="loading" class="node-props-grid" aria-hidden="true">
+        <div v-for="index in 5" :key="index" class="node-prop-item">
+          <el-skeleton-item variant="text" style="width: 54%" />
+          <el-skeleton-item variant="text" style="width: 78%" />
         </div>
       </div>
 
@@ -434,13 +460,21 @@ onMounted(async () => {
       </div>
     </div>
 
-    <RouterView v-slot="{ Component, route: viewRoute }">
-      <Transition name="route-template" appear>
-        <component :is="Component" :key="viewRoute.fullPath" />
-      </Transition>
-    </RouterView>
+    <div class="route-stage">
+      <RouterView :route="displayedRoute" v-slot="{ Component, route: viewRoute }">
+        <Transition name="route-template" @after-leave="completePageFadeOut">
+          <div :key="viewRoute.path" class="route-page">
+            <component :is="Component" />
+          </div>
+        </Transition>
+      </RouterView>
+    </div>
 
-    <div v-if="loading && !node" class="view-feedback view-feedback--silent" aria-hidden="true"></div>
+    <div v-if="loading && !node" class="node-workspace__placeholder-content" aria-hidden="true">
+      <el-skeleton-item variant="h3" style="width: 160px" />
+      <el-skeleton-item variant="text" style="width: 75%" />
+      <el-skeleton-item variant="text" style="width: 58%" />
+    </div>
     <div v-else-if="loadError && !node" class="view-feedback view-feedback--error">{{ loadError }}</div>
 
     <el-dialog v-model="settingsVisible" :title="t('nodeWorkspace.endpointSettings')" width="640px">
@@ -533,6 +567,8 @@ onMounted(async () => {
 
 <style scoped>
 .node-workspace { display: grid; gap: 20px; }
+.node-workspace__placeholder-heading { display: grid; gap: 12px; }
+.node-workspace__placeholder-content { display: grid; align-content: start; gap: 18px; min-height: 220px; padding: 22px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface); }
 .node-header-card { padding: 22px; border: 1px solid var(--app-border); border-radius: 8px; background: linear-gradient(180deg, var(--app-surface) 0%, var(--app-surface-elevated) 100%); box-shadow: var(--app-shadow-md); }
 .node-header-card--disabled { border-color: var(--app-border-soft); background: color-mix(in srgb, var(--app-surface-sunken) 82%, var(--app-surface)); }
 .node-header-card--disabled .node-header-card__main h1,

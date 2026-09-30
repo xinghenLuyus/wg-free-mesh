@@ -5,6 +5,7 @@ import { computed } from 'vue'
 import { RouterView } from 'vue-router'
 
 import { usePreferencesStore } from '@/stores/preferences'
+import { completePageFadeOut } from '@/router/navigationProgress'
 
 const preferences = usePreferencesStore()
 const elementLocale = computed(() => (preferences.locale === 'en-US' ? en : zhCn))
@@ -13,8 +14,10 @@ const elementLocale = computed(() => (preferences.locale === 'en-US' ? en : zhCn
 <template>
   <el-config-provider :locale="elementLocale">
     <RouterView v-slot="{ Component, route }">
-      <Transition name="route-shell" appear>
-        <component :is="Component" :key="route.matched[0]?.path || route.fullPath" />
+      <Transition name="route-shell" @after-leave="completePageFadeOut">
+        <div :key="route.matched[0]?.path || route.fullPath" class="route-page">
+          <component :is="Component" />
+        </div>
       </Transition>
     </RouterView>
   </el-config-provider>
