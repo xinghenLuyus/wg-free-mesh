@@ -18,7 +18,7 @@ Versions come from the current repository config, lockfiles, and Docker compose 
 | MQTT client | aiomqtt | `>=2.3.0` | `src/pyproject.toml` |
 | MCP server | mcp | `>=1.12.0` | `src/pyproject.toml` |
 | Frontend runtime | Node.js | Docker build uses `node:22-alpine` | `docker/app/backend.Dockerfile` |
-| Package manager | pnpm | `10.33.0` | `docker/app/backend.Dockerfile` |
+| Package manager | pnpm | `11.17.0` | `docker/app/backend.Dockerfile` |
 | Frontend framework | Vue | `3.5.32` | `front/pnpm-lock.yaml` |
 | Frontend build | Vite | `5.4.21` | `front/pnpm-lock.yaml` |
 | Frontend language | TypeScript | `5.9.3` | `front/pnpm-lock.yaml` |

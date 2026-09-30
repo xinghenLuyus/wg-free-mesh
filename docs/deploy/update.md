@@ -17,3 +17,5 @@ docker compose up -d
 ```
 
 Compose 会按 `.env` 中的 `WFM_IMAGE_TAG` 拉取对应版本；未设置时使用 `latest`。
+
+默认情况下 pull 会拉取最新版本的镜像。

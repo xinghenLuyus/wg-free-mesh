@@ -10,7 +10,7 @@ Local development should stay aligned with the repository and Docker build envir
 | --- | --- | --- |
 | Python | `>=3.12` | Required by backend `src/pyproject.toml`. The recommended local setup is a conda environment such as `wfm`. |
 | Node.js | `22.x` | Frontend Docker build uses `node:22-alpine`. |
-| pnpm | `10.33.0` | Docker build pins this version. |
+| pnpm | `11.17.0` | Docker build pins this version. |
 | EMQX | `5.8.5` | Docker Compose uses `emqx/emqx:5.8.5`. |
 
 Dependency installation changes the local environment and should be done manually by the maintainer. Automation helpers must not install, upgrade, or remove dependencies on behalf of the maintainer.

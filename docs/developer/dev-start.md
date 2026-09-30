@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | Python | `>=3.12` | 后端 `src/pyproject.toml` 要求。当前开发推荐使用 conda 环境，例如 `wfm`。 |
 | Node.js | `22.x` | Docker 前端构建使用 `node:22-alpine`。 |
-| pnpm | `10.33.0` | Docker 构建固定使用该版本。 |
+| pnpm | `11.17.0` | Docker 构建固定使用该版本。 |
 | EMQX | `5.8.5` | Docker Compose 使用 `emqx/emqx:5.8.5`。 |
 
 依赖安装属于本机环境变更，应由维护者手动执行。自动化助手不得代替维护者安装、升级或删除依赖。

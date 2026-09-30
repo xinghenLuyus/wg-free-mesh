@@ -21,33 +21,47 @@ SQLite 和 PostgreSQL 使用同一套应用逻辑，快照也按应用级数据�
 
 | 方案 | 适合场景 | 特点 |
 | --- | --- | --- |
-| SQLite | 本机、轻量部署、单人管理、小规模节点 | 文件型数据库，部署简单，备份直观，资源占用低。 |
-| PostgreSQL | 长期运行、多人使用、更高并发、生产环境 | 独立数据库服务，连接池和并发能力更稳，适合后续扩展。 |
-
-如果只是先跑起来，选 SQLite。如果准备长期对外提供服务，选 PostgreSQL。
-
-## 启动前检查
-
-启动前至少确认这些事：
-
-- 已复制 `.env.example` 为 `.env`。
-- 已修改生产环境必须修改的密码和密钥。
-- `WFM_PUBLIC_ORIGIN` 已改成真实访问地址，例如 `https://wfm.example.com`。
-- 如果不需要客户端远程控制和 MQTT，已关闭 `WFM_ENABLE_MQTT_SERVICES` 并清空 `COMPOSE_PROFILES`。
-- 如果需要从公网访问，已准备反向代理和 HTTPS。
-
-完整说明见 [环境变量](/deploy/environment)。
+| SQLite | 本机、轻量部署、单人管理、小规模节点 | 数据直接保存在项目的 src/data 目录中，方便查看、备份和迁移。 |
+| PostgreSQL | 长期运行、多人使用、更高并发、生产环境 | 额外启动 PostgreSQL 数据库容器，更适合长期运行或生产环境。 |
 
 ## SQLite 启动
 
-SQLite 目录适合最小化部署。数据会挂载到项目的 `src/data`，方便本机查看、备份和迁移。
+进入 SQLite 部署目录：
 
 ```bash
 cd docker/sqlite
+```
+
+复制环境变量配置文件：
+
+```bash
 cp .env.example .env
 ```
 
-编辑 `.env` 后启动：
+然后编辑 .env。
+
+至少确认以下配置：
+
+- 修改生产环境中需要使用的密码和密钥。
+
+- 将 WFM_PUBLIC_ORIGIN 修改为实际访问地址。
+
+例如：
+
+```text
+WFM_PUBLIC_ORIGIN=https://wfm.example.com
+```
+
+如果只需要 Web 控制台，不需要客户端远程控制或 MQTT 服务，可以关闭：
+
+```text
+WFM_ENABLE_MQTT_SERVICES=false
+COMPOSE_PROFILES=
+```
+
+完整说明见 [环境变量](/deploy/environment)。
+
+配置完成后启动：
 
 ```bash
 docker compose up -d
@@ -61,14 +75,39 @@ http://localhost:8000
 
 ## PostgreSQL 启动
 
-PostgreSQL 目录会额外启动数据库容器。生产环境更推荐这个方案。
+进入 PostgreSQL 部署目录，并复制环境变量配置文件：
 
 ```bash
 cd docker/postgres
 cp .env.example .env
 ```
 
-编辑 `.env`，至少修改 PostgreSQL 密码、EMQX 密码和共享密钥，然后启动：
+编辑 `.env`，至少修改：
+
+- PostgreSQL 数据库密码
+
+- EMQX 密码
+
+- 共享密钥
+
+- WFM_PUBLIC_ORIGIN
+
+例如：
+
+```text
+WFM_PUBLIC_ORIGIN=https://wfm.example.com
+```
+
+如果只需要 Web 控制台，不需要客户端远程控制或 MQTT 服务，可以关闭：
+
+```text
+WFM_ENABLE_MQTT_SERVICES=false
+COMPOSE_PROFILES=
+```
+
+完整说明见 [环境变量](/deploy/environment)。
+
+配置完成后启动：
 
 ```bash
 docker compose up -d
