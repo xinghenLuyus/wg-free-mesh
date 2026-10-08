@@ -21,33 +21,47 @@ SQLite and PostgreSQL use the same application logic. Snapshots are exported at 
 
 | Mode | Best for | Notes |
 | --- | --- | --- |
-| SQLite | Local use, lightweight deployments, single-admin setups, small node counts | File-based database, simple deployment, straightforward backup, low resource usage. |
-| PostgreSQL | Long-running services, multi-user use, higher concurrency, production | Dedicated database service, more stable concurrency and connection pooling, better for future growth. |
-
-Choose SQLite if you only want to get started. Choose PostgreSQL for long-term production use.
-
-## Before Starting
-
-Check these items first:
-
-- `.env.example` has been copied to `.env`.
-- Production passwords and shared secrets have been changed.
-- `WFM_PUBLIC_ORIGIN` is set to the real access URL, for example `https://wfm.example.com`.
-- If MQTT, client control, and remote status are not needed, `WFM_ENABLE_MQTT_SERVICES` is disabled and `COMPOSE_PROFILES` is empty.
-- If the service is public, HTTPS reverse proxying is ready.
-
-See [Environment](/en/deploy/environment) for details.
+| SQLite | Local use, lightweight deployments, single-admin setups, small node counts | Data is stored directly in the project's `src/data` directory, making it easy to inspect, back up, and migrate. |
+| PostgreSQL | Long-running services, multi-user use, higher concurrency, production | Starts an additional PostgreSQL database container and is better suited to long-running or production deployments. |
 
 ## Start with SQLite
 
-SQLite is the smallest deployment mode. Data is mounted into the project `src/data` directory for local inspection, backup, and migration.
+Enter the SQLite deployment directory:
 
 ```bash
 cd docker/sqlite
+```
+
+Copy the environment configuration file:
+
+```bash
 cp .env.example .env
 ```
 
-Edit `.env`, then start:
+Then edit `.env`.
+
+At minimum, confirm the following:
+
+- Change the passwords and keys required for production.
+
+- Set `WFM_PUBLIC_ORIGIN` to the actual access URL.
+
+For example:
+
+```text
+WFM_PUBLIC_ORIGIN=https://wfm.example.com
+```
+
+If you only need the web console and do not need client remote control or MQTT services, you can disable them:
+
+```text
+WFM_ENABLE_MQTT_SERVICES=false
+COMPOSE_PROFILES=
+```
+
+See [Environment](/en/deploy/environment) for the full explanation.
+
+After configuring `.env`, start the deployment:
 
 ```bash
 docker compose up -d
@@ -61,14 +75,39 @@ http://localhost:8000
 
 ## Start with PostgreSQL
 
-The PostgreSQL layout starts an additional database container. This is the recommended production mode.
+Enter the PostgreSQL deployment directory and copy the environment configuration file:
 
 ```bash
 cd docker/postgres
 cp .env.example .env
 ```
 
-Edit `.env`. At minimum, change the PostgreSQL password, EMQX password, and shared secret. Then start:
+Edit `.env`. At minimum, change:
+
+- The PostgreSQL database password.
+
+- The EMQX password.
+
+- The shared secret.
+
+- `WFM_PUBLIC_ORIGIN`.
+
+For example:
+
+```text
+WFM_PUBLIC_ORIGIN=https://wfm.example.com
+```
+
+If you only need the web console and do not need client remote control or MQTT services, you can disable them:
+
+```text
+WFM_ENABLE_MQTT_SERVICES=false
+COMPOSE_PROFILES=
+```
+
+See [Environment](/en/deploy/environment) for the full explanation.
+
+After configuring `.env`, start the deployment:
 
 ```bash
 docker compose up -d

@@ -134,7 +134,7 @@ These prompts can be used with Claude Code, OpenClaw, or other MCP-capable clien
 
 Client downloads, bulk config downloads, and snapshot export do not transfer file bytes through MCP.
 
-MCP returns a download URL that is valid for 5 minutes. Opening the URL triggers a file download. The URL is scoped to that one file only.
+MCP returns a download URL that is valid for 5 minutes. Opening the URL displays a blank page and starts the download. The URL is scoped to that one file only.
 
 ## Audit
 

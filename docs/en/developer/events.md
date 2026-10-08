@@ -52,7 +52,7 @@ Do not reimplement backend business derivation from event payloads.
 
 ## Publishing
 
-Publish events after database writes complete. Common publishers are config/node/mesh writes, client ACK updates, MQTT setting changes, and snapshot operations.
+Publish events after database writes complete. Common publishers are config, node, Mesh, and port forwarding writes; client ACK runtime updates; MQTT setting changes; and snapshot import, restore, and deletion.
 
 ## Related Docs
 

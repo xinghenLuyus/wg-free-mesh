@@ -1,15 +1,13 @@
 # What is WG Free Mesh
 
-WG Free Mesh is a centralized management platform for WireGuard networks. It brings configs, nodes, client onboarding, Mesh relationships, config delivery, endpoint control, backups, and AI integration into one console, so multiple client nodes can be managed, configured, observed, and quickly rebuilt from one place.
+WG Free Mesh is a centralized management platform for WireGuard networks. It brings configs, nodes, backups, and AI integration into one console. By installing the client on nodes, multiple client nodes can be managed, configured, and observed centrally, while network topologies can be rebuilt quickly when needed.
 
 ![Console overview](https://bu.dusays.com/2026/05/28/6a17f2060d63d.png)
 
 ## Good fits
 
 - Building WireGuard Mesh networks across multiple servers.
-- Unified access for home, office, and edge nodes.
-- Environments with frequent node additions, removals, or migrations.
-- Fast full-mesh or gateway-style topology generation.
+- Networks that frequently add, remove, or migrate nodes and Mesh links.
 - Integrating networking capabilities into AI tools.
 
 ## Why it exists

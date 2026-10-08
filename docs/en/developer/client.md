@@ -44,7 +44,7 @@ For complete page flow, bind command generation, and control page switching, see
 
 The client receives config pushes, control commands, and detect requests.
 
-It reports heartbeat, info, events, detect ACKs, control ACKs, and config push ACKs.
+It reports heartbeat, info, detect ACKs, control ACKs, and config push ACKs.
 
 MQTT disconnect and reconnect success are logged. High-frequency checks and retry attempts are not logged continuously.
 

@@ -62,7 +62,7 @@ wfm-agent
 
 ### Web Console
 
-The frontend handles page structure, user input, API calls, state display, and interaction feedback. It does not duplicate backend business rules.
+The frontend handles page structure, user input, API calls, state display, and interaction feedback. It does not duplicate backend business rules or determine online state, sync state, or download artifact state itself.
 
 ### FastAPI Backend
 
@@ -74,7 +74,7 @@ The database is the business source of truth. SQLite and PostgreSQL are both sup
 
 ### EMQX
 
-EMQX is the MQTT transport layer. Node accounts, passwords, authorization rules, and connection state are synchronized by the backend from the database.
+EMQX is the MQTT transport layer. Node accounts, passwords, authorization rules, and connection state are synchronized by the backend from the database. If EMQX is offline, the backend can still start and persist data, then synchronize when EMQX recovers.
 
 ### Go Client
 
@@ -82,7 +82,13 @@ The client consists of `wfm-agent` and `wfmctl`. `wfm-agent` runs as a system se
 
 ### Docker Gateway
 
-Docker deployment provides one web entrypoint through the gateway. Production HTTPS should be terminated by Nginx, Caddy, or an external gateway.
+Docker deployment provides one web entrypoint through the gateway. Production HTTPS should be terminated by Nginx, Caddy, or an external gateway; the WFM containers retain clear HTTP and MQTT boundaries internally.
+
+## Data Flow
+
+For a write, the frontend calls the backend API; the backend validates and writes to the database, publishes an SSE refresh event, and sends an MQTT command if a client action is needed. The client ACK then updates runtime state and control logs.
+
+For a read, the frontend requests config, node, or system state. The backend reads the database and builds a projection; the frontend displays it without repeating business derivation.
 
 ## Control Plane and Data Plane
 
@@ -113,7 +119,7 @@ The backend is not in the mesh data path. If the backend is offline, already-run
 | MQTT public listener | `wfm-agent` | Clients connect to EMQX. Port and TLS depend on deployment and settings. |
 | WG/AWG UDP | Mesh nodes | Direct node-to-node data traffic; not proxied by WFM. |
 
-Production deployments should put Web/API/SSE/MCP behind the same HTTPS reverse proxy entrypoint. MQTT may be exposed by the gateway on separate ports.
+Production deployments should put Web/API/SSE/MCP behind the same HTTPS reverse proxy entrypoint. MQTT may be exposed by the gateway on a separate port; TLS depends on the client MQTT initialization settings.
 
 ## Client Channel
 
@@ -122,11 +128,11 @@ A dynamic node uses two channels:
 1. One-shot HTTP bind: `wfmctl bind` calls `/api/client/bind` with a bind token.
 2. Long-running MQTT control channel: `wfm-agent` connects to EMQX using credentials returned by bind.
 
-After bind, the backend stores MQTT credentials in the database and synchronizes them to EMQX. The local client profile stores only connection data. The backend includes the current tunnel protocol and config in each control, detect, and config push payload.
+After bind, the backend stores MQTT credentials in the database and synchronizes them to EMQX. The local client profile stores only backend and MQTT connection data, not the authoritative tunnel protocol. The backend includes the current tunnel protocol and config in each control, detect, and config push payload.
 
 ## Realtime Channel
 
-The console uses SSE instead of WebSocket because writes already go through REST, while realtime mainly needs server-to-browser refresh signals.
+The console uses SSE instead of WebSocket because writes already go through REST, while realtime mainly needs server-to-browser refresh signals. SSE also supports reconnection and simple text frames.
 
 SSE events are refresh hints. The frontend should use event type and scope to refetch the related REST projection instead of reconstructing business state from event payloads.
 
@@ -161,14 +167,6 @@ After restore, historical online state is not trusted. The backend clears runtim
 | SSE disconnected | Frontend reconnects and may refetch system status. |
 | Database unavailable | Backend startup fails after retry; it must not fabricate business state. |
 | Gateway unavailable | External Web/API/SSE/MCP access fails even if internal services are running. |
-
-## Write Flow
-
-1. The frontend calls a backend API.
-2. The backend validates and writes to the database.
-3. The backend publishes SSE events.
-4. If a client action is needed, the backend sends MQTT commands.
-5. Client ACKs update runtime state and control logs.
 
 ## Design Decisions
 

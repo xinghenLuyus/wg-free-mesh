@@ -17,3 +17,5 @@ docker compose up -d
 ```
 
 Compose pulls the version selected by `WFM_IMAGE_TAG` in `.env`; when unset, it uses `latest`.
+
+By default, `pull` retrieves the newest image version.

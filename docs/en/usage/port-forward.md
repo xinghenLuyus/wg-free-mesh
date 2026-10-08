@@ -11,6 +11,8 @@ In UI labels and system fields, From maps to source and To maps to destination:
 - To node = destination node.
 - To port = destination port, the exposed access port.
 
+**Windows is not supported as the To node**, because the Windows WireGuard GUI toolchain does not provide equivalent `wg-quick` lifecycle commands.
+
 ## Protocols
 
 Rules support:
@@ -20,28 +22,6 @@ Rules support:
 - All traffic.
 
 The protocol applies to the destination port exposed on the To node. TCP only forwards TCP, UDP only forwards UDP, and all traffic generates the corresponding rules.
-
-## System Limits
-
-Port forwarding is implemented through lifecycle commands on the To node, so the To node system must be selected explicitly.
-
-Currently supported:
-
-- Linux.
-- macOS.
-
-Windows is not supported as the To node because the Windows WireGuard GUI toolchain does not provide equivalent `wg-quick` hook behavior.
-
-## Managed Rules
-
-The port forwarding page lists managed rules around the "From xxx To xxx" reading pattern.
-
-Read it as:
-
-- From: where the service is.
-- To: where the service is exposed.
-
-Each rule can be temporarily disabled. When disabled, the status should show disabled and the notification should say that port forwarding has been disabled.
 
 ## Create a Rule
 
@@ -57,12 +37,14 @@ Creating a rule requires:
 
 After creation, the system writes lifecycle commands to the To node. The To node must re-apply config before the rule takes effect.
 
+Each rule can be temporarily disabled. When disabled, the page status should show "Disabled" and indicate that port forwarding is disabled.
+
 ## Delete a Rule
 
 Lifecycle commands created by the port forwarding tool must be deleted from the port forwarding page.
 
 The node advanced settings page can show these commands, but the delete button is disabled. This prevents partial manual deletion that would make the port forwarding page state diverge from the real commands.
 
-## System Forwarding
+## Notes
 
 Linux and macOS need IPv4 forwarding enabled to forward traffic. The client install process attempts to enable it. If that fails, it prints an error but does not block installation.

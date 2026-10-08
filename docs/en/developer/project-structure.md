@@ -105,9 +105,9 @@ front/
 | `types` | Frontend type definitions aligned with backend responses. |
 | `assets` | Global styles, theme variables, and asset references. |
 
-The frontend may handle layout, local interaction, lightweight input validation, REST calls, SSE subscriptions, and display of backend projections.
+The frontend may handle layout, component and loading state, dialogs, immediate form validation, REST calls, SSE subscriptions, backend projections, and page-local filtering, sorting, collapsing, and search.
 
-The frontend should not generate WG/AWG configs, decide final online state, validate mesh topology, compute quick-mesh output, compute default AllowedIPs, track backend build artifacts, or implement MCP/control business rules outside the backend.
+The frontend should not generate WG/AWG configs, decide final online state, validate mesh topology, compute quick-mesh output, AllowedIPs or automatic Endpoint summaries, track backend download artifacts or cache hits, or implement MCP/control business rules outside the backend.
 
 For page organization, SSE usage, and i18n rules, continue with [Frontend](./frontend).
 

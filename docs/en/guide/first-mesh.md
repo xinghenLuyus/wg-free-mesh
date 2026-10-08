@@ -2,6 +2,8 @@
 
 A mesh usually contains one config and multiple nodes. The config defines shared network rules, nodes represent real client endpoints, and peer links decide how nodes connect to each other.
 
+*A mesh contains multiple peer links. Each link defines the connection between two nodes.*
+
 ## 1. Create a config
 
 After opening the console, create a config first.

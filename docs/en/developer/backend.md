@@ -61,7 +61,7 @@ Do not expose raw Python, database, or third-party exceptions to the frontend.
 
 ## Realtime
 
-After a write operation affects UI state, publish an SSE event. Payloads must be JSON serializable.
+After a write operation affects UI state, publish an SSE event. Payloads must be JSON serializable; convert `datetime` values to strings.
 
 Event names, payloads, and frontend refresh rules are covered by [Events](./events) and [Realtime Reference](/en/reference/realtime).
 

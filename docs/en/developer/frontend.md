@@ -52,6 +52,8 @@ Tool-page behavior links to [Downloads](/en/reference/downloads), [Quick Mesh](/
 
 The frontend receives SSE events. Treat them as refresh signals or small patches, not as the business source of truth.
 
+Common strategies are to refresh a list after a list-level event, refresh the current projection after a page-level event, and append or update logs after a control-log event.
+
 The full event list, scopes, and subscription strategy are in [Realtime Reference](/en/reference/realtime).
 
 ## i18n
