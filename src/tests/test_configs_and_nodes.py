@@ -368,6 +368,53 @@ def test_quick_generate_hub_spoke_replaces_mesh_links(authenticated_client: Test
     assert all(len(keys) == 1 and next(iter(keys)) for keys in groups.values())
 
 
+@pytest.mark.parametrize("node_index", [0, 1])
+def test_mesh_update_matches_node_direction_after_quick_generate(authenticated_client: TestClient, node_index: int) -> None:
+    client = authenticated_client
+    config, nodes = _create_quick_mesh_config(client)
+    generated = client.post(
+        f"/api/v1/configs/{config['id']}/mesh/quick-generate",
+        json={"mode": "hub_spoke", "hub_node_id": nodes[0]["id"]},
+    )
+    assert generated.status_code == 200
+    workspace_url = f"/api/v1/configs/{config['id']}/nodes/{nodes[node_index]['id']}/mesh-workspace"
+    peer_id = nodes[1 - node_index]["id"]
+    workspace = client.get(workspace_url).json()["data"]
+    connection = next(item for item in workspace["connections"] if item["peer_node"]["id"] == peer_id)
+    payload = {
+        "forward": {**connection["forward"], "allowed_ips": "0.0.0.0/0", "persistent_keepalive": 31},
+        "reverse": {**connection["reverse"], "allowed_ips": "10.92.0.0/24", "persistent_keepalive": 47},
+    }
+    update_url = f"/api/v1/peer-links/{connection['link_group_id']}"
+    links_url = f"/api/v1/configs/{config['id']}/peer-links"
+    identities = {
+        item["id"]: (item["local_node_id"], item["peer_node_id"], item["direction"])
+        for item in client.get(links_url).json()["data"]
+    }
+    for enabled in (True, False, True):
+        payload["enabled"] = enabled
+        response = client.put(update_url, json=payload)
+        assert response.status_code == 200
+        workspace = client.get(workspace_url).json()["data"]
+        saved = next(item for item in workspace["connections"] if item["link_group_id"] == connection["link_group_id"])
+        assert saved["enabled"] is enabled
+        for direction in ("forward", "reverse"):
+            for field in ("local_node_id", "peer_node_id", "allowed_ips", "persistent_keepalive", "endpoint_mode", "endpoint_ref_family"):
+                assert saved[direction][field] == payload[direction][field]
+        payload = {"forward": saved["forward"], "reverse": saved["reverse"]}
+    stored = client.get(links_url).json()["data"]
+    assert {
+        item["id"]: (item["local_node_id"], item["peer_node_id"], item["direction"])
+        for item in stored
+    } == identities
+
+    for invalid_reverse in (payload["forward"], {**payload["reverse"], "local_node_id": nodes[2]["id"]}):
+        invalid = client.put(update_url, json={"forward": payload["forward"], "reverse": invalid_reverse})
+        assert invalid.status_code == 400
+        assert invalid.json()["error"]["code"] == "INVALID_PEER_LINK"
+        assert client.get(links_url).json()["data"] == stored
+
+
 def test_quick_generate_full_mesh_requires_public_address(authenticated_client: TestClient) -> None:
     config, nodes = _create_quick_mesh_config(authenticated_client, ipv6=False)
 

@@ -142,6 +142,8 @@ The generation endpoint also accepts `scope=node` (default `all`), requiring exa
 | `POST` | `/api/v1/configs/{config_id}/mesh/quick-generate` | Delete and regenerate Mesh pairs using Quick Mesh. |
 | `GET` | `/api/v1/configs/{config_id}/nodes/{node_id}/wg-preview` | Preview the generated WG/AWG config. |
 
+When updating a Mesh pair, `forward` and `reverse` are matched to existing records by their `local_node_id` and `peer_node_id`, so either endpoint can edit the pair. The two directions must be opposites and refer to the existing pair's endpoints; otherwise, the API returns `INVALID_PEER_LINK`.
+
 ## Config Apply and Endpoint Control API
 
 | Method | Path | Description |

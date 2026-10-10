@@ -376,22 +376,27 @@ onMounted(async () => {
       </div>
 
       <div v-if="node" class="node-header-card__main">
-        <div>
+        <div class="node-header-card__title">
           <h1>{{ node.name }}</h1>
-          <div class="node-header-card__tags">
+          <div class="node-header-card__status">
             <el-tag type="info">{{ nodeTypeLabel(node.node_type) }}</el-tag>
             <el-tag v-if="disabledNode" type="info">{{ t('nodeWorkspace.disabledEndpoint') }}</el-tag>
             <el-tag v-else-if="node.node_type === 'dynamic'" :type="endpointStatus?.runtime.online ? 'success' : 'info'">
               {{ endpointStatus?.runtime.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}
             </el-tag>
-            <el-tag v-for="tag in node.tags" :key="tag" type="info">{{ tag }}</el-tag>
           </div>
+        </div>
+        <div v-if="node.tags.length" class="node-header-card__tags">
+          <el-tag v-for="tag in node.tags" :key="tag" type="info">{{ tag }}</el-tag>
         </div>
       </div>
       <div v-else-if="loading" class="node-header-card__main" aria-hidden="true">
-        <div class="node-workspace__placeholder-heading">
-          <el-skeleton-item variant="h1" style="width: 210px" />
-          <el-skeleton-item variant="text" style="width: 120px" />
+        <div class="node-header-card__title">
+          <el-skeleton-item variant="h1" class="node-header-card__title-placeholder" />
+          <div class="node-header-card__status">
+            <el-skeleton-item variant="text" style="width: 72px; height: 24px" />
+            <el-skeleton-item variant="text" style="width: 48px; height: 24px" />
+          </div>
         </div>
       </div>
 
@@ -567,7 +572,6 @@ onMounted(async () => {
 
 <style scoped>
 .node-workspace { display: grid; gap: 20px; }
-.node-workspace__placeholder-heading { display: grid; gap: 12px; }
 .node-workspace__placeholder-content { display: grid; align-content: start; gap: 18px; min-height: 220px; padding: 22px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface); }
 .node-header-card { padding: 22px; border: 1px solid var(--app-border); border-radius: 8px; background: linear-gradient(180deg, var(--app-surface) 0%, var(--app-surface-elevated) 100%); box-shadow: var(--app-shadow-md); }
 .node-header-card--disabled { border-color: var(--app-border-soft); background: color-mix(in srgb, var(--app-surface-sunken) 82%, var(--app-surface)); }
@@ -576,9 +580,11 @@ onMounted(async () => {
 .node-header-card__top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .node-header-card__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 10px; }
 .node-header-card__config { color: var(--app-muted); font-weight: 650; }
-.node-header-card__main { display: flex; justify-content: space-between; gap: 16px; margin-top: 18px; }
-.node-header-card__main h1 { margin: 0; color: var(--app-text); font-size: 30px; line-height: 1.2; }
-.node-header-card__tags { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.node-header-card__main { display: grid; min-width: 0; gap: 10px; margin-top: 18px; }
+.node-header-card__title { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; min-height: 36px; gap: 8px 12px; }
+.node-header-card__main h1 { min-width: 0; max-width: 100%; margin: 0; color: var(--app-text); font-size: 30px; line-height: 1.2; overflow-wrap: anywhere; }
+.node-header-card__title-placeholder { width: 210px; max-width: 100%; height: 36px; }
+.node-header-card__status, .node-header-card__tags { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; gap: 8px; }
 .node-props-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
 .node-prop-item { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--app-border-soft); border-radius: 8px; background: var(--app-surface-sunken); box-shadow: inset 0 1px 0 color-mix(in srgb, white 22%, transparent); }
 .node-prop-label { color: var(--app-faint); font-size: 12px; font-weight: 650; }
@@ -610,7 +616,7 @@ onMounted(async () => {
 .switch-row span { margin-top: 4px; color: var(--app-muted); font-size: 13px; }
 @media (max-width: 1100px) { .node-props-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) {
-  .node-header-card__top, .node-header-card__main, .switch-row, .node-tabs { flex-direction: column; align-items: stretch; }
+  .node-header-card__top, .switch-row, .node-tabs { flex-direction: column; align-items: stretch; }
   .node-header-card__actions { justify-content: flex-start; }
   .node-props-grid, .form-grid { grid-template-columns: 1fr; }
   .node-tabs__group--right { justify-content: flex-start; }

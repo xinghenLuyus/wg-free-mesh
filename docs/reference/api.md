@@ -142,6 +142,8 @@ AWG 配置写入使用 `tunnel_protocol=amneziawg` 和 `awg_version=1.5/2.0/3.1`
 | `POST` | `/api/v1/configs/{config_id}/mesh/quick-generate` | 快速组网，删除并重建 Mesh 对。 |
 | `GET` | `/api/v1/configs/{config_id}/nodes/{node_id}/wg-preview` | 预览生成的 WG/AWG 配置。 |
 
+更新 Mesh 对时，`forward` 和 `reverse` 按各自的 `local_node_id`、`peer_node_id` 匹配现有记录，可从任一端点编辑。两方向必须互为反向，并且对应当前 Mesh 对的双方端点，否则返回 `INVALID_PEER_LINK`。
+
 ## 配置应用与端点控制 API
 
 | 方法 | 路径 | 说明 |

@@ -979,11 +979,26 @@ class ConfigMeshRepositoryMixin:
                 raise AppError("PEER_LINK_NOT_FOUND", "Peer link group not found", 404)
             config_id = rows[0]["config_id"]
             config = self.get_config(config_id)
+            data_by_nodes: dict[tuple[str, str], dict[str, object]] | None = None
+            if "forward" in payload or "reverse" in payload:
+                forward = payload.get("forward")
+                reverse = payload.get("reverse")
+                if not isinstance(forward, dict) or not isinstance(reverse, dict):
+                    raise AppError("INVALID_PEER_LINK", "Both link directions are required", 400)
+                forward_nodes = (str(forward.get("local_node_id", "")), str(forward.get("peer_node_id", "")))
+                reverse_nodes = (str(reverse.get("local_node_id", "")), str(reverse.get("peer_node_id", "")))
+                data_by_nodes = {forward_nodes: forward, reverse_nodes: reverse}
+                stored_nodes = {(str(row["local_node_id"]), str(row["peer_node_id"])) for row in rows}
+                if len(data_by_nodes) != 2 or reverse_nodes != forward_nodes[::-1] or set(data_by_nodes) != stored_nodes:
+                    raise AppError("INVALID_PEER_LINK", "Link directions must match the existing node pair", 400)
             for row in rows:
-                direction = str(row["direction"])
-                data = link_payload(payload, direction, row)
+                data = (
+                    data_by_nodes[(str(row["local_node_id"]), str(row["peer_node_id"]))]
+                    if data_by_nodes is not None
+                    else link_payload(payload, str(row["direction"]), row)
+                )
                 self._validate_link_endpoint_settings(data)
-                peer_node = self.get_node(str(data.get("peer_node_id", row["peer_node_id"])))
+                peer_node = self.get_node(str(row["peer_node_id"]))
                 connection.execute(
                     """
                     UPDATE peer_links
