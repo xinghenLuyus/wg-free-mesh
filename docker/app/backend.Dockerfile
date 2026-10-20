@@ -1,4 +1,4 @@
-FROM node:22-alpine AS front-build
+FROM --platform=$BUILDPLATFORM node:22-alpine AS front-build
 
 WORKDIR /front
 
