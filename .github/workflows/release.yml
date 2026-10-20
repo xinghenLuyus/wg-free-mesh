@@ -59,5 +59,9 @@ jobs:
           body: |
             WG Free Mesh v${{ steps.version.outputs.version }}
 
-            Client packages are attached below.
-          files: client/dist/*.zip
+            See the [changelog](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) for version highlights and upgrade notes.
+
+            版本变化及升级注意事项请查看[更新日志](${{ github.server_url }}/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md)。
+
+            Client packages are attached below. 客户端安装包见下方附件。
+          files: client/dist/*.zip*

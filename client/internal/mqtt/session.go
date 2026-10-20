@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	pahomqtt "github.com/eclipse/paho.golang/paho"
@@ -35,23 +36,31 @@ type Envelope struct {
 }
 
 type Session struct {
-	profile   profile.Profile
-	bootID    string
-	sessionID string
-	client    *pahomqtt.Client
-	logger    io.Writer
-	reconnect bool
-	connected bool
+	profile     profile.Profile
+	bootID      string
+	sessionID   string
+	client      *pahomqtt.Client
+	logger      io.Writer
+	reconnect   bool
+	connected   bool
+	lifecycleMu *sync.Mutex
+	configID    string
+	nodeID      string
+	profileID   string
 }
 
 func NewSession(p profile.Profile, logger io.Writer, reconnect bool) *Session {
 	now := time.Now().UnixNano()
 	return &Session{
-		profile:   p,
-		bootID:    fmt.Sprintf("boot-%d", now),
-		sessionID: fmt.Sprintf("session-%d", now),
-		logger:    logger,
-		reconnect: reconnect,
+		profile:     p,
+		lifecycleMu: bindingLock(p),
+		configID:    p.Profile.ConfigID,
+		nodeID:      p.Profile.NodeID,
+		profileID:   p.Profile.ProfileID,
+		bootID:      fmt.Sprintf("boot-%d", now),
+		sessionID:   fmt.Sprintf("session-%d", now),
+		logger:      logger,
+		reconnect:   reconnect,
 	}
 }
 
@@ -60,11 +69,28 @@ func (s *Session) Connected() bool {
 }
 
 func (s *Session) Run(ctx context.Context) error {
+	lock := s.lifecycleMu
+	lock.Lock()
+	latest, recoveryErr := profile.Load(s.profile.Profile.ProfileID)
+	if recoveryErr == nil {
+		s.profile = latest
+		recoveryErr = s.resumeTransition(false)
+	}
+	if recoveryErr == nil {
+		recoveryErr = profile.Migrate(s.profile)
+	}
+	lock.Unlock()
+	if recoveryErr != nil {
+		s.logf("configuration recovery failed: %v", recoveryErr)
+	}
 	conn, err := s.dial()
 	if err != nil {
 		return err
 	}
 	defer conn.Close()
+	ready := make(chan struct{})
+	runCtx, cancelRun := context.WithCancel(ctx)
+	defer cancelRun()
 	will, _ := json.Marshal(s.envelope("event", "", map[string]any{
 		"level":   "info",
 		"event":   "offline",
@@ -73,6 +99,11 @@ func (s *Session) Run(ctx context.Context) error {
 	client := pahomqtt.NewClient(pahomqtt.ClientConfig{
 		Conn: conn,
 		Router: pahomqtt.NewSingleHandlerRouter(func(m *pahomqtt.Publish) {
+			select {
+			case <-ready:
+			case <-runCtx.Done():
+				return
+			}
 			s.handleMessage(m)
 		}),
 		OnClientError: func(err error) {
@@ -107,6 +138,10 @@ func (s *Session) Run(ctx context.Context) error {
 		return fmt.Errorf("mqtt connect rejected: %d", ack.ReasonCode)
 	}
 	s.client = client
+	close(ready)
+	if recoveryErr != nil {
+		_ = s.publishEvent("config_recovery", fmt.Sprintf("Configuration recovery failed: %v", recoveryErr))
+	}
 	if err := s.subscribe(ctx); err != nil {
 		return err
 	}
@@ -117,11 +152,13 @@ func (s *Session) Run(ctx context.Context) error {
 		return fmt.Errorf("publish heartbeat failed: %w", err)
 	}
 	s.connected = true
+	lock.Lock()
 	if s.reconnect {
 		s.logf("mqtt reconnected profile=%s host=%s port=%d tls=%t", s.profile.Profile.ProfileID, s.profile.MQTT.Host, s.profile.MQTT.Port, s.profile.MQTT.TLS)
 	} else {
 		s.logf("mqtt connected profile=%s host=%s port=%d tls=%t", s.profile.Profile.ProfileID, s.profile.MQTT.Host, s.profile.MQTT.Port, s.profile.MQTT.TLS)
 	}
+	lock.Unlock()
 	ticker := time.NewTicker(30 * time.Minute)
 	defer ticker.Stop()
 	for {
@@ -129,11 +166,11 @@ func (s *Session) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-client.Done():
-			s.logf("mqtt disconnected profile=%s reason=connection_closed", s.profile.Profile.ProfileID)
+			s.logf("mqtt disconnected profile=%s reason=connection_closed", s.profileID)
 			return fmt.Errorf("mqtt connection closed")
 		case <-ticker.C:
 			if err := s.publishHeartbeat(); err != nil {
-				s.logf("mqtt disconnected profile=%s reason=%v", s.profile.Profile.ProfileID, err)
+				s.logf("mqtt disconnected profile=%s reason=%v", s.profileID, err)
 				return fmt.Errorf("publish heartbeat failed: %w", err)
 			}
 		}
@@ -172,6 +209,9 @@ func (s *Session) subscribe(ctx context.Context) error {
 }
 
 func (s *Session) handleMessage(m *pahomqtt.Publish) {
+	lock := s.lifecycleMu
+	lock.Lock()
+	defer lock.Unlock()
 	var env Envelope
 	_ = json.Unmarshal(m.Payload, &env)
 	if err := validateTunnelPayload(env.Payload); err != nil {
@@ -184,16 +224,19 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 	}
 	switch m.Topic {
 	case s.topic("detect"):
-		tunnelProtocol := tunnelProtocolFromPayload(env.Payload)
-		wgOnline, _ := inspectWireGuard(profile.InterfaceName(s.profile), tunnelProtocol)
+		wgOnline, statusErr := s.tunnelStatus()
+		status, message := "applied", "Detect completed."
+		if statusErr != nil {
+			status, message = "failed", statusErr.Error()
+		}
 		_ = s.publishEvent("detect", "Server detect command received.")
 		_ = s.publish("detect/ack", s.envelope("detect/ack", env.RequestID, map[string]any{
-			"status":         "applied",
+			"status":         status,
 			"client_online":  true,
 			"wg_online":      wgOnline,
 			"platform":       runtime.GOOS,
 			"client_version": bind.Version,
-			"message":        "Detect completed.",
+			"message":        message,
 		}))
 	case s.topic("info"):
 		tunnelProtocol := tunnelProtocolFromPayload(env.Payload)
@@ -263,7 +306,14 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 }
 
 func (s *Session) publishHeartbeat() error {
-	wgOnline, _ := inspectAnyTunnel(profile.InterfaceName(s.profile))
+	lock := s.lifecycleMu
+	lock.Lock()
+	defer lock.Unlock()
+	wgOnline, err := s.tunnelStatus()
+	if err != nil {
+		// Keep the control channel available for repair, without reporting a false stopped state.
+		return s.publishEvent("runtime_query_failed", fmt.Sprintf("Tunnel status query failed: %v", err))
+	}
 	return s.publish("heartbeat", s.envelope("heartbeat", "", map[string]any{
 		"client_online": true,
 		"wg_online":     wgOnline,
@@ -283,103 +333,14 @@ func (s *Session) applyControl(action string) error {
 }
 
 func (s *Session) applyControlWithProtocol(action string, tunnelProtocol string, previousTunnelProtocol string) error {
-	iface := profile.InterfaceName(s.profile)
-	if iface == "" {
-		return fmt.Errorf("interface_name is required")
-	}
-	switch action {
-	case "start":
-		configPath, err := profile.ConfigPath(s.profile)
-		if err != nil {
-			return err
-		}
-		return startWireGuard(iface, configPath, tunnelProtocol)
-	case "stop":
-		configPath, err := profile.ConfigPath(s.profile)
-		if err != nil {
-			return err
-		}
-		return stopActiveTunnel(iface, configPath, tunnelProtocol, previousTunnelProtocol)
-	default:
-		return fmt.Errorf("unsupported control action: %s", action)
-	}
+	return s.controlConfiguration(action)
 }
 
 func (s *Session) applyConfigPush(payload map[string]any) error {
 	if err := validateTunnelPayload(payload); err != nil {
 		return err
 	}
-	targetProtocol := tunnelProtocolFromPayload(payload)
-	configText := fmt.Sprint(payload["config_text"])
-	if configText == "" || configText == "<nil>" {
-		return fmt.Errorf("config_text is required")
-	}
-	currentInterfaceName := profile.InterfaceName(s.profile)
-	currentConfigPath, err := profile.ConfigPath(s.profile)
-	if err != nil {
-		return err
-	}
-	previousProtocol := previousTunnelProtocolFromPayload(payload, targetProtocol)
-	protocols := []string{previousProtocol, targetProtocol}
-	runningProtocols := runningTunnelProtocols(currentInterfaceName, protocols)
-	wasRunning := len(runningProtocols) > 0
-	for _, runningProtocol := range runningProtocols {
-		if err := stopWireGuard(currentInterfaceName, currentConfigPath, runningProtocol); err != nil {
-			return fmt.Errorf("stop %s interface before config update failed: %w", runningProtocol, err)
-		}
-		if runtime.GOOS == "windows" {
-			if err := waitWireGuardStopped(currentInterfaceName, runningProtocol, 15*time.Second); err != nil {
-				return fmt.Errorf("wait for %s interface to stop before config update failed: %w", runningProtocol, err)
-			}
-		}
-	}
-	interfaceName := fmt.Sprint(payload["interface_name"])
-	if interfaceName != "" && interfaceName != "<nil>" {
-		s.profile.Profile.InterfaceName = interfaceName
-	}
-	if err := profile.Save(s.profile, configText); err != nil {
-		return err
-	}
-	if wasRunning {
-		nextInterfaceName := profile.InterfaceName(s.profile)
-		configPath, err := profile.ConfigPath(s.profile)
-		if err != nil {
-			return err
-		}
-		if err := startWireGuard(nextInterfaceName, configPath, targetProtocol); err != nil {
-			return fmt.Errorf("restart interface after config update failed: %w", err)
-		}
-	}
-	return nil
-}
-
-func stopActiveTunnel(interfaceName string, configPath string, targetProtocol string, previousTunnelProtocol string) error {
-	protocols := []string{previousTunnelProtocol, targetProtocol}
-	runningProtocols := runningTunnelProtocols(interfaceName, protocols)
-	if len(runningProtocols) == 0 {
-		return stopWireGuard(interfaceName, configPath, targetProtocol)
-	}
-	for _, runningProtocol := range runningProtocols {
-		if err := stopWireGuard(interfaceName, configPath, runningProtocol); err != nil {
-			return fmt.Errorf("stop %s interface failed: %w", runningProtocol, err)
-		}
-	}
-	return nil
-}
-
-func runningTunnelProtocols(interfaceName string, protocols []string) []string {
-	running := make([]string, 0, len(protocols))
-	seen := make(map[string]bool, len(protocols))
-	for _, tunnelProtocol := range protocols {
-		if seen[tunnelProtocol] {
-			continue
-		}
-		seen[tunnelProtocol] = true
-		if active, _ := inspectWireGuard(interfaceName, tunnelProtocol); active {
-			running = append(running, tunnelProtocol)
-		}
-	}
-	return running
+	return s.replaceConfiguration(payload)
 }
 
 func previousTunnelProtocolFromPayload(payload map[string]any, targetProtocol string) string {
@@ -409,32 +370,18 @@ func inspectWireGuard(interfaceName string, tunnelProtocol string) (bool, string
 	return strings.TrimSpace(output) != "", ""
 }
 
-func inspectAnyTunnel(interfaceName string) (bool, string) {
-	if running, detail := inspectWireGuard(interfaceName, "wireguard"); running {
-		return true, detail
-	}
-	return inspectWireGuard(interfaceName, "amneziawg_2")
-}
-
 func runWGShowInterface(interfaceName string, tunnelProtocol string) (string, error) {
 	if strings.TrimSpace(interfaceName) == "" {
 		return "", fmt.Errorf("interface_name is required")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, tunnelTool(tunnelProtocol), "show", interfaceName)
-	output, err := cmd.CombinedOutput()
-	text := string(output)
-	if ctx.Err() != nil {
-		return text, ctx.Err()
-	}
+	actual, _, err := queryInterface(interfaceName, tunnelProtocol)
 	if err != nil {
-		return text, err
+		return "", err
 	}
-	if strings.TrimSpace(text) == "" {
-		return text, fmt.Errorf("wg show returned no interface %s", interfaceName)
+	if actual == "" {
+		return "", fmt.Errorf("interface %s is absent", interfaceName)
 	}
-	return text, nil
+	return toolOutput(tunnelProtocol, "show", actual)
 }
 
 func runWGShow(tunnelProtocol string) (string, error) {
@@ -473,20 +420,6 @@ func stopWireGuard(interfaceName string, configPath string, tunnelProtocol strin
 		return runCommand(tunnelServiceTool(tunnelProtocol), "/uninstalltunnelservice", interfaceName)
 	}
 	return runCommand(tunnelQuickTool(tunnelProtocol), "down", configPath)
-}
-
-func waitWireGuardStopped(interfaceName string, tunnelProtocol string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for {
-		running, detail := inspectWireGuard(interfaceName, tunnelProtocol)
-		if !running {
-			return nil
-		}
-		if time.Now().After(deadline) {
-			return fmt.Errorf("wireguard interface %s did not stop before timeout: %s", interfaceName, detail)
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
 }
 
 func waitWireGuardStarted(interfaceName string, configPath string, tunnelProtocol string, timeout time.Duration) error {
@@ -700,8 +633,8 @@ func (s *Session) envelope(kind, requestID string, payload map[string]any) Envel
 	return Envelope{
 		Type:      kind,
 		RequestID: requestID,
-		ConfigID:  s.profile.Profile.ConfigID,
-		NodeID:    s.profile.Profile.NodeID,
+		ConfigID:  s.configID,
+		NodeID:    s.nodeID,
 		BootID:    s.bootID,
 		SessionID: s.sessionID,
 		SentAt:    time.Now().UTC().Format(time.RFC3339),
@@ -710,5 +643,5 @@ func (s *Session) envelope(kind, requestID string, payload map[string]any) Envel
 }
 
 func (s *Session) topic(kind string) string {
-	return fmt.Sprintf("wfm/%s/%s/%s", s.profile.Profile.ConfigID, s.profile.Profile.NodeID, kind)
+	return fmt.Sprintf("wfm/%s/%s/%s", s.configID, s.nodeID, kind)
 }

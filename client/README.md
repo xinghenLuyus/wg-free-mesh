@@ -11,6 +11,9 @@
 - `wfm-agent` 读取机器级 profile，连接 EMQX。
 - `wfm-agent` 会发布 `heartbeat`，并上报 `client_online` / `wg_online`。
 - `wfm-agent` 会订阅 `config/push`、`control`、`detect`、`info` 并返回对应 ACK。
+- `wfmctl update [--server] [编号或 Profile ID]` 将本机两程序升级到指定绑定的服务端版本；默认绑定编号 1、默认 GitHub，`--server` 使用服务端编译。相同版本跳过、低版本拒绝；不改 MQTT 和数据库结构。编号与 `list` 的目录排序一致。
+- 更新需要安装好的服务及 root/管理员权限；独立助手处理自身替换，结果在系统数据目录的 `update/active/result.log` 和 `state.json`。未完成事务阻止重复覆盖；仅在激活前允许撤销未完成替换，不自动降级已激活程序。用户态隧道可能随服务停止短暂中断，按记录恢复。
+- 发布包包含 `package.json`（版本、平台、两程序 SHA-256），发布脚本输出 `.zip.sha256` 并上传 Release；更新客户端拒绝缺少校验资料的包。版本从 Go 构建元信息读取，不通过执行旧 agent 的未知参数探测版本。
 - `info` 当前用于控制台主动请求诊断输出；客户端根据服务端 payload 中的 `tunnel_protocol` 执行裸 `wg` 或 `awg`，命令输出统一通过 `event` topic 回传。
 
 ## 当前方向
@@ -35,7 +38,7 @@
 - 前端存在 SSE 订阅时，服务端每 2 分钟主动发送 `detect`
 - `detect/ack` 会携带当前客户端版本，服务端据此刷新控制面板中的客户端版本字段。
 - 客户端应以系统服务运行，否则 WireGuard 状态读取和控制可能权限不足
-- 客户端 bind profile 不保存隧道协议。服务端每次下发 `config/push`、`control`、`detect`、`info` 时携带当前协议，客户端按当次 payload 选择工具链。配置下发还携带 `previous_tunnel_protocol`；客户端在覆盖配置前注销该字段指定的同 profile 原协议隧道，再按目标协议恢复原运行状态。Linux/macOS 启停隧道使用 `wg-quick` / `awg-quick`，Windows 启停隧道使用 `wireguard.exe` / `amneziawg.exe` 的 tunnel service 命令；状态检查使用 `wg` / `awg`。
+- MQTT topic、下发字段和 ACK 结构保持不变。配置包的 `manifest.json` 保存该代配置的协议、AWG 版本、具体工具链、名称、公钥和哈希；启停使用对应配置包，而不是用最新消息推测旧隧道的工具链。Linux/macOS 使用 `wg-quick` / `awg-quick`，Windows 使用 `wireguard.exe` / `amneziawg.exe` 的 tunnel service 命令；状态检查使用 `wg` / `awg`。
 - 服务端会保存 bind 时生成的客户端 MQTT 密码，用于快照恢复后重建 EMQX 节点用户。恢复完成后客户端可能经历一次 MQTT 重连，重新连接成功后继续发送在线事件和心跳。
 
 ## 使用方式
@@ -82,6 +85,8 @@ chmod +x ./wfmctl ./wfm-agent && sudo ./wfmctl install
 wfmctl status
 ```
 
+macOS 已加载的服务通过 `launchctl kickstart -k` 重启；未加载时才执行 `bootstrap`，失败保留原始错误。停止和重新安装会等待旧服务卸载完成（最多 10 秒）。安装的 launchd 环境包含 Apple Silicon 和 Intel Homebrew 工具路径。
+
 服务运行账号：
 
 - Windows：`LocalSystem`
@@ -89,6 +94,8 @@ wfmctl status
 - macOS：`root`
 
 ### 3. 绑定节点
+
+三端在发送绑定请求前统一检查管理员/root 权限、系统服务安装状态和 profile 目录写入能力；预检查失败不会消耗服务端 token。实际保存时仍会检查并返回写入错误。
 
 绑定 token 不应手写，应该在控制台动态节点的“端点控制”初始化页点击“生成端点绑定命令并复制”获得。完成 `install` 后，三端都使用统一绑定命令：
 
@@ -101,6 +108,12 @@ wfmctl bind --server https://example.com --token <token>
 - Windows：`C:\ProgramData\wg-free-mesh\profiles`
 - Linux：`/etc/wg-free-mesh/profiles`
 - macOS：`/Library/Application Support/WG Free Mesh/profiles`
+
+`profile.json` 的 `interface_names` 保存服务端原始名称到本地接口名的映射；超出 15 字符时，使用绑定配置名编码后的前 12 字符。配置更新先按旧映射停止接口，再保存并使用新映射，同机绑定重名时报错。无映射的 profile 在读取时保留原接口名。
+
+每个绑定目录以 `config/`、`config.old/`、`config.old2/` 保存当前及两代历史配置包，各包含具名 `.conf` 和 `manifest.json`。下发先准备、校验新包，再停止并确认本绑定的旧接口退出，然后轮换并按原运行状态恢复。`transition.json` 记录中断恢复进度；启动失败保留现场、返回失败，不自动回滚或反复执行生命周期命令。启动和停止同样检查本绑定的历史残留，归属不明、查询失败或停止超时均报错，不清理其它 VPN。
+
+旧目录自动复制为配置包，保留原文件供旧接口停止和恢复使用，迁移本身不重启隧道；不支持降级。macOS 通过配置名称映射查询实际 `utun`，并校验公钥；运行接口丢失名称映射时保留现场并报错。配置正文包含接口名称注释，使仅改名也能进入现有哈希同步流程。
 
 移除本机绑定：
 
@@ -126,6 +139,8 @@ wfmctl logs --lines 200
 wfmctl start
 wfmctl stop
 wfmctl restart
+wfmctl update
+wfmctl update --server
 wfmctl version
 wfmctl --version
 wfmctl -v
@@ -143,6 +158,7 @@ wfmctl uninstall --purge
 - `wfmctl start`：启动已安装服务。
 - `wfmctl stop`：停止系统服务，但保留服务定义、开机自启、profile 和日志。
 - `wfmctl restart`：重启系统服务，让 agent 重新扫描本机 profile。
+- `wfmctl update [--server] [编号或 Profile ID]`：以选定服务端版本升级两程序；默认编号 1，`--server` 使用服务端编译，否则使用 GitHub。结果查看命令打印的日志路径。
 - `wfmctl version` / `wfmctl --version` / `wfmctl -v`：显示客户端版本。
 - `wfmctl uninstall`：停止服务、取消开机自启、删除服务定义并移除全局命令路径，不删除本机 profile。
 - `wfmctl uninstall --purge`：在 `uninstall` 基础上删除本机 profile、runtime 和日志目录。

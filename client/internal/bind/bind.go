@@ -25,9 +25,9 @@ type requestBody struct {
 type apiResponse struct {
 	Success bool `json:"success"`
 	Data    struct {
-		Profile    profile.ProfileMeta `json:"profile"`
-		MQTT       profile.MQTTConfig  `json:"mqtt"`
-		DesiredConf string             `json:"desired_conf"`
+		Profile     profile.ProfileMeta `json:"profile"`
+		MQTT        profile.MQTTConfig  `json:"mqtt"`
+		DesiredConf string              `json:"desired_conf"`
 	} `json:"data"`
 	Error struct {
 		Message string `json:"message"`
@@ -65,7 +65,7 @@ func Run(serverURL, token string) (profile.Profile, error) {
 	}
 	decoded.Data.Profile.ServerURL = strings.TrimRight(serverURL, "/")
 	result := profile.Profile{Profile: decoded.Data.Profile, MQTT: decoded.Data.MQTT}
-	if err := profile.Save(result, decoded.Data.DesiredConf); err != nil {
+	if err := profile.Save(&result, decoded.Data.DesiredConf); err != nil {
 		return profile.Profile{}, err
 	}
 	return result, nil

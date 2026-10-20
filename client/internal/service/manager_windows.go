@@ -327,6 +327,10 @@ func (w resilientWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func requireBindPrivileges() error {
+	return requireAdministrator()
+}
+
 func requireAdministrator() error {
 	cmd := exec.Command("net", "session")
 	if err := cmd.Run(); err != nil {

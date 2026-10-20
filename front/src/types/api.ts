@@ -596,6 +596,7 @@ export interface EndpointStatusRead {
 
 export interface ClientBindCommandRead {
   command: string
+  unix_command: string
   token: string
   expires_at: string
 }

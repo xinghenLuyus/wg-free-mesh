@@ -9,6 +9,14 @@
 | `mode` | `hub_spoke`、`full_mesh` 或 `free_mesh`。 |
 | `endpoint_ref_family` | 使用 `ipv4` 或 `ipv6` 公网入口。 |
 | `use_preshared_key` | 是否为生成的 Mesh 对启用 PSK。 |
+| `allow_linux_forwarding` | 默认 `false`。为 Gateway / Free Mesh 中选中的全部中心节点补齐 iptables 生命周期命令；Full Mesh 忽略此选项。中心节点须为安装了 iptables 的 Linux 系统。 |
+
+启用 `allow_linux_forwarding` 时，中心节点的 `post_up` 和 `post_down` 分别补充以下命令，忽略首尾空白后已有相同命令则不重复添加。命令保留为可编辑的普通生命周期命令；关闭选项或改变节点角色不会删除已有命令，应用配置后生效。
+
+```ini
+PostUp = iptables -I FORWARD 1 -i %i -o %i -j ACCEPT
+PostDown = iptables -D FORWARD -i %i -o %i -j ACCEPT
+```
 
 ## 网关节点式网络
 

@@ -145,6 +145,7 @@ class QuickMeshGenerateRequest(BaseModel):
     gateway_node_ids: list[str] = Field(default_factory=list)
     leaf_assignments: dict[str, str] = Field(default_factory=dict)
     use_preshared_key: bool = False
+    allow_linux_forwarding: bool = False
 
     @field_validator("hub_node_id", mode="before")
     @classmethod

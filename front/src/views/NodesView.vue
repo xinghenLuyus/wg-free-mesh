@@ -7,6 +7,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import InterfaceNameHint from '@/components/common/InterfaceNameHint.vue'
 import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import type { ConfigRead, NodeRead } from '@/types/api'
 import { notifyChangeHints } from '@/utils/changeHints'
@@ -218,6 +219,7 @@ onMounted(async () => {
     <el-form label-position="top">
       <el-form-item :label="t('fields.name')">
         <el-input v-model="form.name" />
+        <InterfaceNameHint :config-name="config?.name || ''" :node-name="form.name" />
       </el-form-item>
       <el-form-item :label="t('configOverview.type')">
         <el-segmented

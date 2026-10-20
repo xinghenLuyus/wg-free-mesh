@@ -2,6 +2,16 @@
 
 This page describes the dynamic node lifecycle: download, install, bind, online state, disconnects, reset, and control page transitions. Static nodes do not expose bind commands or client control.
 
+## Tunnel Configuration Replacement and Recovery
+
+Each local binding keeps three configuration generations in `config/`, `config.old/`, and `config.old2/`. Each contains a configuration file and a `manifest.json` recording its protocol, toolchain, names, public key, and hash. `profile.json` holds binding credentials; `transition.json` tracks an unfinished replacement.
+
+Every configuration push follows the same sequence: prepare and validate the new bundle → stop and confirm the binding's old interfaces have exited → rotate bundles → restore the previous running state. Stopped tunnels stay stopped, and identical bundles do not cause another restart. An interface-name comment participates in the configuration hash, so renaming is also synchronized.
+
+Start and stop also check this binding's historical leftovers. Interfaces are operated on only when names, public keys, and related records establish ownership. On macOS, name mappings resolve the actual `utun`. Missing mappings, ambiguous ownership, failed queries, or stop timeouts preserve the configurations and return an error without cleaning up other VPNs. A failed new start does not trigger automatic rollback; correct the cause and start or push again.
+
+On restart, the client checks replacement progress and actual interface state before continuing unfinished work. Recorded start failures are not retried automatically. Legacy configuration layouts are recognized and organized automatically, retaining the original files for stopping existing interfaces without starting or stopping tunnels merely for migration. Downgrading the local layout for older clients is not supported.
+
 ## Control Page Entry
 
 The node control page depends on `client_initialized`:
@@ -24,6 +34,8 @@ The initialization page has three steps:
 After install, the user runs the bind command in a terminal. After binding, the client writes a local profile and connects to MQTT.
 
 ## Bind Command Generation
+
+The response provides `command` for an administrator terminal on Windows and `unix_command` with a `sudo` prefix for Linux / macOS. Both use the same one-time token. The console displays and copies the command selected by the user.
 
 ```mermaid
 sequenceDiagram

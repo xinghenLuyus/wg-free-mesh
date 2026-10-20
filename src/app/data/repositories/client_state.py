@@ -15,6 +15,21 @@ class ClientStateRepositoryMixin:
     HEARTBEAT_TIMEOUT = timedelta(minutes=45)
     CLIENT_ONLINE_TTL = timedelta(minutes=90)
 
+    def verify_client_update_credentials(self, config_id: str, node_id: str, username: str, password: str) -> bool:
+        with connect() as connection:
+            row = connection.execute(
+                """SELECT s.mqtt_username, s.mqtt_password FROM node_client_state s
+                JOIN nodes n ON n.id = s.node_id JOIN configs c ON c.id = s.config_id
+                WHERE s.config_id = ? AND s.node_id = ? AND s.client_initialized = 1
+                AND n.enabled = 1 AND n.node_type = ? AND c.enabled = 1""",
+                (config_id, node_id, NodeType.dynamic.value),
+            ).fetchone()
+        if row is None or not username or not password or not row["mqtt_password"] or not row["mqtt_username"]:
+            return False
+        return secrets.compare_digest(str(row["mqtt_username"]).encode(), username.encode()) and secrets.compare_digest(
+            str(row["mqtt_password"]).encode(), password.encode()
+        )
+
     @staticmethod
     def _normalize_client_text(value: str, limit: int = 64) -> str:
         return value.strip()[:limit]

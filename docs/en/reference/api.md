@@ -29,7 +29,7 @@ WFM exposes four HTTP API layers rather than a single browser API:
 | Layer | Prefix | Caller | Notes |
 | --- | --- | --- | --- |
 | Console API | `/api/v1` | Browser console and trusted external callers | Main business API. Requires an administrator Bearer token by default. |
-| Client API | `/api/client` | `wfmctl bind` | Used only for one-time client binding and does not use the administrator session token. |
+| Client API | `/api/client/v1` | `wfmctl bind/update` | Binding uses a one-time token; updates use existing node credentials, not administrator session tokens. |
 | Internal API | `/api/internal` | EMQX and other internal components | Intended for containers or trusted networks and requires an internal shared key. |
 | Dev API | `/api/v0` | Local development and automated tests | Registered only when `WFM_ENABLE_DEV_TEST_API=true`. |
 
@@ -212,6 +212,10 @@ When updating a Mesh pair, `forward` and `reverse` are matched to existing recor
 
 | Method | Path | Description |
 | --- | --- | --- |
-| `POST` | `/api/client/bind` | Exchange a bind token for a profile, MQTT credentials, and config. |
+| `POST` | `/api/client/v1/bind` | Exchange a bind token for a profile, MQTT credentials, and config. |
+| `POST` | `/api/client/v1/update/check` | Read the server version and supported target using node credentials. |
+| `POST` | `/api/client/v1/update/artifact` | Request exact-version GitHub package metadata or a server-built artifact and short-lived download grant. |
 | `POST` | `/api/internal/emqx/authz` | Internal-only EMQX HTTP AuthZ callback. |
 | `POST` | `/api/v0/dev/reset-bootstrap` | Dev/test endpoint registered only when `WFM_ENABLE_DEV_TEST_API=true`. |
+
+Update endpoints use HTTP Basic with an existing binding's MQTT username and password. The configuration and dynamic node must be valid, enabled, and bound. Both requests contain `config_id`, `node_id`, `goos`, and `goarch`; `artifact` also contains `version` and `source` (`github_release` or `local_build`). `check` never builds. A changed version returns `CLIENT_UPDATE_VERSION_CHANGED` (409); invalid credentials return `CLIENT_UPDATE_UNAUTHORIZED` (401). Local builds reuse the target allowlist, build locks, and cache, accepting no arbitrary command, source path, or version.

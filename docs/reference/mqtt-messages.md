@@ -45,7 +45,7 @@ mqtt://emqx:1883
 - `topics`
 - TLS CA 证书，若 `tls=true`
 
-配置所属隧道协议不保存在 bind profile 里。每次控制命令、配置下发和检测都由服务端在下行 payload 中携带 `tunnel_protocol`，客户端必须以本次消息为准选择 `wg` / `awg` 工具链。
+bind profile 保存绑定身份与 MQTT 凭据。下行 payload 的 `tunnel_protocol` 指定服务端目标协议；客户端将配置协议和具体工具链保存在本地配置包中，启停和状态检查以对应配置包为准，不能用目标协议操作历史隧道。
 
 ## Topic 规则
 
@@ -150,11 +150,11 @@ payload 示例：
 | `wireguard` | 状态检查使用 `wg`；Linux/macOS 使用 `wg-quick`；Windows 使用 `wireguard.exe` tunnel service 命令。 |
 | `amneziawg_2` | 状态检查使用 `awg`；Linux/macOS 使用 `awg-quick`；Windows 使用 `amneziawg.exe` tunnel service 命令。 |
 
-`previous_tunnel_protocol` 指定写入新配置前需要检查并清理的原工具链。没有发生协议切换时，它与 `tunnel_protocol` 相同。
+`previous_tunnel_protocol` 提供原工具链提示，供按消息选择工具链的客户端使用；没有发生协议切换时，它与 `tunnel_protocol` 相同。保存配置包的客户端以各代清单记录的工具链识别和停止历史隧道。
 
 业务 API 使用 `amneziawg`；MQTT 下行使用 `amneziawg_2` 表示 AWG 工具链，具体版本由 `awg_version`（1.5、2.0、3.1）指定。客户端也接受协议值 `amneziawg`；非法协议或版本直接返回失败，消息可省略版本字段。
 
-客户端先检查 `previous_tunnel_protocol` 和目标协议下当前 profile 的接口。发现运行中的接口时，必须在覆盖配置前使用对应工具链停止；任一停止失败则返回 `failed`。全部停止后写入新配置，并在更新前存在运行接口时使用目标工具链重新启动。只有完整流程成功，才能返回 `applied`。如果更新前没有接口运行，客户端只写入配置，不主动启动。
+客户端先准备、校验新配置包，再检查本绑定当前及历史配置对应的接口。确认归属后，用对应工具链和旧配置停止并等待退出；查询或停止失败则返回 `failed`，不继续替换。全部停止后轮换配置包，更新前存在运行接口时使用目标工具链重新启动，否则只保存配置。只有完整流程成功，才能返回 `applied`。完全相同且无未完成替换的配置包不重复重启，启动失败保留配置与失败记录，不自动回滚。
 
 ## `control`
 

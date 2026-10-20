@@ -415,6 +415,45 @@ def test_mesh_update_matches_node_direction_after_quick_generate(authenticated_c
         assert client.get(links_url).json()["data"] == stored
 
 
+@pytest.mark.parametrize("mode", ["hub_spoke", "free_mesh", "full_mesh"])
+@pytest.mark.parametrize("allow_forwarding", [False, True])
+def test_quick_mesh_option_adds_only_missing_gateway_forwarding_hooks(
+    authenticated_client: TestClient, mode: str, allow_forwarding: bool,
+) -> None:
+    client = authenticated_client
+    config, nodes = _create_quick_mesh_config(client)
+    up = "iptables -I FORWARD 1 -i %i -o %i -j ACCEPT"
+    down = "iptables -D FORWARD -i %i -o %i -j ACCEPT"
+    seeded = client.put(
+        f"/api/v1/nodes/{nodes[0]['id']}",
+        json={"post_up": ["echo existing-up", f"  {up}  "], "post_down": ["echo existing-down"]},
+    )
+    assert seeded.status_code == 200
+    before = {node["id"]: client.get(f"/api/v1/nodes/{node['id']}").json()["data"] for node in nodes}
+    payload = {"mode": mode, "hub_node_id": nodes[0]["id"]}
+    if mode == "free_mesh":
+        payload.update({"gateway_node_ids": [nodes[0]["id"], nodes[1]["id"]], "leaf_assignments": {nodes[2]["id"]: nodes[1]["id"]}})
+    if allow_forwarding:
+        payload["allow_linux_forwarding"] = True
+    expected_gateways = {nodes[0]["id"]} if mode == "hub_spoke" else {nodes[0]["id"], nodes[1]["id"]}
+    if not allow_forwarding or mode == "full_mesh":
+        expected_gateways = set()
+
+    # Repeating generation must not duplicate commands, and opting out must not remove them.
+    for opt_out in (False, False, True):
+        if opt_out:
+            payload["allow_linux_forwarding"] = False
+        generated = client.post(f"/api/v1/configs/{config['id']}/mesh/quick-generate", json=payload)
+        assert generated.status_code == 200
+        for node in nodes:
+            saved = client.get(f"/api/v1/nodes/{node['id']}").json()["data"]
+            for field, command in (("post_up", up), ("post_down", down)):
+                expected = list(before[node["id"]][field])
+                if node["id"] in expected_gateways and not any(item.strip() == command for item in expected):
+                    expected.append(command)
+                assert saved[field] == expected
+
+
 def test_quick_generate_full_mesh_requires_public_address(authenticated_client: TestClient) -> None:
     config, nodes = _create_quick_mesh_config(authenticated_client, ipv6=False)
 

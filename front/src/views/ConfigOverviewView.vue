@@ -8,6 +8,7 @@ import { useRoute, useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import InterfaceNameHint from '@/components/common/InterfaceNameHint.vue'
 import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useConfigOverviewPrefs } from '@/composables/useConfigOverviewPrefs'
 import { useRealtime } from '@/composables/useRealtime'
@@ -861,7 +862,10 @@ watch(
         </div>
       </div>
       <el-form ref="settingsFormRef" :model="settingsForm" :rules="settingsRules" class="dialog-form" label-position="top">
-        <el-form-item :label="t('fields.name')" prop="name" required><el-input v-model="settingsForm.name" /></el-form-item>
+        <el-form-item :label="t('fields.name')" prop="name" required>
+          <el-input v-model="settingsForm.name" />
+          <InterfaceNameHint :config-name="settingsForm.name" />
+        </el-form-item>
         <el-form-item :label="t('home.descriptionField')"><el-input v-model="settingsForm.description" type="textarea" :rows="3" /></el-form-item>
         <div class="form-grid">
           <el-form-item :label="t('configOverview.virtualSubnet')" prop="virtual_subnet" required><el-input v-model="settingsForm.virtual_subnet" /></el-form-item>
@@ -905,7 +909,10 @@ watch(
         </div>
       </div>
       <el-form ref="createFormRef" :model="createForm" :rules="createRules" class="dialog-form" label-position="top">
-        <el-form-item :label="t('fields.name')" prop="name" required><el-input v-model="createForm.name" :placeholder="t('configOverview.endpointNamePlaceholder')" /></el-form-item>
+        <el-form-item :label="t('fields.name')" prop="name" required>
+          <el-input v-model="createForm.name" :placeholder="t('configOverview.endpointNamePlaceholder')" />
+          <InterfaceNameHint :config-name="overview?.config.name || ''" :node-name="createForm.name" />
+        </el-form-item>
         <el-form-item :label="t('configOverview.type')">
           <el-segmented
             v-model="createForm.node_type"

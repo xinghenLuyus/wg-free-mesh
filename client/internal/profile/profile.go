@@ -33,8 +33,9 @@ type ProfileMeta struct {
 }
 
 type Profile struct {
-	Profile ProfileMeta `json:"profile"`
-	MQTT    MQTTConfig  `json:"mqtt"`
+	Profile        ProfileMeta       `json:"profile"`
+	MQTT           MQTTConfig        `json:"mqtt"`
+	InterfaceNames map[string]string `json:"interface_names,omitempty"`
 }
 
 type Summary struct {
@@ -65,23 +66,42 @@ func RootDir() (string, error) {
 	}
 }
 
-func Save(p Profile, desiredConf string) error {
+func Save(p *Profile, desiredConf string) error {
+	nameMappingMu.Lock()
+	defer nameMappingMu.Unlock()
+	next, err := ResolveInterfaceName(*p)
+	if err != nil {
+		return err
+	}
 	root, err := RootDir()
 	if err != nil {
 		return err
 	}
-	dir := filepath.Join(root, p.Profile.ProfileID)
+	dir := filepath.Join(root, next.Profile.ProfileID)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
-	body, err := json.MarshalIndent(p, "", "  ")
+	// Rebinding refreshes credentials, never overwrites an existing tunnel's stop configuration.
+	if _, err := os.Stat(filepath.Join(dir, "config")); os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(dir, InterfaceName(next)+".conf")); os.IsNotExist(err) {
+			if err := SaveConfig(next, desiredConf); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		}
+	} else if err != nil {
+		return err
+	}
+	body, err := json.MarshalIndent(next, "", "  ")
 	if err != nil {
 		return err
 	}
 	if err := os.WriteFile(filepath.Join(dir, "profile.json"), body, 0o600); err != nil {
 		return err
 	}
-	return SaveConfig(p, desiredConf)
+	*p = next
+	return nil
 }
 
 func SaveConfig(p Profile, desiredConf string) error {
@@ -104,13 +124,14 @@ func SaveConfig(p Profile, desiredConf string) error {
 }
 
 func InterfaceName(p Profile) string {
-	if p.Profile.InterfaceName != "" {
-		return p.Profile.InterfaceName
+	original := p.Profile.InterfaceName
+	if original == "" {
+		original = p.Profile.ProfileID
 	}
-	if p.Profile.ProfileID != "" {
-		return p.Profile.ProfileID
+	if name := p.InterfaceNames[original]; name != "" {
+		return name
 	}
-	return ""
+	return original
 }
 
 func ConfigPath(p Profile) (string, error) {
@@ -121,6 +142,15 @@ func ConfigPath(p Profile) (string, error) {
 	iface := InterfaceName(p)
 	if iface == "" {
 		return "", fmt.Errorf("interface_name is required")
+	}
+	if _, err := os.Stat(filepath.Join(root, p.Profile.ProfileID, "config")); err == nil {
+		b, err := ReadBundle(filepath.Join(root, p.Profile.ProfileID, "config"), p)
+		if err != nil {
+			return "", err
+		}
+		return b.ConfigPath(), nil
+	} else if !os.IsNotExist(err) {
+		return "", err
 	}
 	return filepath.Join(root, p.Profile.ProfileID, iface+".conf"), nil
 }
@@ -189,6 +219,9 @@ func Summaries() ([]Summary, string, error) {
 			}
 		}
 		if _, err := os.Stat(filepath.Join(dir, "desired.conf")); err == nil {
+			item.DesiredPresent = true
+		}
+		if _, err := os.Stat(filepath.Join(dir, "config", "manifest.json")); err == nil {
 			item.DesiredPresent = true
 		}
 		summaries = append(summaries, item)

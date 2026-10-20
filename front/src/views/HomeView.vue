@@ -7,6 +7,7 @@ import { useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import InterfaceNameHint from '@/components/common/InterfaceNameHint.vue'
 import ConfigProtocolForm from '@/components/config/ConfigProtocolForm.vue'
 import type { ConfigProtocolModel } from '@/components/config/ConfigProtocolForm.vue'
 import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
@@ -368,6 +369,7 @@ watch(
     <el-form ref="formRef" :model="form" :rules="formRules" class="dialog-form" label-position="top">
       <el-form-item :label="t('fields.name')" prop="name" required>
         <el-input v-model="form.name" :placeholder="t('home.exampleName')" />
+        <InterfaceNameHint :config-name="form.name" />
       </el-form-item>
       <el-form-item :label="t('home.descriptionField')">
         <el-input v-model="form.description" type="textarea" :rows="3" :placeholder="t('home.descriptionPlaceholder')" />

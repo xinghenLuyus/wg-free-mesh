@@ -4,6 +4,8 @@ The client connects a machine to WG Free Mesh and receives config and control co
 
 The client is command-line only. There is no local GUI. This makes it a better fit for servers, edge devices, and operational automation; installation, binding, status checks, logs, and service operations can all be scripted.
 
+The client maps server names to local interface names: combined names up to 15 characters are kept; longer names use the first 12 characters of the encoded config name from binding. Mappings are stored locally without changing console names or download filenames. A name already used by another local binding produces an error.
+
 ## Download the Client
 
 Open the download page from the tool list and choose client download. The page supports two sources:
@@ -14,6 +16,24 @@ Open the download page from the tool list and choose client download. The page s
 If GitHub release is selected and the current version or target package does not exist, the page shows an error immediately.
 
 Packages are separated by operating system and architecture. Windows supports the common 64-bit build and an additional 32-bit build. After extraction, keep the client in a stable directory. If the directory is moved, run install again.
+
+## Update the Client
+
+Use `sudo` on Linux/macOS and an administrator terminal on Windows (without `sudo`):
+
+```bash
+sudo wfmctl update             # GitHub release matching the server
+sudo wfmctl update --server    # Build and download from the server
+sudo wfmctl update --server 2  # Select the server of binding number 2
+```
+
+Select a binding by its number in `wfmctl list` or full Profile ID; omission selects number 1. Numbers follow a fixed local binding-directory name order. The default GitHub source also supports `wfmctl update 2`. Selection determines the version and download source, but updates the entire local client installation.
+
+Both programs may only upgrade to the selected server version. Equal versions do not reinstall; downgrades are rejected. Stable and `rc.n` versions are supported. The server must expose the client update API. GitHub packages require an accompanying `.zip.sha256` file and an internal `package.json`. HTTP is permitted only on loopback; other addresses require HTTPS. Sources never switch automatically.
+
+After download and verification, a separate helper waits for the original command and service process to exit, replaces the two programs actually used by the service, and restores the original service and managed tunnel running states. Handoff is not success: inspect the printed `result.log`; `state.json` records progress and results. Windows, macOS launchd, and Linux systemd use their respective service managers. OpenRC is not supported by this update flow.
+
+Updates do not reinstall the service or change bindings, autostart settings, or tunnel parameters. Userspace tunnels may briefly disconnect. Failed replacement attempts restore original programs only before activation; activation is never followed by an automatic downgrade. Interrupted transactions, unconfirmed process exit, or ambiguous interface ownership preserve the evidence and stop automatic processing. Resolve unfinished configuration replacement or historical tunnel errors and exit manually running agent instances before updating. The next update preserves the previous terminal record in `update/last-result.json`.
 
 ## Install
 
@@ -56,7 +76,11 @@ After installation, daily commands use `wfmctl` directly. Reinstalling from the 
 | `wfmctl version` | Show client version. | `wfmctl --version` and `wfmctl -v` also work. |
 | `wfmctl help` | Show help. | Use `wfmctl help <command>` for subcommand help. |
 
+On macOS, restarting a loaded service preserves its launchd registration; an unloaded service is registered again. Stop and reinstall wait for unloading, and failures report the original system error. If binding succeeds but service reload fails, keep the binding, resolve the service issue, and run `sudo wfmctl start`.
+
 ## First-Time Flow
+
+Before binding, the client checks administrator/root privileges, agent service installation, and whether the profile directory can be created and written to. If a check fails, it stops locally without sending a bind request or consuming the one-time token.
 
 Recommended order:
 

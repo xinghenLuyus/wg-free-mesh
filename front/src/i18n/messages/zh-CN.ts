@@ -43,6 +43,10 @@ export default {
     passwordMismatch: '两次输入的密码不一致',
     passwordUnchanged: '新密码不能和当前密码一致',
   },
+  naming: {
+    configNameWarning: '配置名称转换为客户端接口名后超过 12 字符，超出部分可能被截断；不影响控制台名称和保存。',
+    interfaceNameWarning: '生成的名称“{name}”共 {length} 字符，超过 Linux 接口名的 15 字符限制。WFM 客户端会使用配置名作为本地别名（最多 12 字符）；手动使用下载文件时请自行缩短文件名。仍可正常保存。',
+  },
   fields: {
     username: '用户名',
     password: '密码',
@@ -264,6 +268,8 @@ export default {
       psk: 'PSK',
       pskTitle: '启用预共享密钥',
       pskDescription: '开启后，每一组自动生成的 Mesh 对都会生成独立 PSK，并写入正反向连接。',
+      linuxForwarding: '为 Linux 中心节点添加 iptables 转发规则',
+      linuxForwardingHelp: '为本次选中的全部中心节点补齐 PostUp / PostDown 隧道内 IPv4 转发放行命令，已有相同命令不重复添加。仅适用于已安装 iptables 的 Linux 中心节点，请勿用于混合平台网关。应用配置后生效；关闭此选项不会删除已有命令。',
       pskEnabled: '开启',
       pskDisabled: '关闭',
       noConfigs: '暂无配置',
@@ -773,6 +779,8 @@ export default {
       bindCommandStep: '第三步：绑定当前端点',
       bindCommandDescription: '生成 5 分钟有效且只能使用一次的绑定命令。绑定成功后会下发该端点专属 MQTT 权限。',
       generateBindCommand: '生成端点绑定命令并复制',
+      generateBindCommandWindows: '生成 Windows 绑定命令并复制',
+      generateBindCommandUnix: '生成 Linux / macOS 绑定命令并复制',
     bindCommandCopied: '绑定命令已复制',
     bindCommandFailed: '绑定命令生成失败',
     bindCommandExpiresAt: '命令有效期至 {time}',

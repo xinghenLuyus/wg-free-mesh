@@ -103,6 +103,7 @@ class McpQuickMeshPayload(BaseModel):
         description="free_mesh leaf assignment map: leaf node id -> gateway node id.",
     )
     use_preshared_key: bool = Field(default=False, description="Whether generated Mesh pairs should include PSK.")
+    allow_linux_forwarding: bool = Field(default=False, description="Append missing IPv4 iptables PostUp/PostDown rules to all selected Linux gateways. Requires iptables; ignored for full_mesh. Does not remove existing commands when false.")
 
 
 class McpPortForwardRulePayload(BaseModel):

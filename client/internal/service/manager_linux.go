@@ -197,6 +197,10 @@ func agentPath() (string, error) {
 	return "", fmt.Errorf("wfm-agent not found next to %s", exe)
 }
 
+func requireBindPrivileges() error {
+	return requireRoot()
+}
+
 func requireRoot() error {
 	if os.Geteuid() != 0 {
 		return fmt.Errorf("root privileges required; run with sudo")

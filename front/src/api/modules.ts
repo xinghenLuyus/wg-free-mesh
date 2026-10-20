@@ -1,3 +1,4 @@
+import { API_ORIGIN } from '@/api/base'
 import { request } from '@/api/client'
 import type {
   AwgGenerationRead,
@@ -147,6 +148,7 @@ export const api = {
     gateway_node_ids?: string[]
     leaf_assignments?: Record<string, string>
     use_preshared_key: boolean
+    allow_linux_forwarding?: boolean
   }) =>
     request<QuickMeshGenerateRead>(`/configs/${configId}/mesh/quick-generate`, { method: 'POST', data: payload, timeout: 120000 }),
   wgPreview: (configId: string, nodeId: string) =>
@@ -223,7 +225,7 @@ export const api = {
   createClientBindCommand: (configId: string, nodeId: string) =>
     request<ClientBindCommandRead>(`/configs/${configId}/nodes/${nodeId}/bind-command`, {
       method: 'POST',
-      data: { server_url: window.location.origin },
+      data: { server_url: API_ORIGIN },
     }),
   resetClient: (configId: string, nodeId: string) =>
     request<{ client_state: EndpointStatusRead['client_state'] }>(`/configs/${configId}/nodes/${nodeId}/reset-client`, { method: 'POST' }),

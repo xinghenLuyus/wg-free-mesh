@@ -56,6 +56,21 @@ func IsRunning() (bool, error) {
 	return info.Running, nil
 }
 
+// CheckBindPreconditions runs before requesting a one-time server binding.
+func CheckBindPreconditions() error {
+	if err := requireBindPrivileges(); err != nil {
+		return err
+	}
+	info, err := platformStatus()
+	if err != nil {
+		return fmt.Errorf("cannot check agent service: %w", err)
+	}
+	if !info.Installed {
+		return fmt.Errorf("agent service is not installed; run wfmctl install with administrator/root privileges first")
+	}
+	return profile.CheckWritable()
+}
+
 func ReloadOrStart() error {
 	info, err := platformStatus()
 	if err != nil {

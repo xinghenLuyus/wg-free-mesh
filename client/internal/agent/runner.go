@@ -34,6 +34,17 @@ func Run(ctx context.Context, stderr io.Writer) error {
 				if ctx.Err() != nil {
 					return
 				}
+				latest, err := profile.Load(p.Profile.ProfileID)
+				if err != nil {
+					fmt.Fprintf(stderr, "Reload profile %s failed: %v\n", p.Profile.ProfileID, err)
+					select {
+					case <-ctx.Done():
+						return
+					case <-time.After(5 * time.Second):
+					}
+					continue
+				}
+				p = latest
 				session := wfmmqtt.NewSession(p, stderr, connectedOnce)
 				if err := session.Run(ctx); err != nil && ctx.Err() == nil {
 					if session.Connected() {

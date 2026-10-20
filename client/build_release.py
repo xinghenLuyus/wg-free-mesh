@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 from pathlib import Path
 import shutil
@@ -78,6 +80,10 @@ def write_package(
     with ZipFile(zip_path, "w", ZIP_DEFLATED) as archive:
         archive.write(ctl_path, arcname=ctl_path.name)
         archive.write(agent_path, arcname=agent_path.name)
+        archive.writestr("package.json", json.dumps({
+            "version": version, "goos": goos, "goarch": goarch,
+            "files": {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in (ctl_path, agent_path)},
+        }))
         archive.writestr(
             "README.txt",
             "\n".join(
@@ -102,6 +108,7 @@ def build_target(client_dir: Path, dist_dir: Path, goos: str, goarch: str, versi
     run_go_build(client_dir, agent_path, "./cmd/agent", goos, goarch, version)
     zip_path = dist_dir / f"wfm-client-{goos}-{goarch}-v{version}.zip"
     write_package(zip_path, ctl_path, agent_path, version, goos, goarch)
+    zip_path.with_suffix(".zip.sha256").write_text(f"{hashlib.sha256(zip_path.read_bytes()).hexdigest()}  {zip_path.name}\n", encoding="ascii")
     return zip_path
 
 

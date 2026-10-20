@@ -8,6 +8,7 @@ import (
 	"wfm/client/internal/bind"
 	"wfm/client/internal/profile"
 	"wfm/client/internal/service"
+	"wfm/client/internal/update"
 )
 
 func main() {
@@ -43,6 +44,16 @@ func main() {
 		err = runUninstall(args)
 	case "bind":
 		err = runBind(args)
+	case "update":
+		if hasHelp(args) {
+			updateHelp()
+			return
+		}
+		err = update.Run(args)
+	case "__update-apply":
+		if err = noArgs("__update-apply", args); err == nil {
+			err = update.RunHelper()
+		}
 	case "unbind":
 		err = runUnbind(args)
 	case "list":
@@ -164,6 +175,9 @@ func runBind(args []string) error {
 	if *server == "" || *token == "" {
 		return fmt.Errorf("server and token are required")
 	}
+	if err := service.CheckBindPreconditions(); err != nil {
+		return fmt.Errorf("bind preflight failed: %w", err)
+	}
 	p, err := bind.Run(*server, *token)
 	if err != nil {
 		return fmt.Errorf("bind failed: %w", err)
@@ -220,8 +234,9 @@ func runList() error {
 		fmt.Println("No profiles.")
 		return nil
 	}
-	for _, item := range items {
-		fmt.Printf("%s | %s/%s | server=%s profile=%s desired=%s mqtt=%s:%d tls=%t\n",
+	for index, item := range items {
+		fmt.Printf("[%d] %s | %s/%s | server=%s profile=%s desired=%s mqtt=%s:%d tls=%t\n",
+			index+1,
 			item.ProfileID,
 			item.ConfigName,
 			item.NodeName,
@@ -297,6 +312,8 @@ func help(args []string) {
 		restartHelp()
 	case "version":
 		versionHelp()
+	case "update":
+		updateHelp()
 	case "help":
 		helpHelp()
 	default:
@@ -352,6 +369,7 @@ Commands:
   start        Start installed service
   stop         Stop service; autostart remains enabled
   restart      Restart service and reload local bindings
+  update       Upgrade both programs to the selected binding server's version
   version      Show version
   help         Show command help
 
@@ -376,6 +394,21 @@ Effects:
   - creates local data directories
 
 Requires administrator/root privileges.`)
+}
+
+func updateHelp() {
+	fmt.Println(`Update installed client
+
+Usage:
+  wfmctl update [profile_id_or_number]
+  wfmctl update --server [profile_id_or_number]
+
+The binding defaults to number 1 in wfmctl list. Default source: exact GitHub release.
+--server requests a cached/local build from the selected binding's server.
+Only upgrades are allowed. Equal versions do not reinstall. HTTPS is required except on loopback.
+The privileged helper finishes after this command exits; inspect the printed result log.
+An unfinished update blocks further replacement. No MQTT or binding credentials are changed.
+Requires administrator/root privileges and an installed service.`)
 }
 
 func uninstallHelp() {

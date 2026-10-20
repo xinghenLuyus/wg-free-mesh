@@ -25,7 +25,8 @@ class SyncSettingsRepositoryMixin:
         peer_links_by_local: dict[str, list[PeerLink]],
     ) -> dict[str, object]:
         links = peer_links_by_local.get(node.id, [])
-        lines = ["[Interface]", f"PrivateKey = {node.private_key}"]
+        # Include the logical name in the existing content hash so a rename is also synchronized.
+        lines = ["[Interface]", f"# Interface: {_node_config_artifact_stem(config.name, node.name)}", f"PrivateKey = {node.private_key}"]
         if node.virtual_ip:
             lines.append(f"Address = {node.virtual_ip}")
         lines.append(f"ListenPort = {node.listen_port or config.default_listen_port}")

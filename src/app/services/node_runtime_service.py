@@ -70,6 +70,10 @@ class NodeRuntimeService:
         await self._publish_runtime_scope(config_id, node_id)
 
     async def apply_detect_ack(self, config_id: str, node_id: str, body: dict[str, Any], *, boot_id: str = "", session_id: str = "") -> None:
+        if _text_payload(body, "status") == "failed":
+            store.mark_client_reachable(config_id, node_id, reason="detect-query-failed", boot_id=boot_id, session_id=session_id)
+            await self._publish_runtime_scope(config_id, node_id)
+            return
         client_online = _bool_payload(body, "client_online", True)
         wg_online = _bool_payload(body, "wg_online", False)
         store.record_detect_ack(

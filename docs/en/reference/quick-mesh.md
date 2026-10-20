@@ -9,6 +9,14 @@ Quick Mesh deletes the existing Mesh pairs in the selected config and regenerate
 | `mode` | `hub_spoke`, `full_mesh`, or `free_mesh`. |
 | `endpoint_ref_family` | Use the `ipv4` or `ipv6` public entry. |
 | `use_preshared_key` | Whether generated Mesh pairs use a PSK. |
+| `allow_linux_forwarding` | Defaults to `false`. Append missing iptables lifecycle commands to all selected gateways in Gateway / Free Mesh. Ignored for Full Mesh. Gateways must run Linux with iptables installed. |
+
+When `allow_linux_forwarding` is enabled, the commands below are added to gateway `post_up` and `post_down` lists respectively, unless an identical command already exists after trimming surrounding whitespace. They remain ordinary editable lifecycle commands. Disabling the option or changing node roles does not remove existing commands. Apply the config to take effect.
+
+```ini
+PostUp = iptables -I FORWARD 1 -i %i -o %i -j ACCEPT
+PostDown = iptables -D FORWARD -i %i -o %i -j ACCEPT
+```
 
 ## Gateway-node Network
 

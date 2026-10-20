@@ -1056,6 +1056,7 @@ class ConfigMeshRepositoryMixin:
             )
 
         pairs: list[tuple[Node, Node, str, str]] = []
+        forwarding_nodes: list[Node] = []
         if mode == "hub_spoke":
             hub_node_id = str(payload.get("hub_node_id") or "").strip()
             hub = next((node for node in enabled_nodes if node.id == hub_node_id), None)
@@ -1069,6 +1070,7 @@ class ConfigMeshRepositoryMixin:
                     {"nodes": [hub.model_dump(mode="json")], "endpoint_ref_family": family},
                 )
             pairs = [(hub, node, str(node.virtual_ip), config.virtual_subnet) for node in enabled_nodes if node.id != hub.id]
+            forwarding_nodes = [hub]
         elif mode == "full_mesh":
             missing_public = [node for node in enabled_nodes if not self._endpoint_host_for_family(node, family)]
             if missing_public:
@@ -1083,6 +1085,8 @@ class ConfigMeshRepositoryMixin:
                     pairs.append((local_node, peer_node, str(peer_node.virtual_ip), str(local_node.virtual_ip)))
         else:
             pairs = self._quick_free_mesh_pairs(config.virtual_subnet, enabled_nodes, payload, family)
+            gateway_ids = set(payload_string_list(payload.get("gateway_node_ids")))
+            forwarding_nodes = [node for node in enabled_nodes if node.id in gateway_ids]
 
         now = now_utc().isoformat()
         affected_node_ids = [node.id for node in enabled_nodes]
@@ -1090,6 +1094,21 @@ class ConfigMeshRepositoryMixin:
             row = connection.execute("SELECT COUNT(*) AS count FROM peer_links WHERE config_id = ?", (config_id,)).fetchone()
             deleted_links = int(row["count"] if row is not None else 0)
             connection.execute("DELETE FROM peer_links WHERE config_id = ?", (config_id,))
+            if payload.get("allow_linux_forwarding", False):
+                for node in forwarding_nodes:
+                    post_up = list(node.post_up)
+                    post_down = list(node.post_down)
+                    for commands, command in (
+                        (post_up, "iptables -I FORWARD 1 -i %i -o %i -j ACCEPT"),
+                        (post_down, "iptables -D FORWARD -i %i -o %i -j ACCEPT"),
+                    ):
+                        if not any(existing.strip() == command for existing in commands):
+                            commands.append(command)
+                    if post_up != node.post_up or post_down != node.post_down:
+                        connection.execute(
+                            "UPDATE nodes SET post_up_json = ?, post_down_json = ?, updated_at = ? WHERE id = ?",
+                            (json.dumps(post_up), json.dumps(post_down), now, node.id),
+                        )
             for local_node, peer_node, forward_allowed_ips, reverse_allowed_ips in pairs:
                 group_id = new_id("group")
                 preshared_key = generate_private_key() if use_preshared_key else None

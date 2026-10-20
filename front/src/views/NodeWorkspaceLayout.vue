@@ -9,6 +9,7 @@ import { useI18n } from 'vue-i18n'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import InterfaceNameHint from '@/components/common/InterfaceNameHint.vue'
 import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useRealtime } from '@/composables/useRealtime'
 import { completePageFadeOut } from '@/router/navigationProgress'
@@ -494,6 +495,7 @@ onMounted(async () => {
       <el-form ref="settingsFormRef" :model="settingsForm" :rules="settingsRules" class="dialog-form" label-position="top">
         <el-form-item :label="t('nodeWorkspace.name')" prop="name" required>
           <el-input v-model="settingsForm.name" />
+          <InterfaceNameHint :config-name="config?.name || ''" :node-name="settingsForm.name" />
         </el-form-item>
         <el-form-item :label="t('nodeWorkspace.type')">
           <el-segmented

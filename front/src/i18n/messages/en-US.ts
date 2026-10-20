@@ -43,6 +43,10 @@ export default {
     passwordMismatch: 'The two passwords do not match',
     passwordUnchanged: 'New password must be different from current password',
   },
+  naming: {
+    configNameWarning: 'The config name exceeds 12 characters after conversion for client use and may be truncated. The console name and saving are unaffected.',
+    interfaceNameWarning: 'The generated name "{name}" has {length} characters, exceeding the Linux interface name limit of 15. The WFM client uses the config name as a local alias (up to 12 characters). Rename downloaded files before using them manually. Saving is still allowed.',
+  },
   fields: {
     username: 'Username',
     password: 'Password',
@@ -264,6 +268,8 @@ export default {
       psk: 'PSK',
       pskTitle: 'Enable preshared key',
       pskDescription: 'When enabled, each generated Mesh link group receives its own PSK on both directions.',
+      linuxForwarding: 'Add iptables forwarding rules to Linux gateways',
+      linuxForwardingHelp: 'Append missing PostUp / PostDown commands allowing IPv4 forwarding within the tunnel on all selected gateways. Identical commands are not added again. All selected gateways must run Linux with iptables installed; do not enable for mixed-platform gateways. Apply the config to take effect. Turning this option off does not remove existing commands.',
       pskEnabled: 'Enabled',
       pskDisabled: 'Disabled',
       noConfigs: 'No configs',
@@ -773,6 +779,8 @@ export default {
       bindCommandStep: 'Step 3: Bind this endpoint',
       bindCommandDescription: 'Generate a 5-minute one-time bind command. After binding, the endpoint receives its dedicated MQTT permissions.',
       generateBindCommand: 'Generate and copy endpoint bind command',
+      generateBindCommandWindows: 'Generate and copy Windows bind command',
+      generateBindCommandUnix: 'Generate and copy Linux / macOS bind command',
     bindCommandCopied: 'Bind command copied',
     bindCommandFailed: 'Failed to generate bind command',
     bindCommandExpiresAt: 'Command expires at {time}',

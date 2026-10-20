@@ -45,7 +45,7 @@ After `wfmctl bind`, the client receives:
 - `topics`
 - TLS CA when `tls=true`
 
-Tunnel protocol is not stored in the bind profile. Every command, config push, and detect payload carries `tunnel_protocol`; the client must use the current message to select the `wg` / `awg` toolchain.
+The bind profile stores binding identity and MQTT credentials. Downstream `tunnel_protocol` specifies the server's target protocol. Clients persist each configuration's protocol and toolchain in its local bundle and use that bundle for start, stop, and status checks, rather than operating historical tunnels with the target protocol.
 
 ## Topics
 
@@ -150,11 +150,11 @@ Supported `tunnel_protocol` values:
 | `wireguard` | Use `wg` for status, `wg-quick` on Linux/macOS, and `wireguard.exe` tunnel-service commands on Windows. |
 | `amneziawg_2` | Use `awg` for status, `awg-quick` on Linux/macOS, and `amneziawg.exe` tunnel-service commands on Windows. |
 
-`previous_tunnel_protocol` identifies the original toolchain that the client must inspect and clean before replacing the config. It is the same as `tunnel_protocol` when the protocol has not changed.
+`previous_tunnel_protocol` provides the original toolchain hint for clients that select tools from messages. It matches `tunnel_protocol` when the protocol has not changed. Bundle-based clients identify and stop historical tunnels using each generation's manifest.
 
 Business APIs use `amneziawg`. MQTT messages use `amneziawg_2` for the AWG toolchain, with the specific version set by `awg_version` (1.5, 2.0, or 3.1). Clients also accept the protocol value `amneziawg`; invalid protocols or versions fail explicitly, and messages may omit the version field.
 
-The client inspects both `previous_tunnel_protocol` and the target protocol for the current profile. Before overwriting the config, it stops every running matching interface with its corresponding toolchain and returns `failed` if any stop fails. After all interfaces stop, it writes the new config. If an interface was running before the update, it restarts with the target toolchain; otherwise it only writes the config. Only the complete sequence returns `applied`.
+The client prepares and validates a new bundle, then inspects interfaces associated with this binding's current and historical configurations. After verifying ownership, it stops them with their matching toolchains and old configurations and waits for exit. Failed queries or stops return `failed` without continuing replacement. Once all interfaces stop, it rotates bundles and restores the previous running state with the target toolchain; previously stopped tunnels remain stopped. Only the complete sequence returns `applied`. Identical bundles without an unfinished replacement do not cause another restart. Start failures preserve configuration and failure records without automatic rollback.
 
 ## Control
 

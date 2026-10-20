@@ -31,6 +31,8 @@ A download token authorizes one bound file or one bound endpoint config and expi
 
 ## MQTT
 
+Client update HTTP endpoints accept only valid binding credentials, restricted to version queries and client downloads without administrator API access. Credentials are sent only to the binding server, never to GitHub. Server artifacts use short-lived single-file grants. Updates require HTTPS except on loopback and verify archive and program hashes, platform, and version. Staging files and result records reside in a root/administrator-only writable directory.
+
 The backend is authoritative for MQTT users and authorization. It synchronizes state while EMQX is online and persists data first while EMQX is unavailable.
 
 Resetting an endpoint client revokes its MQTT user and attempts to disconnect it.

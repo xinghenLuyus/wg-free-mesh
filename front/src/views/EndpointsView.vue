@@ -142,13 +142,14 @@ function goToClientDownload() {
   void router.push('/tools/download/client')
 }
 
-async function generateBindCommand() {
+async function generateBindCommand(platform: 'windows' | 'unix') {
+  if (bindingBusy.value) return
   bindingBusy.value = true
   try {
     const result = await api.createClientBindCommand(String(route.params.configId), String(route.params.nodeId))
-    bindingCommand.value = result.command
+    bindingCommand.value = platform === 'windows' ? result.command : result.unix_command
     bindingExpiresAt.value = result.expires_at
-    await copyText(result.command)
+    await copyText(bindingCommand.value)
     notify.success(t('endpointControl.bindCommandCopied'))
   } catch (error) {
     notify.error(error instanceof ApiClientError ? error.message : t('endpointControl.bindCommandFailed'))
@@ -289,9 +290,14 @@ watch(
                   <strong>{{ t('endpointControl.bindCommandStep') }}</strong>
                   <span>{{ t('endpointControl.bindCommandDescription') }}</span>
                 </div>
-                <el-button type="primary" :loading="bindingBusy" @click="generateBindCommand">
-                  {{ t('endpointControl.generateBindCommand') }}
-                </el-button>
+                <div class="bind-command-actions">
+                  <el-button type="primary" :loading="bindingBusy" @click="generateBindCommand('windows')">
+                    {{ t('endpointControl.generateBindCommandWindows') }}
+                  </el-button>
+                  <el-button type="primary" :loading="bindingBusy" @click="generateBindCommand('unix')">
+                    {{ t('endpointControl.generateBindCommandUnix') }}
+                  </el-button>
+                </div>
               </div>
             </div>
           </div>
@@ -352,6 +358,8 @@ watch(
 
 <style scoped>
 .node-template { display: grid; gap: 20px; }
+.bind-command-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.bind-command-actions .el-button + .el-button { margin-left: 0; }
 .template-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
 .template-toolbar h2 { margin: 0; color: var(--app-text); font-size: 22px; }
 .template-toolbar p { margin: 8px 0 0; color: var(--app-muted); line-height: 1.6; }

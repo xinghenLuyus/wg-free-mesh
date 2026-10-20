@@ -2,14 +2,22 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const plistPath = "/Library/LaunchDaemons/mesh.wg-free.wfm-agent.plist"
+const launchdTarget = "system/mesh.wg-free.wfm-agent"
+
+var launchctlCommand = func(args ...string) (string, error) {
+	output, err := exec.Command("launchctl", args...).CombinedOutput()
+	return strings.TrimSpace(string(output)), err
+}
 
 func Install() error {
 	if err := requireRoot(); err != nil {
@@ -35,6 +43,11 @@ func Install() error {
     <true/>
     <key>WorkingDirectory</key>
     <string>/Library/Application Support/WG Free Mesh</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+      <key>PATH</key>
+      <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
     <key>StandardOutPath</key>
     <string>/Library/Logs/wg-free-mesh/wfm-agent.log</string>
     <key>StandardErrorPath</key>
@@ -58,7 +71,9 @@ func Install() error {
 	if err := os.WriteFile(plistPath, []byte(plist), 0o644); err != nil {
 		return err
 	}
-	_ = run("launchctl", "bootout", "system/mesh.wg-free.wfm-agent")
+	if err := Stop(); err != nil {
+		return err
+	}
 	if err := Start(); err != nil {
 		return err
 	}
@@ -70,7 +85,9 @@ func Uninstall() error {
 	if err := requireRoot(); err != nil {
 		return err
 	}
-	_ = run("launchctl", "bootout", "system/mesh.wg-free.wfm-agent")
+	if err := Stop(); err != nil {
+		return err
+	}
 	_ = uninstallPath()
 	if err := os.Remove(plistPath); err != nil && !os.IsNotExist(err) {
 		return err
@@ -82,44 +99,101 @@ func Start() error {
 	if err := requireRoot(); err != nil {
 		return err
 	}
-	if err := run("launchctl", "bootstrap", "system", plistPath); err == nil {
-		return nil
-	}
-	return run("launchctl", "kickstart", "-k", "system/mesh.wg-free.wfm-agent")
+	return startLaunchd(false)
 }
 
 func Stop() error {
 	if err := requireRoot(); err != nil {
 		return err
 	}
-	return run("launchctl", "bootout", "system/mesh.wg-free.wfm-agent")
+	return stopLaunchd()
 }
 
 func Restart() error {
 	if err := requireRoot(); err != nil {
 		return err
 	}
-	_ = Stop()
-	return Start()
+	return startLaunchd(true)
 }
 
 func platformStatus() (StatusInfo, error) {
 	installed := fileExists(plistPath)
-	output := commandText("launchctl", "print", "system/mesh.wg-free.wfm-agent")
+	output, loaded, err := launchdStatus()
+	if err != nil {
+		return StatusInfo{}, err
+	}
 	running := strings.Contains(output, "state = running")
 	state := "stopped"
 	if running {
 		state = "running"
-	} else if output == "" {
+	} else if !loaded {
 		state = "not-loaded"
 	}
 	return StatusInfo{
-		Installed: installed,
+		Installed: installed || loaded,
 		Autostart: installed,
 		Running:   running,
 		State:     state,
 		Binary:    plistProgramPath(),
 	}, nil
+}
+
+func startLaunchd(restart bool) error {
+	_, loaded, err := launchdStatus()
+	if err != nil {
+		return err
+	}
+	if !loaded {
+		return runLaunchctl("bootstrap", "system", plistPath)
+	}
+	if restart {
+		return runLaunchctl("kickstart", "-k", launchdTarget)
+	}
+	return runLaunchctl("kickstart", launchdTarget)
+}
+
+func stopLaunchd() error {
+	_, loaded, err := launchdStatus()
+	if err != nil || !loaded {
+		return err
+	}
+	if err := runLaunchctl("bootout", launchdTarget); err != nil {
+		return err
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		_, loaded, err = launchdStatus()
+		if err != nil || !loaded {
+			return err
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("service %s was not unloaded within 10 seconds; retry after checking launchctl status", launchdTarget)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+}
+
+func launchdStatus() (string, bool, error) {
+	output, err := launchctlCommand("print", launchdTarget)
+	if err == nil {
+		return output, true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 113 || strings.Contains(output, "Could not find service") {
+		return "", false, nil
+	}
+	return "", false, fmt.Errorf("launchctl print %s failed: %w\n%s", launchdTarget, err, output)
+}
+
+func runLaunchctl(args ...string) error {
+	output, err := launchctlCommand(args...)
+	if err != nil {
+		return fmt.Errorf("launchctl %s failed: %w\n%s", strings.Join(args, " "), err, output)
+	}
+	if output != "" {
+		fmt.Println(output)
+	}
+	return nil
 }
 
 func platformLogs(lines int) error {
@@ -166,11 +240,6 @@ func run(name string, args ...string) error {
 		fmt.Println(text)
 	}
 	return nil
-}
-
-func commandText(name string, args ...string) string {
-	output, _ := exec.Command(name, args...).CombinedOutput()
-	return string(output)
 }
 
 func fileExists(path string) bool {
@@ -221,6 +290,10 @@ func agentPath() (string, error) {
 		}
 	}
 	return "", fmt.Errorf("wfm-agent not found next to %s", exe)
+}
+
+func requireBindPrivileges() error {
+	return requireRoot()
 }
 
 func requireRoot() error {

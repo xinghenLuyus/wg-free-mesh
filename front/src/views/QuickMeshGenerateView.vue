@@ -7,6 +7,7 @@ import { useRouter } from 'vue-router'
 
 import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
+import FieldHelpLabel from '@/components/common/FieldHelpLabel.vue'
 import type { ConfigRead, EndpointRefFamily, NodeRead, QuickMeshGenerateRead, QuickMeshMode } from '@/types/api'
 import { notify } from '@/utils/notify'
 
@@ -25,6 +26,7 @@ const hubNodeId = shallowRef('')
 const gatewayNodeIds = shallowRef<string[]>([])
 const leafAssignments = reactive<Record<string, string>>({})
 const usePresharedKey = shallowRef(false)
+const allowLinuxForwarding = shallowRef(false)
 const loading = shallowRef(false)
 const generating = shallowRef(false)
 const loadError = shallowRef('')
@@ -222,6 +224,7 @@ async function generateMesh() {
       gateway_node_ids: isFreeMesh.value ? gatewayNodeIds.value : undefined,
       leaf_assignments: isFreeMesh.value ? { ...leafAssignments } : undefined,
       use_preshared_key: usePresharedKey.value,
+      allow_linux_forwarding: !isFullMesh.value && allowLinuxForwarding.value,
     })
     notify.success(t('tools.quickMesh.generated', { count: result.value.generated_groups }))
     await loadNodes(selectedConfig.value.id)
@@ -249,6 +252,7 @@ watch(gatewayNodeIds, () => {
 
 watch(() => props.mode, () => {
   result.value = null
+  if (isFullMesh.value) allowLinuxForwarding.value = false
   if (isFreeMesh.value) {
     applyDefaultFreeMeshTopology()
   } else {
@@ -346,6 +350,17 @@ onMounted(() => {
                   <span>{{ t('tools.quickMesh.pskDescription') }}</span>
                 </div>
                 <el-switch v-model="usePresharedKey" :disabled="generating" />
+              </div>
+            </el-form-item>
+            <el-form-item v-if="!isFullMesh">
+              <div class="quick-switch-row">
+                <strong>
+                  <FieldHelpLabel
+                    :label="t('tools.quickMesh.linuxForwarding')"
+                    :help="t('tools.quickMesh.linuxForwardingHelp')"
+                  />
+                </strong>
+                <el-switch v-model="allowLinuxForwarding" :disabled="generating" :aria-label="t('tools.quickMesh.linuxForwarding')" />
               </div>
             </el-form-item>
           </el-form>

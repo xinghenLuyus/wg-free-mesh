@@ -258,6 +258,10 @@ class DownloadToolsService:
             with ZipFile(temp_zip, "w", ZIP_DEFLATED) as archive:
                 archive.write(ctl_path, arcname=ctl_path.name)
                 archive.write(agent_path, arcname=agent_path.name)
+                archive.writestr("package.json", json.dumps({
+                    "version": settings.app_version, "goos": goos, "goarch": goarch,
+                    "files": {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in (ctl_path, agent_path)},
+                }))
                 archive.writestr(
                     "README.txt",
                     "\n".join(

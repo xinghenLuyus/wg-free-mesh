@@ -614,6 +614,7 @@ class ControlPlaneService:
         command = f'wfmctl bind --server "{server_url.rstrip("/")}" --token "{token}"'
         return {
             "command": command,
+            "unix_command": f"sudo {command}",
             "token": token,
             "expires_at": _iso_datetime(grant["expires_at"]) or "",
         }

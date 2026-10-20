@@ -29,7 +29,7 @@ WFM 不是单一浏览器 API，实际有四类 HTTP 接口：
 | 层级 | 前缀 | 调用方 | 说明 |
 | --- | --- | --- | --- |
 | 控制台 API | `/api/v1` | 浏览器控制台、受信外部调用方 | 主要业务接口，默认需要管理员 Bearer token。 |
-| 客户端 API | `/api/client` | `wfmctl bind` | 只用于客户端一次性绑定，不使用管理员会话 token。 |
+| 客户端 API | `/api/client/v1` | `wfmctl bind/update` | 绑定使用一次性 token，更新使用已有节点凭据，不使用管理员会话 token。 |
 | 内部 API | `/api/internal` | EMQX 等内部组件 | 只允许容器内或可信网络调用，必须带内部共享密钥。 |
 | 开发 API | `/api/v0` | 本地开发和自动化测试 | 仅在 `WFM_ENABLE_DEV_TEST_API=true` 时注册。 |
 
@@ -212,6 +212,10 @@ AWG 配置写入使用 `tunnel_protocol=amneziawg` 和 `awg_version=1.5/2.0/3.1`
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| `POST` | `/api/client/bind` | 客户端使用绑定 token 换取 profile、MQTT 凭据和配置。 |
+| `POST` | `/api/client/v1/bind` | 客户端使用绑定 token 换取 profile、MQTT 凭据和配置。 |
+| `POST` | `/api/client/v1/update/check` | 使用节点凭据读取服务端版本及支持的平台。 |
+| `POST` | `/api/client/v1/update/artifact` | 申请指定服务端版本的 GitHub 包信息或服务端构建产物及短时下载凭证。 |
 | `POST` | `/api/internal/emqx/authz` | EMQX HTTP AuthZ 回调，仅内部使用。 |
 | `POST` | `/api/v0/dev/reset-bootstrap` | 开发测试接口，仅 `WFM_ENABLE_DEV_TEST_API=true` 时注册。 |
+
+更新接口使用 HTTP Basic，用户名和密码取自已有绑定的 MQTT 凭据，并校验配置及动态端点有效、启用且已绑定。两个接口请求均含 `config_id`、`node_id`、`goos`、`goarch`；`artifact` 另含 `version` 和 `source`（`github_release` 或 `local_build`）。`check` 不触发编译；版本变化返回 `CLIENT_UPDATE_VERSION_CHANGED`（409），凭据无效返回 `CLIENT_UPDATE_UNAUTHORIZED`（401）。服务端本地构建复用平台白名单、构建锁及缓存，不接收任意命令、源码路径或版本。
