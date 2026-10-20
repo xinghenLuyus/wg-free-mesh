@@ -63,18 +63,17 @@
 
 **已经有服务端？** [下载客户端安装包](https://github.com/xinghenLuyus/wg-free-mesh/releases)，选择对应系统与架构，按照控制台中的说明完成绑定。客户端用于将设备接入已有的 WG Free Mesh 服务端，不包含控制台部署。
 
-## 如何协作
+## 架构与运行方式
+
+不同于 WGDashboard 等以隧道所在主机为管理中心的项目，WG Free Mesh 将控制平面与隧道运行分离：控制台及其后端可独立部署，无需作为 WireGuard 服务端或承载隧道流量。
 
 服务端管理网络配置，并向已绑定客户端下发配置和命令。客户端通过各台主机上的 WireGuard 或 AmneziaWG 工具链应用配置。如果偏好手动管理，也可以直接下载配置，不启用远程控制。
 
 WG Free Mesh 负责管理隧道，不替代底层隧道实现，也不提供托管 VPN 服务。
 
-## 更多入口
+## 参与改进
 
-- [使用文档](https://wfm.xinghenluyus.cn/)：使用指南、部署说明、协议参考与开发文档。
-- [版本发布](https://github.com/xinghenLuyus/wg-free-mesh/releases)：客户端安装包与发布说明。
-- [更新日志](./CHANGELOG.md)：中英双语的版本变化摘要。
-- [问题反馈](https://github.com/xinghenLuyus/wg-free-mesh/issues)：报告问题或提出建议。
+欢迎提交 [Issue](https://github.com/xinghenLuyus/wg-free-mesh/issues) 或 Pull Request，一起完善 WG Free Mesh。无论是增加语言支持、优化翻译，还是改进前端交互、完善移动端适配、增加更多主题，都欢迎参与。
 
 ## 许可证
 

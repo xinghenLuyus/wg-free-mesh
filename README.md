@@ -63,18 +63,17 @@ Then build your network:
 
 **Already have a server?** [Download a client package](https://github.com/xinghenLuyus/wg-free-mesh/releases) for your OS and architecture, then follow the binding instructions in your console. Client packages connect devices to an existing WG Free Mesh server; they do not deploy the control plane.
 
-## How it fits together
+## Architecture & Operation
+
+Unlike host-centric management tools such as WGDashboard, WG Free Mesh separates the control plane from tunnel execution. The console and its backend can be deployed independently, without acting as a WireGuard server or carrying tunnel traffic.
 
 The server manages network configuration and sends configs and commands to bound clients. Clients apply them through the WireGuard or AmneziaWG toolchain on each host. For manual operation, you can download configs without enabling remote control.
 
 WG Free Mesh manages your tunnels; it does not replace the underlying tunnel implementation or provide a hosted VPN service.
 
-## Explore
+## Contributing
 
-- [Documentation](https://wfm.xinghenluyus.cn/en/) — usage, deployment, protocol reference, and development.
-- [Releases](https://github.com/xinghenLuyus/wg-free-mesh/releases) — client packages and release notes.
-- [Changelog](./CHANGELOG.md) — concise version highlights in English and Chinese.
-- [Issues](https://github.com/xinghenLuyus/wg-free-mesh/issues) — report bugs or suggest improvements.
+Help make WG Free Mesh better by [opening an issue](https://github.com/xinghenLuyus/wg-free-mesh/issues) or submitting a pull request. Contributions are welcome—from adding languages and improving translations to refining the UI, enhancing mobile layouts, and creating more themes.
 
 ## License
 
