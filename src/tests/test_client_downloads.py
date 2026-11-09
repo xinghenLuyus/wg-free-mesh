@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+import pytest
+
+pytestmark = pytest.mark.usefixtures("mqtt_feature")
 
 
 def test_client_download_options_enable_github_release(authenticated_client: TestClient) -> None:

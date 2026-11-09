@@ -57,6 +57,7 @@ export function translateMeshText(message: string, t: TranslateFn) {
   if (value === 'No Endpoint') return t('mesh.noneEndpoint')
   if (value === 'Current config has no peer links.') return t('meshMessages.noPeerLinks')
   if (value === 'Topology check passed.') return t('mesh.topologyOk')
+  if (value === 'Mesh pair has incomplete or conflicting directions.') return t('topology.invalidDirections')
 
   return value
 }

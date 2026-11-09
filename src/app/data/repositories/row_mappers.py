@@ -196,6 +196,7 @@ def runtime_from_row(row: Any) -> EndpointRuntimeStatus:
         online=bool_value(row["online"]),
         connectivity_state=row["connectivity_state"],
         wg_running=bool_value(row["wg_running"]),
+        wg_observed_at=parse_datetime(row.get("wg_observed_at")),
         wg_runtime_state=row["wg_runtime_state"],
         config_sync_state=row["config_sync_state"],
         peers_online=row["peers_online"],

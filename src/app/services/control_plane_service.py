@@ -464,7 +464,20 @@ class ControlPlaneService:
         return store.list_peer_links(config_id)
 
     def mesh_workspace(self, config_id: str, node_id: str):
+        from app.schemas.mesh import MeshHealthRead
+        from app.services.runtime_observation_service import runtime_observation_service
         workspace = store.mesh_workspace(config_id, node_id)
+        node = store.get_node(node_id)
+        for item in workspace["connections"]:
+            peer = store.get_node(item["peer_node"]["id"])
+            item["health"] = MeshHealthRead.model_validate(
+                runtime_observation_service.health(
+                    config_id, node, peer,
+                    not store.get_config(config_id).enabled or not item["enabled"]
+                    or not node.enabled or not peer.enabled
+                    or item["integrity_status"] != "healthy" or item["duplicate_enabled_pair"],
+                )
+            ).model_dump(mode="json")
         if mqtt_services_enabled():
             return workspace
         result = dict(workspace)
@@ -596,10 +609,11 @@ class ControlPlaneService:
         ]
 
     def endpoint_status(self, config_id: str, node_id: str):
+        from app.services.runtime_observation_service import endpoint_state
         status = store.get_node_endpoint_status(config_id, node_id)
         return {
             "node": _dump_model(status["node"]),
-            "runtime": _dump_model(status["runtime"]),
+            "runtime": {**_dump_model(status["runtime"]), "endpoint_state": endpoint_state(status["runtime"])},
             "client_state": status["client_state"],
             "mqtt_service": self.mqtt_service_status(),
             "config_state": status["config_state"],
@@ -736,11 +750,18 @@ class ControlPlaneService:
             except Exception:
                 logger.exception("auto config push failed for %s/%s", config_id, node.id)
 
-    async def control_action(self, config_id: str, node_id: str, action: str):
+    async def control_action(self, config_id: str, node_id: str, action: str, *, current_interface_only: bool = False):
         if not self.mqtt_service_enabled():
             raise AppError("MQTT_DISABLED", "MQTT services are disabled", 409)
         if action not in {"start", "stop", "push_config", "wg_show"}:
             raise AppError("INVALID_ACTION", "Only start, stop, push_config and wg_show are supported by MQTT control", 400)
+        if current_interface_only:
+            from app.services.runtime_observation_service import runtime_observation_service
+            session = str(store.get_client_state(config_id, node_id).get("session_id") or "")
+            if action != "wg_show":
+                raise AppError("INVALID_ACTION", "Interface scope is only supported for wg_show", 400)
+            if not runtime_observation_service.capabilities.get((node_id, session), False):
+                raise AppError("CLIENT_OBSERVATION_UNSUPPORTED", "Client capability not confirmed; update the client and refresh its status", 409)
         from app.services.mqtt_ingress_service import mqtt_ingress_service
 
         if action == "push_config":
@@ -750,6 +771,8 @@ class ControlPlaneService:
         await realtime_service.publish("control.log.created", {"config_id": config_id, "node_id": node_id, "log": log.model_dump(mode="json")})
         kind = "info" if action == "wg_show" else "config/push" if action == "push_config" else "control"
         payload_body: dict[str, object] = {"action": action}
+        if current_interface_only:
+            payload_body["current_interface_only"] = True
         config = store.get_config(config_id)
         payload_body["tunnel_protocol"] = awg.wire_protocol(config.tunnel_protocol)
         payload_body["awg_version"] = config.awg_version

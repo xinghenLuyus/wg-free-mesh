@@ -9,6 +9,7 @@ from app.api.v1.routing import SessionProtectedAPIRouter
 from app.core.validation import strip_optional_text, strip_required_text
 from app.core.responses import ApiResponse, ok
 from app.services.control_plane_service import control_plane_service
+from app.schemas.mesh import MeshHealthRead
 
 router = SessionProtectedAPIRouter(tags=["mesh"])
 
@@ -118,6 +119,7 @@ class MeshConnectionDirectionResponse(BaseModel):
 
 class MeshConnectionResponse(BaseModel):
     link_group_id: str
+    health: MeshHealthRead
     peer_node: dict[str, Any]
     enabled: bool
     has_preshared_key: bool
@@ -130,10 +132,13 @@ class MeshConnectionResponse(BaseModel):
     integrity_message: str
     duplicate_enabled_pair: bool
     duplicate_message: str
+    readonly: bool
+    peer_disabled: bool
 
 
 class MeshWorkspaceResponse(BaseModel):
     node: dict[str, Any]
+    readonly: bool
     connections: list[MeshConnectionResponse]
     validation: dict[str, Any]
 

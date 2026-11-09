@@ -229,22 +229,39 @@ func (s *Session) handleMessage(m *pahomqtt.Publish) {
 		if statusErr != nil {
 			status, message = "failed", statusErr.Error()
 		}
-		_ = s.publishEvent("detect", "Server detect command received.")
+		if !strings.HasPrefix(env.RequestID, "obs-") {
+			_ = s.publishEvent("detect", "Server detect command received.")
+		}
 		_ = s.publish("detect/ack", s.envelope("detect/ack", env.RequestID, map[string]any{
 			"status":         status,
 			"client_online":  true,
 			"wg_online":      wgOnline,
 			"platform":       runtime.GOOS,
 			"client_version": bind.Version,
+			"capabilities":   []string{"runtime_snapshot_v1", "current_interface_only"},
 			"message":        message,
 		}))
 	case s.topic("info"):
+		if fmt.Sprint(env.Payload["action"]) == "runtime_snapshot" {
+			result, err := s.runtimeSnapshot()
+			if err != nil {
+				result = map[string]any{"status": "failed", "error": "query_failed"}
+			}
+			result["action"] = "runtime_snapshot"
+			_ = s.publish("info/ack", s.envelope("info/ack", env.RequestID, result))
+			return
+		}
 		tunnelProtocol := tunnelProtocolFromPayload(env.Payload)
 		action := fmt.Sprint(env.Payload["action"])
 		if action == "" || action == "<nil>" {
 			action = "wg_show"
 		}
-		output, err := runWGShow(tunnelProtocol)
+		only, valid := currentInterfaceOnly(env.Payload)
+		if !valid {
+			_ = s.publish("info/ack", s.envelope("info/ack", env.RequestID, map[string]any{"status": "failed", "message": "current_interface_only must be boolean"}))
+			return
+		}
+		output, err := s.showInformation(tunnelProtocol, only)
 		level := "info"
 		message := "wg completed."
 		status := "applied"

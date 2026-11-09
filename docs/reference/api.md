@@ -219,3 +219,25 @@ AWG 配置写入使用 `tunnel_protocol=amneziawg` 和 `awg_version=1.5/2.0/3.1`
 | `POST` | `/api/v0/dev/reset-bootstrap` | 开发测试接口，仅 `WFM_ENABLE_DEV_TEST_API=true` 时注册。 |
 
 更新接口使用 HTTP Basic，用户名和密码取自已有绑定的 MQTT 凭据，并校验配置及动态端点有效、启用且已绑定。两个接口请求均含 `config_id`、`node_id`、`goos`、`goarch`；`artifact` 另含 `version` 和 `source`（`github_release` 或 `local_build`）。`check` 不触发编译；版本变化返回 `CLIENT_UPDATE_VERSION_CHANGED`（409），凭据无效返回 `CLIENT_UPDATE_UNAUTHORIZED`（401）。服务端本地构建复用平台白名单、构建锁及缓存，不接收任意命令、源码路径或版本。
+
+## 页面运行观测
+
+`POST /api/v1/configs/{config_id}/runtime-watch` 需要管理员会话。请求字段为 `viewer_id`（1–64 位字母、数字或连字符）、可选 `node_id`、`mesh` 和 `active`。前端每 30 秒续租，可见页面的观测需求由服务端合并；`active=false` 释放当前配置的查看登记。该接口不接受命令参数。
+
+端点运行投影提供 `endpoint_state`：`offline`、`not_started`、`online`。它不改变底层客户端可达性字段 `online` 的含义。静态节点不显示客户端运行状态。
+
+Mesh 工作区的每条连接提供 `health`：`state` 为 `healthy`、`interrupted` 或静态双方不适用的 `null`；`reason` 解释判定，`observations` 给出采集来源和数据。有握手记录不保证当前所有业务地址可达。
+
+端点控制的 `wg_show` 可选 `current_interface_only` 严格布尔值；仅此动作支持该选项，客户端能力未确认时返回 `CLIENT_OBSERVATION_UNSUPPORTED`。
+
+配置统计的 `online_node_count` 统计已确认接口运行的动态节点，`offline_node_count` 统计客户端离线，`not_started_node_count` 统计客户端在线但未确认接口运行；它们与端点三态对应。
+
+## 配置拓扑看板
+
+`GET /api/v1/configs/{config_id}/topology` 为需要管理员会话的只读接口，返回 `config`、`nodes`、`connections`、`issues` 和 `generated_at`。不存在的配置返回 404。
+
+所有节点（包括孤立与停用节点）保留在 `nodes`。每个有效双节点连接组只返回一次，以组 UUID 为 ID，以节点 UUID 确定稳定的 source/target；forward/reverse 各自保留真实 local_node_id/peer_node_id，不能按名称或数组位置解释方向。缺失方向为 null，异常组通过 issues 提示。
+
+健康判定沿用 Mesh 服务规则，但看板保留双方可用观测。节点与连接均为字段白名单，不返回私钥、PSK 明文或 AWG 秘密参数。查看整个配置时可续租 `runtime-watch`，设置 `mesh=true` 并省略 node_id；只读 GET 本身不启动采集。
+
+每条连接的 `validation_errors` 为服务端校验错误列表，覆盖重复启用、方向结构异常及现有 Mesh 校验规则；空列表表示无校验错误。该字段独立于运行健康状态，静态连接同样参与校验。前端优先以红线展示校验错误。

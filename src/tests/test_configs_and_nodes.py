@@ -3,6 +3,8 @@ from uuid import uuid4
 
 import pytest
 
+pytestmark = pytest.mark.usefixtures("mqtt_feature")
+
 
 @pytest.mark.parametrize("version", ["1.5", "2.0", "3.1"])
 @pytest.mark.parametrize("protocol", ["wireguard", "amneziawg"])
@@ -49,7 +51,7 @@ def test_node_only_randomization_does_not_change_other_nodes_or_config(authentic
         assert_unchanged(node, f"/api/v1/nodes/{node['id']}")
     params = draft["nodes"][nodes[0]["id"]]
     params["awg_i1"] = "<r 21>"  # Still editable after generation.
-    saved = client.put(f"/api/v1/nodes/{nodes[0]['id']}", json={"name": nodes[0]["name"], **params})
+    saved = client.put(f"/api/v1/nodes/{nodes[0]['id']}", json={**nodes[0], **params})
     assert saved.status_code == 200
     assert client.get(f"/api/v1/nodes/{nodes[0]['id']}").json()["data"]["awg_i1"] == "<r 21>"
     assert_unchanged(config, f"/api/v1/configs/{config['id']}")
@@ -426,7 +428,7 @@ def test_quick_mesh_option_adds_only_missing_gateway_forwarding_hooks(
     down = "iptables -D FORWARD -i %i -o %i -j ACCEPT"
     seeded = client.put(
         f"/api/v1/nodes/{nodes[0]['id']}",
-        json={"post_up": ["echo existing-up", f"  {up}  "], "post_down": ["echo existing-down"]},
+        json={**nodes[0], "post_up": ["echo existing-up", f"  {up}  "], "post_down": ["echo existing-down"]},
     )
     assert seeded.status_code == 200
     before = {node["id"]: client.get(f"/api/v1/nodes/{node['id']}").json()["data"] for node in nodes}

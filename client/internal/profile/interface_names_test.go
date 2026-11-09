@@ -12,7 +12,7 @@ func TestInterfaceNameMapping(t *testing.T) {
 	}{
 		{"short", "home", "home-node", "home-node"},
 		{"limit", "home", "home-1234567890", "home-1234567890"},
-		{"fifteen", "home", "home-12345678901", "home-12345678901"},
+		{"sixteen falls back", "home", "home-12345678901", "home"},
 		{"long node", "home", "home-123456789012", "home"},
 		{"long config", "abcdefghijklmnop", "abcdefghijklmnop-node", "abcdefghijkl"},
 		{"unicode node", "home", "home-u5317u4eacu8282u70b9", "home"},

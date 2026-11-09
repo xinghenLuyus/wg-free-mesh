@@ -601,7 +601,7 @@ class ClientStateRepositoryMixin:
             connection.execute(
                 """
                 UPDATE endpoint_runtime_status
-                SET online = ?,
+                SET wg_observed_at = ?, online = ?,
                     connectivity_state = ?,
                     wg_running = ?,
                     wg_runtime_state = ?,
@@ -613,6 +613,7 @@ class ClientStateRepositoryMixin:
                 WHERE config_id = ? AND node_id = ?
                 """,
                 (
+                    now,
                     1,
                     ConnectivityState.online.value,
                     int(client_online and wg_online),
@@ -786,7 +787,7 @@ class ClientStateRepositoryMixin:
             connection.execute(
                 """
                 UPDATE endpoint_runtime_status
-                SET online = ?,
+                SET wg_observed_at = ?, online = ?,
                     connectivity_state = ?,
                     wg_running = ?,
                     wg_runtime_state = ?,
@@ -799,6 +800,7 @@ class ClientStateRepositoryMixin:
                 WHERE config_id = ? AND node_id = ?
                 """,
                 (
+                    now,
                     1,
                     ConnectivityState.online.value,
                     int(client_online and wg_online),

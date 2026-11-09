@@ -87,10 +87,12 @@ class SnapshotService:
         self.restore_snapshot_archive(Path(snapshot.path), password)
 
     def restore_snapshot_archive(self, path: Path, password: str) -> None:
+        from app.services.runtime_observation_service import runtime_observation_service
         archive_path = Path(path)
         self._validate_archive(archive_path)
         with ZipFile(archive_path, "r") as archive:
             payload = self._decrypt_payload(archive, password)
+        runtime_observation_service.reset()
         self._clear_wireguard_dir()
         with ZipFile(BytesIO(payload), "r") as inner_archive:
             import_database_from_archive(inner_archive)

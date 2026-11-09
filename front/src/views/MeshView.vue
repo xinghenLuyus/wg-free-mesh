@@ -2,7 +2,7 @@
 import { Delete, EditPen, Key, Plus } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
-import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
 
@@ -10,6 +10,7 @@ import { ApiClientError } from '@/api/client'
 import { api } from '@/api/modules'
 import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useRealtime } from '@/composables/useRealtime'
+import { useRuntimeWatch } from '@/composables/useRuntimeWatch'
 import type {
   MeshWorkspaceUpdatedPayload,
   MeshConnectionDirectionRead,
@@ -24,6 +25,7 @@ import { translateMeshText } from '@/utils/meshText'
 import { notify } from '@/utils/notify'
 
 const route = useRoute()
+useRuntimeWatch(() => ({ configId: String(route.params.configId), nodeId: String(route.params.nodeId), mesh: true }))
 const { t } = useI18n()
 const actions = useAsyncActionGroup()
 const creatingConnection = actions.isPending('submit-connection')
@@ -73,7 +75,14 @@ const selectedPeer = computed(() => nodes.value.find((item) => item.id === form.
 const draftWarnings = computed(() => draft.value?.warnings ?? [])
 const dialogTitle = computed(() => (dialogMode.value === 'create' ? t('mesh.newConnection') : t('mesh.editConnection')))
 const submitText = computed(() => (dialogMode.value === 'create' ? t('mesh.create') : t('common.save')))
+let observationRefresh: ReturnType<typeof setTimeout> | undefined
+onBeforeUnmount(() => clearTimeout(observationRefresh))
 const realtime = useRealtime((event: RealtimeEvent) => {
+  if (event.type === 'mesh.observation.updated' && event.payload.config_id === String(route.params.configId)) {
+    clearTimeout(observationRefresh)
+    observationRefresh = setTimeout(() => { void load().catch(() => {}) }, 200)
+    return
+  }
   if (event.type !== 'mesh.workspace.updated') return
   const payload = event.payload as unknown as MeshWorkspaceUpdatedPayload
   if (payload.config_id !== String(route.params.configId) || payload.node_id !== currentNodeId.value) return
@@ -510,9 +519,21 @@ onMounted(async () => {
                   <el-tag v-if="connection.peer_disabled" type="info" size="small">
                     {{ t('mesh.peerNodeDisabled') }}
                   </el-tag>
-                  <el-tag :type="connection.has_preshared_key ? 'success' : 'info'" size="small">
-                    {{ connection.has_preshared_key ? t('mesh.pskConfigured') : t('mesh.pskMissing') }}
-                  </el-tag>
+                  <el-tooltip v-if="connection.health?.state" placement="bottom" trigger="hover" effect="light">
+                    <template #content>
+                      <div>{{ t('observation.' + ({ handshake: 'handshakeReason', disabled_or_invalid: 'disabled', both_offline: 'bothOffline', interface_stopped: 'stopped', missing_handshake_or_peer: 'missing', no_observation: 'none' }[connection.health.reason] || 'none')) }}</div>
+                      <div v-for="sample in connection.health.observations" :key="sample.node_id" style="padding-top:8px">
+                        <div>{{ t('observation.source') }}: {{ nodeNameById(sample.node_id) }}</div>
+                        <div>{{ t('observation.collected') }}: {{ sample.observed_at }}</div>
+                        <template v-if="sample.peer">
+                          <div>{{ t('observation.handshake') }}: {{ sample.peer.latest_handshake === '0' ? t('common.none') : new Date(Number(sample.peer.latest_handshake) * 1000).toLocaleString() }}</div>
+                          <div>{{ t('observation.rx') }}: {{ sample.peer.rx_bytes }}</div>
+                          <div>{{ t('observation.tx') }}: {{ sample.peer.tx_bytes }}</div>
+                        </template>
+                      </div>
+                    </template>
+                    <el-tag :type="connection.health.state === 'healthy' ? 'success' : 'info'" size="small">{{ t('observation.' + connection.health.state) }}</el-tag>
+                  </el-tooltip>
                 </div>
                 <p v-if="connection.integrity_status === 'broken' && connection.integrity_message" class="mesh-direction__integrity">
                   {{ meshText(connection.integrity_message) }}
@@ -550,7 +571,9 @@ onMounted(async () => {
               </div>
               <div>
                 <dt>{{ t('mesh.addressFamily') }}</dt>
-                <dd>{{ connection.forward.endpoint_ref_family?.toUpperCase() || t('common.none') }}</dd>
+                <dd>{{ connection.forward.endpoint_ref_family?.toUpperCase() || t('common.none') }}
+                  <el-tag :type="connection.has_preshared_key ? 'success' : 'info'" size="small" style="margin-left:12px">{{ connection.has_preshared_key ? t('mesh.pskConfigured') : t('mesh.pskMissing') }}</el-tag>
+                </dd>
               </div>
             </dl>
           </section>

@@ -7,10 +7,12 @@ from app.data.repositories.mcp_access import McpAccessRepositoryMixin
 from app.data.repositories.endpoint_helpers import EndpointHelpersRepositoryMixin
 from app.data.repositories.port_forwards import PortForwardRepositoryMixin
 from app.data.repositories.runtime_state import RuntimeStateRepositoryMixin
+from app.data.repositories.runtime_observations import RuntimeObservationRepositoryMixin
 from app.data.repositories.sync_settings import SyncSettingsRepositoryMixin
 
 
 class Store(
+    RuntimeObservationRepositoryMixin,
     ClientStateRepositoryMixin,
     ConfigMeshRepositoryMixin,
     McpAccessRepositoryMixin,

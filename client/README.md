@@ -234,3 +234,9 @@ Remove-Item Env:GOARCH
 ## 参考文档
 
 - [客户端设计](../docs/developer/client.md)
+
+## 运行观测与人工排错
+
+客户端通过固定的 `runtime_snapshot` MQTT info 动作返回当前绑定的结构化观测；握手和收发量使用脚本友好的精确字段，不上传 dump 或密钥。支持能力通过 detect ACK 声明。
+
+人工 `wg_show` 保留完整文本回显。可选 `current_interface_only` 布尔参数只限制接口范围，不改变人类可读格式；实际接口由本地绑定校验确定，不接受外部接口名或命令参数。该参数属于消息/API 选项，不是新增 CLI 命令。

@@ -84,3 +84,9 @@ Mesh 对是双向关系中的单向记录。一个双向 Mesh 对由同一个 `l
 | `to_port` | To 端口，也就是目的端口，对外暴露的访问端口。 |
 | `to_platform` | `linux` 或 `darwin`。 |
 | `protocol` | `tcp`、`udp` 或 `all`。 |
+
+## 最新运行观测
+
+`node_runtime_observations` 按端点保存一份最新观测，包含最近请求、查询状态、最近成功采集时间、客户端会话、采集实例标识及白名单 Peer 快照，不保存每分钟历史。查询失败保留成功快照，但不把历史值当成本轮成功结果。节点删除时级联清理，改为静态节点时保留数据而停止使用。
+
+`endpoint_runtime_status.wg_observed_at` 独立记录接口事实的观测时间，普通日志不会刷新它。数据库变化通过 Alembic 管理，支持 SQLite 与 PostgreSQL。应用快照仍为全量恢复；恢复的观测数据不代表当前采集实例已确认的运行事实。

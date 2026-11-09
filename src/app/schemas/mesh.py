@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
@@ -31,3 +32,22 @@ class MeshValidationRead(BaseModel):
     messages: list[str]
     errors: list[str] = []
     warnings: list[str] = []
+
+
+class MeshPeerObservationRead(BaseModel):
+    latest_handshake: str
+    rx_bytes: str
+    tx_bytes: str
+
+
+class MeshObservationRead(BaseModel):
+    node_id: str
+    observed_at: str
+    interface_state: Literal["running", "stopped"]
+    peer: MeshPeerObservationRead | None
+
+
+class MeshHealthRead(BaseModel):
+    state: Literal["healthy", "interrupted"] | None
+    reason: str
+    observations: list[MeshObservationRead]

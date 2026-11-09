@@ -1,4 +1,7 @@
 import httpx
+import pytest
+
+pytestmark = pytest.mark.usefixtures("mqtt_feature")
 
 from app.data.store import store
 

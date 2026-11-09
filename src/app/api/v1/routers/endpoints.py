@@ -24,6 +24,7 @@ class AppliedConfRequest(BaseModel):
 
 class ControlRequest(BaseModel):
     action: str = Field(pattern="^(start|stop|push_config|wg_show)$")
+    current_interface_only: bool = Field(default=False, strict=True)
 
 
 class ProbeBatchRequest(BaseModel):
@@ -139,7 +140,7 @@ def endpoint_logs(config_id: str, node_id: str) -> ApiResponse[list[dict[str, An
 
 @router.post("/configs/{config_id}/nodes/{node_id}/endpoint/control")
 async def endpoint_control(config_id: str, node_id: str, payload: ControlRequest) -> ApiResponse[dict[str, Any]]:
-    return ok(await control_plane_service.control_action(config_id, node_id, payload.action))
+    return ok(await control_plane_service.control_action(config_id, node_id, payload.action, current_interface_only=payload.current_interface_only))
 
 
 @router.post("/configs/{config_id}/endpoint/probe-batch")

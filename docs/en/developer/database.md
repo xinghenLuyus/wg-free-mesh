@@ -18,6 +18,8 @@ The database is the business source of truth. Read the source-of-truth section i
 
 Schema changes must go through Alembic migrations. Changing only `schema.py` will not update existing databases.
 
+Applied migrations do not run again. Additional columns or schema repairs require a subsequent migration that also handles databases where the target column already exists.
+
 Startup initializes and migrates the database so SQLite and PostgreSQL can move to the current schema.
 
 For databases without Alembic version records, initialization identifies the version from the schema and follows the migration chain to the current schema. See [Data Model](/en/reference/data-model) for AWG protocol, version, and extension storage rules.

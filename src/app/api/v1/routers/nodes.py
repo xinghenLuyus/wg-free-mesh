@@ -13,6 +13,29 @@ from app.services.control_plane_service import control_plane_service
 router = SessionProtectedAPIRouter(tags=["nodes"])
 
 
+class RuntimeWatchRequest(BaseModel):
+    viewer_id: str = Field(min_length=1, max_length=64, pattern=r"^[a-zA-Z0-9-]+$")
+    node_id: str = ""
+    mesh: bool = False
+    active: bool = True
+
+
+@router.post("/configs/{config_id}/runtime-watch")
+async def runtime_watch(config_id: str, payload: RuntimeWatchRequest):
+    from app.core.errors import AppError
+    from app.services.runtime_observation_service import runtime_observation_service as service
+    viewer = payload.viewer_id + ":" + config_id
+    try:
+        if payload.active:
+            service.watch(viewer, config_id, payload.node_id, payload.mesh)
+            await service.tick()
+        else:
+            service.leases.pop(viewer, None)
+    except ValueError as exc:
+        raise AppError("INVALID_RUNTIME_WATCH", str(exc), 400) from exc
+    return ok({"interval_seconds": 60})
+
+
 class NodeRequest(BaseModel):
     name: str = Field(min_length=1, max_length=128)
     ipv4_address: str | None = None

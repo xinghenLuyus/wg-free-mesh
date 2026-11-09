@@ -181,6 +181,7 @@ export interface ConfigRead {
   dynamic_node_count: number
   online_node_count: number
   offline_node_count: number
+  not_started_node_count: number
   disabled_node_count: number
   topology_invalid: boolean
   topology_error_count: number
@@ -202,6 +203,7 @@ export interface ConfigMutationRead extends ConfigRead {
 }
 
 export interface ConfigOverviewNodeCardRead {
+  endpoint_state: 'offline' | 'not_started' | 'online'
   id: string
   name: string
   node_type: 'dynamic' | 'static'
@@ -423,6 +425,7 @@ export interface MeshConnectionDirectionRead {
 }
 
 export interface MeshConnectionRead {
+  health: { state: 'healthy' | 'interrupted' | null; reason: string; observations: { node_id: string; observed_at: string; interface_state: string; peer: { latest_handshake: string; rx_bytes: string; tx_bytes: string } | null }[] }
   link_group_id: string
   peer_node: NodeRead
   enabled: boolean
@@ -491,6 +494,7 @@ export interface SyncStatusRead {
 }
 
 export interface RuntimeSnapshotItem {
+  endpoint_state: 'offline' | 'not_started' | 'online'
   node_id: string
   node_name: string
   node_type: 'dynamic' | 'static'
@@ -532,6 +536,7 @@ export interface ControlLogRead {
 export interface EndpointStatusRead {
   node: NodeRead
   runtime: {
+    endpoint_state: 'offline' | 'not_started' | 'online'
     online: boolean
     connectivity_state: string
     wg_running: boolean

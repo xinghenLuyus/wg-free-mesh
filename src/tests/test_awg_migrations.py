@@ -63,7 +63,13 @@ def test_upgrade_all_historical_schemas(monkeypatch, revision: str, unversioned:
             state = connection.execute(text("SELECT * FROM node_config_state WHERE id='state_old'")).mappings().one()
             assert state["confirmed_text"] == "original config"
             assert state["confirmed_version"] == 7
-            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == "0007_awg_versions"
+            assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == (
+                "0009_runtime_wg_observed_at"
+            )
+        assert "node_runtime_observations" in inspect(engine).get_table_names()
+        assert "wg_observed_at" in {
+            column["name"] for column in inspect(engine).get_columns("endpoint_runtime_status")
+        }
         assert "awg_options_json" in {column["name"] for column in inspect(engine).get_columns("nodes")}
     finally:
         reset_engine()

@@ -75,15 +75,23 @@ func mappedInterface(name, protocol string) (string, error) {
 
 // queryInterface distinguishes a genuinely absent device from command/permission failures.
 func queryInterface(name, protocol string) (string, string, error) {
+	return queryInterfaceUsing(name, protocol, readTool)
+}
+
+func queryInterfaceUsing(name, protocol string, read func(string, ...string) (string, error)) (string, string, error) {
 	actual, err := mappedInterface(name, protocol)
 	if err != nil || actual == "" {
 		return "", "", err
 	}
-	return queryDevice(actual, protocol)
+	return queryDeviceUsing(actual, protocol, read)
 }
 
 func queryDevice(actual, protocol string) (string, string, error) {
-	interfaces, err := readTool(protocol, "show", "interfaces")
+	return queryDeviceUsing(actual, protocol, readTool)
+}
+
+func queryDeviceUsing(actual, protocol string, read func(string, ...string) (string, error)) (string, string, error) {
+	interfaces, err := read(protocol, "show", "interfaces")
 	if err != nil {
 		return "", "", err
 	}
@@ -91,7 +99,7 @@ func queryDevice(actual, protocol string) (string, string, error) {
 		if item != actual {
 			continue
 		}
-		key, err := readTool(protocol, "show", actual, "public-key")
+		key, err := read(protocol, "show", actual, "public-key")
 		if err != nil {
 			return "", "", err
 		}
@@ -125,6 +133,10 @@ func (s *Session) tunnelStatus() (bool, error) {
 }
 
 func ownedRunning(p profile.Profile) ([]profile.Bundle, error) {
+	return ownedRunningUsing(p, readTool)
+}
+
+func ownedRunningUsing(p profile.Profile, read func(string, ...string) (string, error)) ([]profile.Bundle, error) {
 	bundles, err := candidates(p)
 	if err != nil {
 		return nil, err
@@ -139,7 +151,7 @@ func ownedRunning(p profile.Profile) ([]profile.Bundle, error) {
 			continue
 		}
 		seen[identity] = true
-		actual, key, err := queryInterface(m.InterfaceName, m.Protocol)
+		actual, key, err := queryInterfaceUsing(m.InterfaceName, m.Protocol, read)
 		if err != nil {
 			return nil, err
 		}
@@ -172,7 +184,7 @@ func ownedRunning(p profile.Profile) ([]profile.Bundle, error) {
 			if _, err = exec.LookPath(tunnelTool(protocol)); errors.Is(err, exec.ErrNotFound) {
 				continue
 			}
-			interfaces, err := toolOutput(protocol, "show", "interfaces")
+			interfaces, err := read(protocol, "show", "interfaces")
 			if err != nil {
 				return nil, err
 			}
@@ -180,7 +192,7 @@ func ownedRunning(p profile.Profile) ([]profile.Bundle, error) {
 				if live[protocol+"/"+device] {
 					continue
 				}
-				key, err := toolOutput(protocol, "show", device, "public-key")
+				key, err := read(protocol, "show", device, "public-key")
 				if err != nil {
 					return nil, err
 				}

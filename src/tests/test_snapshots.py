@@ -68,7 +68,7 @@ def test_snapshot_restore_roundtrip_uses_application_database(authenticated_clie
     assert loaded.json()["data"]["name"] == "snapshot_config"
 
 
-def test_snapshot_restore_preserves_client_mqtt_password(authenticated_client: TestClient) -> None:
+def test_snapshot_restore_preserves_client_mqtt_password(authenticated_client: TestClient, mqtt_feature) -> None:
     config_response = authenticated_client.post("/api/v1/configs", json={"name": "snapshot_mqtt"})
     assert config_response.status_code == 200
     config = config_response.json()["data"]

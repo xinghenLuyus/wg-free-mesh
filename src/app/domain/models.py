@@ -147,6 +147,7 @@ class Config(BaseModel):
     dynamic_node_count: int = 0
     online_node_count: int = 0
     offline_node_count: int = 0
+    not_started_node_count: int = 0
     disabled_node_count: int = 0
     topology_invalid: bool = False
     topology_error_count: int = 0
@@ -252,6 +253,7 @@ class EndpointRuntimeStatus(BaseModel):
     online: bool = False
     connectivity_state: ConnectivityState = ConnectivityState.unknown
     wg_running: bool = False
+    wg_observed_at: datetime | None = None
     wg_runtime_state: WgRuntimeState = WgRuntimeState.unknown
     config_sync_state: ConfigSyncState = ConfigSyncState.unknown
     peers_online: int = 0

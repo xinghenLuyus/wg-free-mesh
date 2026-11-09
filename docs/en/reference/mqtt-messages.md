@@ -456,3 +456,13 @@ Deny response:
 ```
 
 When an endpoint client is reset, the backend clears its client state, deletes or disables its EMQX user, and attempts to disconnect the corresponding MQTT client.
+
+## Runtime observations
+
+While a relevant page is visible, the server probes its scope every 60 seconds. Hidden pages stop renewing their viewing registrations, which expire within 90 seconds. An SSE connection alone does not request collection. Existing low-frequency client heartbeats remain unchanged.
+
+Clients advertise `runtime_snapshot_v1` in `detect/ack.capabilities`. The fixed `info` action `runtime_snapshot` returns the bound interface state and Peer public keys, handshake Unix timestamps, and cumulative Rx/Tx through `info/ack`. Byte counters are decimal strings. Collection creates no control logs and returns no secrets or interfaces belonging to other bindings.
+
+Manual `wg_show` retains its original text output. Optional boolean `current_interface_only=true` restricts it to the locally verified bound interface; omitting it preserves existing behavior. Interface names, commands, executable paths, and argument lists cannot be supplied. The server rejects scoped queries until client capability is confirmed.
+
+Requests are correlated by ID, node, config, and client session. Timed-out or late responses cannot replace newer results. Successful snapshots are valid for 150 seconds; query failure is not a missing handshake.

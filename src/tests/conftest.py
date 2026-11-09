@@ -44,3 +44,16 @@ def auth_headers(client: TestClient) -> dict[str, str]:
 def authenticated_client(client: TestClient, auth_headers: dict[str, str]) -> TestClient:
     client.headers.update(auth_headers)
     return client
+
+
+@pytest.fixture()
+def mqtt_feature(client: TestClient, monkeypatch) -> None:
+    """Enable business rules after startup, without starting MQTT or using EMQX."""
+    import httpx
+    from app.core.config import settings
+    from app.services.emqx_service import emqx_service
+
+    monkeypatch.setattr(settings, "enable_mqtt_services", True)
+    for method in ("upsert_server_user", "upsert_user", "delete_user", "disconnect_node_client"):
+        monkeypatch.setattr(emqx_service, method, lambda **kwargs: httpx.Response(204))
+    monkeypatch.setattr(emqx_service, "list_user_ids", lambda: [])

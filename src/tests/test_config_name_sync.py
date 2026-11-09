@@ -16,7 +16,7 @@ def test_rename_changes_configuration_hash(authenticated_client: TestClient) -> 
     renamed_config = client.get(url).json()["data"]
     assert renamed_config["sha256"] != original["sha256"]
     assert f"# Interface: {name}_new-a" in renamed_config["content"]
-    assert client.put(f"/api/v1/nodes/{node['id']}", json={"name": "b"}).status_code == 200
+    assert client.put(f"/api/v1/nodes/{node['id']}", json={**node, "name": "b"}).status_code == 200
     renamed_node = client.get(url).json()["data"]
     assert renamed_node["sha256"] != renamed_config["sha256"]
     assert f"# Interface: {name}_new-b" in renamed_node["content"]

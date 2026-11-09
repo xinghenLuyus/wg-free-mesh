@@ -84,3 +84,9 @@ Port-forward rules are managed by the tool.
 | `to_port` | To port: the externally exposed access port. |
 | `to_platform` | `linux` or `darwin`. |
 | `protocol` | `tcp`, `udp`, or `all`. |
+
+## Latest runtime observations
+
+`node_runtime_observations` stores one latest observation per endpoint: request metadata, query status, latest successful collection time, client session, collector identity, and a whitelisted Peer snapshot. It does not store minute-by-minute history. Failures preserve successful data without treating it as a successful current result. Endpoint deletion cascades; conversion to static retains but stops using observations.
+
+`endpoint_runtime_status.wg_observed_at` independently timestamps interface observations; ordinary logs do not refresh it. Alembic manages schema changes for SQLite and PostgreSQL. Application snapshots retain full database restore semantics; restored observations do not prove runtime facts for the current collector.

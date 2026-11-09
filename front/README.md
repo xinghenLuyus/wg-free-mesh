@@ -149,3 +149,9 @@ pnpm run build
 ```
 
 构建完成后会生成 `front/dist`，供后端或 Docker 直接托管。
+
+## 拓扑看板
+
+独立路由 `/configs/:configId/topology` 不嵌套 AppLayout，通过配置节点工具栏在新标签页打开。渲染采用原生 SVG，不引入额外图形依赖；接口类型集中在 `src/types/topology.ts`，数据源为服务端配置级只读投影。
+
+节点坐标、颜色只保存在当前浏览器；业务方向与健康判定均由后端提供。状态刷新不重排，图形不承担配置编辑。相关后端契约测试位于 `src/tests/test_topology_board.py`。

@@ -148,6 +148,7 @@ endpoint_runtime_status = Table(
     Column("online", Integer, nullable=False, default=False, server_default="0"),
     Column("connectivity_state", String, nullable=False),
     Column("wg_running", Integer, nullable=False, default=False, server_default="0"),
+    Column("wg_observed_at", String),
     Column("wg_runtime_state", String, nullable=False),
     Column("config_sync_state", String, nullable=False),
     Column("peers_online", Integer, nullable=False, default=0, server_default="0"),
@@ -195,6 +196,22 @@ node_client_state = Table(
     Column("last_event_at", String),
     Column("created_at", String, nullable=False),
     Column("updated_at", String, nullable=False),
+)
+
+node_runtime_observations = Table(
+    "node_runtime_observations",
+    metadata,
+    Column("node_id", String, ForeignKey("nodes.id", ondelete="CASCADE"), primary_key=True),
+    Column("config_id", String, ForeignKey("configs.id", ondelete="CASCADE"), nullable=False),
+    Column("request_id", String, nullable=False, server_default=""),
+    Column("requested_at", String),
+    Column("completed_at", String),
+    Column("query_status", String, nullable=False, server_default="unknown"),
+    Column("error_code", String, nullable=False, server_default=""),
+    Column("observed_at", String),
+    Column("session_id", String, nullable=False, server_default=""),
+    Column("collector_id", String, nullable=False, server_default=""),
+    Column("snapshot_json", Text, nullable=False, server_default="{}"),
 )
 
 endpoint_control_logs = Table(

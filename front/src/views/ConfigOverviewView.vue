@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { CollectionTag, Key, Plus, Setting } from '@element-plus/icons-vue'
+import { CollectionTag, Key, Plus, Setting, Share } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
@@ -12,6 +12,7 @@ import InterfaceNameHint from '@/components/common/InterfaceNameHint.vue'
 import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useConfigOverviewPrefs } from '@/composables/useConfigOverviewPrefs'
 import { useRealtime } from '@/composables/useRealtime'
+import { useRuntimeWatch } from '@/composables/useRuntimeWatch'
 import type {
   ConfigOverviewNodeCardRead,
   ConfigOverviewRead,
@@ -32,6 +33,7 @@ type ViewMode = 'grid' | 'list'
 type SortKey = 'name' | 'virtual_ip' | 'created_at' | 'online' | 'node_type'
 
 const route = useRoute()
+useRuntimeWatch(() => ({ configId: String(route.params.configId) }))
 const router = useRouter()
 const { t } = useI18n()
 const actions = useAsyncActionGroup()
@@ -80,7 +82,7 @@ const realtime = useRealtime((event: RealtimeEvent) => {
       ...overview.value,
       stats: {
         ...overview.value.stats,
-        online_nodes: payload.items.filter((item) => activeDynamicIds.has(item.node_id) && item.online).length,
+        online_nodes: payload.items.filter((item) => activeDynamicIds.has(item.node_id) && item.endpoint_state === 'online').length,
       },
       runtime_snapshot: payload.items,
       node_cards: overview.value.node_cards.map((card) => {
@@ -88,7 +90,8 @@ const realtime = useRealtime((event: RealtimeEvent) => {
         if (!runtime) return card
         return {
           ...card,
-          online: card.node_type === 'dynamic' ? runtime.online : false,
+          endpoint_state: runtime.endpoint_state,
+          online: card.node_type === 'dynamic' ? runtime.endpoint_state === 'online' : false,
           peers_total: runtime.peers_total,
         }
       }),
@@ -638,6 +641,7 @@ watch(
         <div class="node-toolbar__actions">
           <el-button class="soft-action" :icon="CollectionTag" @click="openTagManager">{{ t('configOverview.tagManager') }}</el-button>
           <el-button type="primary" :icon="Plus" @click="openCreate">{{ t('configOverview.createEndpoint') }}</el-button>
+          <a class="topology-link" :href="router.resolve('/configs/' + overview.config.id + '/topology').href" target="_blank" rel="noopener"><el-button class="soft-action" :icon="Share">{{ t('topology.title') }}</el-button></a>
         </div>
         <div class="node-toolbar__filters">
           <el-select v-model="sortKey" style="width: 140px">
@@ -670,7 +674,7 @@ watch(
             <h3>{{ node.name }}</h3>
             <div class="node-card__status-tags">
               <el-tag v-if="node.mesh_error" type="danger">{{ t('configOverview.meshError') }}</el-tag>
-              <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'">{{ node.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}</el-tag>
+              <el-tag v-if="node.node_type === 'dynamic'" :type="node.endpoint_state === 'online' ? 'success' : node.endpoint_state === 'not_started' ? 'warning' : 'info'">{{ t('observation.' + node.endpoint_state) }}</el-tag>
             </div>
           </div>
           <dl class="node-card__meta">
@@ -758,7 +762,7 @@ watch(
               </div>
               <div class="node-strip-card__status-tags">
                 <el-tag v-if="node.mesh_error" type="danger" size="small">{{ t('configOverview.meshError') }}</el-tag>
-                <el-tag v-if="node.node_type === 'dynamic'" :type="node.online ? 'success' : 'info'" size="small">{{ node.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}</el-tag>
+                <el-tag v-if="node.node_type === 'dynamic'" :type="node.endpoint_state === 'online' ? 'success' : node.endpoint_state === 'not_started' ? 'warning' : 'info'" size="small">{{ t('observation.' + node.endpoint_state) }}</el-tag>
               </div>
             </div>
             <div class="node-strip-card__tags">
@@ -1062,6 +1066,9 @@ watch(
 .cfg-prop-value { color: var(--app-text-strong); font-weight: 700; }
 .node-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--app-border-soft); }
 .node-toolbar__actions, .node-toolbar__filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.node-toolbar__actions { gap: 12px; }
+.node-toolbar__actions > .el-button + .el-button { margin-left: 0; }
+.topology-link, .topology-link:hover, .topology-link:focus-visible { display: inline-flex; text-decoration: none; }
 .nodes-section { display: grid; gap: 16px; }
 .node-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; }
 .node-card { display: grid; gap: 14px; padding: 18px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface-elevated); text-align: left; cursor: pointer; box-shadow: var(--app-shadow-sm); transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }

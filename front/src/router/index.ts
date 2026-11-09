@@ -44,6 +44,7 @@ export const router = createRouter({
   routes: [
     { path: '/login', component: LoginView },
     { path: '/setup', component: SetupView },
+    { path: '/configs/:configId/topology', component: () => import('@/views/TopologyBoardView.vue') },
     {
       path: '/',
       component: AppLayout,

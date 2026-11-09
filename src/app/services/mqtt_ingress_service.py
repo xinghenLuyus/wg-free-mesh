@@ -17,7 +17,7 @@ from app.services.emqx_reconcile_service import emqx_reconcile_service
 from app.services.node_runtime_service import node_runtime_service
 from app.services.realtime_service import realtime_service
 
-DETECT_INTERVAL_SECONDS = 120
+DETECT_INTERVAL_SECONDS = 5
 DETECT_ACK_TIMEOUT_SECONDS = 10
 
 
@@ -168,6 +168,14 @@ class MqttIngressService:
         body = self._decode_payload(payload)
         boot_id = str(body.get("boot_id") or "")
         session_id = str(body.get("session_id") or "")
+        if kind == "event" and session_id:
+            current_session = store.get_client_state(config_id, node_id).get("session_id")
+            nested = body.get("payload")
+            if isinstance(nested, dict) and nested.get("event") == "offline" and current_session and current_session != session_id:
+                return
+        from app.services.runtime_observation_service import runtime_observation_service
+        if await runtime_observation_service.receive(config_id, node_id, kind, body):
+            return
         if kind == "heartbeat":
             await node_runtime_service.apply_heartbeat(config_id, node_id, body, boot_id=boot_id, session_id=session_id)
         elif kind == "event":
@@ -178,6 +186,10 @@ class MqttIngressService:
             request_id = str(nested.get("request_id") or body.get("request_id") or "")
             action = str(nested.get("action") or body.get("action") or "")
             output = str(nested.get("output") or body.get("output") or "")
+            if event == "detect" and any(p["key"] == (config_id, node_id) and not p["structured"] for p in runtime_observation_service.pending.values()):
+                # Older agents emit a diagnostic event for each automatic detect.
+                # Its ACK is the observation; do not evict manual control logs.
+                return
             await node_runtime_service.apply_event(
                 config_id,
                 node_id,
@@ -222,9 +234,8 @@ class MqttIngressService:
                 break
             except asyncio.TimeoutError:
                 pass
-            if not self.is_enabled() or self._client is None or realtime_service.subscriber_count <= 0:
-                continue
-            await self._probe_bound_clients()
+            from app.services.runtime_observation_service import runtime_observation_service
+            await runtime_observation_service.tick()
 
     async def _probe_bound_clients(self) -> None:
         store.reconcile_client_timeouts()

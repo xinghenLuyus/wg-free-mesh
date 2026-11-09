@@ -69,6 +69,20 @@ Check:
 - Whether endpoint control logs contain failures.
 - Whether nodes can reach each other through virtual IPs.
 
+## Topology board
+
+Click **Topology board** above the node list in a config to open all its nodes and direct Mesh relationships in a new tab. The board is read-only and does not edit configs.
+
+Disabled nodes and connections remain visible, using dashed circular borders and dashed lines respectively. They can still be selected to view details. A dashed **Disabled** legend entry appears while any disabled nodes or connections exist.
+
+Select a circular node for details and adjacent connections. Hover or select a thin connection to reveal both arrows and their separate AllowedIPs. Connection details include available observations from both ends, with handshakes and cumulative transfers. Static-to-static connections have no runtime health state. A recorded handshake does not guarantee current reachability of every business address.
+
+Multiple Mesh pairs between the same endpoints appear as separate curves and can be selected independently. Connection numbers distinguish pairs between those endpoints; details also show their enabled status and Mesh pair ID. Only one Mesh pair between the same endpoints may be enabled.
+
+Mesh validation errors use red lines, including duplicate enabled pairs, conflicting directions, or invalid endpoint configuration. Select a connection to see the cause. Offline clients or interrupted handshakes still use gray lines. The red validation legend appears only while errors exist.
+
+Drag nodes or the canvas, scroll to zoom, and use **Fit view** to arrange the view. Positions and marker colors stay in the current browser, not in the database or snapshots. The board follows console language and light/dark themes, with no theme switch on the board itself. Hidden pages stop renewing active collection demand.
+
 ## Next steps
 
 - To generate topologies automatically, read [Quick Mesh](/en/usage/quick-mesh).

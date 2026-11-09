@@ -9,7 +9,7 @@ from app.services.control_plane_service import control_plane_service
 
 
 def test_mcp_endpoint_requires_bearer_token(client: TestClient) -> None:
-    pytest.importorskip("mcp")
+    pytest.importorskip("mcp.server.fastmcp", exc_type=ImportError)
 
     response = client.post("/mcp")
     slash_response = client.post("/mcp/")

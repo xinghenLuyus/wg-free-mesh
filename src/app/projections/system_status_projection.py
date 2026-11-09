@@ -43,7 +43,7 @@ class SystemStatusProjection:
                 "nodes": len(nodes),
                 "dynamic_nodes": len([node for node in nodes if node.enabled and effective_node_type(node) == NodeType.dynamic]),
                 "online_nodes": len(
-                    [runtime for runtime in runtimes if str(runtime["node_id"]) in enabled_dynamic_node_ids and bool(runtime["online"])]
+                    [runtime for runtime in runtimes if str(runtime["node_id"]) in enabled_dynamic_node_ids and runtime.get("endpoint_state") == "online"]
                 ),
             },
             "sync": {"issue_count": 0, "issues": []},

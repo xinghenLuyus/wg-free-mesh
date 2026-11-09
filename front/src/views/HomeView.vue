@@ -13,6 +13,7 @@ import type { ConfigProtocolModel } from '@/components/config/ConfigProtocolForm
 import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useHomePrefs } from '@/composables/useHomePrefs'
 import { useRealtime } from '@/composables/useRealtime'
+import { useRuntimeWatch } from '@/composables/useRuntimeWatch'
 import type { ConfigListUpdatedPayload, ConfigRead, RealtimeEvent } from '@/types/api'
 import { cidrRule, requiredTextRule } from '@/utils/formRules'
 import { notify } from '@/utils/notify'
@@ -25,6 +26,7 @@ const changingProtocol = shallowRef(false)
 const { statusFilter, sortKey, layoutMode } = useHomePrefs()
 
 const configs = shallowRef<ConfigRead[]>([])
+useRuntimeWatch(() => configs.value.map(config => ({ configId: config.id })))
 const mqttServicesEnabled = shallowRef(true)
 let lastRealtimeVersion = 0
 const realtime = useRealtime((event: RealtimeEvent) => {

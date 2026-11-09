@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, Delete, Key, Setting } from '@element-plus/icons-vue'
+import { ArrowLeft, Connection, Delete, Key, Monitor, Setting } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
@@ -12,6 +12,7 @@ import { api } from '@/api/modules'
 import InterfaceNameHint from '@/components/common/InterfaceNameHint.vue'
 import { useAsyncActionGroup } from '@/composables/useAsyncActionGroup'
 import { useRealtime } from '@/composables/useRealtime'
+import { useRuntimeWatch } from '@/composables/useRuntimeWatch'
 import { completePageFadeOut } from '@/router/navigationProgress'
 import type {
   ConfigRead,
@@ -41,6 +42,7 @@ watch(() => props.workspaceRoute, (next) => {
 })
 
 const { t } = useI18n()
+useRuntimeWatch(() => ({ configId: displayedConfigId, nodeId: displayedNodeId }))
 const actions = useAsyncActionGroup()
 const generatingKeys = actions.isPending('generate-keys')
 const savingSettings = actions.isPending('save-settings')
@@ -380,11 +382,14 @@ onMounted(async () => {
         <div class="node-header-card__title">
           <h1>{{ node.name }}</h1>
           <div class="node-header-card__status">
-            <el-tag type="info">{{ nodeTypeLabel(node.node_type) }}</el-tag>
+            <span class="node-type-label">
+              <el-icon aria-hidden="true"><component :is="node.node_type === 'dynamic' ? Connection : Monitor" /></el-icon>
+              {{ nodeTypeLabel(node.node_type) }}
+            </span>
             <el-tag v-if="disabledNode" type="info">{{ t('nodeWorkspace.disabledEndpoint') }}</el-tag>
-            <el-tag v-else-if="node.node_type === 'dynamic'" :type="endpointStatus?.runtime.online ? 'success' : 'info'">
-              {{ endpointStatus?.runtime.online ? t('nodeWorkspace.online') : t('nodeWorkspace.offline') }}
-            </el-tag>
+            <span v-else-if="node.node_type === 'dynamic'" class="endpoint-indicator" :data-state="endpointStatus?.runtime.endpoint_state || 'offline'">
+              <i />{{ t('observation.' + (endpointStatus?.runtime.endpoint_state || 'offline')) }}
+            </span>
           </div>
         </div>
         <div v-if="node.tags.length" class="node-header-card__tags">
@@ -573,6 +578,12 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.node-type-label { display:inline-flex; align-items:center; gap:6px; color:var(--app-muted); font-size:13px; font-weight:500; white-space:nowrap; }
+.node-type-label .el-icon { font-size:15px; }
+.endpoint-indicator { display:inline-flex; align-items:center; gap:7px; padding-left:10px; border-left:1px solid var(--app-border); font-size:13px; color:var(--app-text-secondary); }
+.endpoint-indicator i { width:8px; height:8px; border-radius:50%; background:var(--el-color-info); }
+.endpoint-indicator[data-state='online'] i { background:var(--el-color-success); }
+.endpoint-indicator[data-state='not_started'] i { background:var(--el-color-warning); }
 .node-workspace { display: grid; gap: 20px; }
 .node-workspace__placeholder-content { display: grid; align-content: start; gap: 18px; min-height: 220px; padding: 22px; border: 1px solid var(--app-border); border-radius: 8px; background: var(--app-surface); }
 .node-header-card { padding: 22px; border: 1px solid var(--app-border); border-radius: 8px; background: linear-gradient(180deg, var(--app-surface) 0%, var(--app-surface-elevated) 100%); box-shadow: var(--app-shadow-md); }

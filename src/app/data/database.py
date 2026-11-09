@@ -83,6 +83,8 @@ def _revision_rank(revision: str) -> int:
         "0005_port_forward_enabled": 5,
         "0006_mcp_access": 6,
         "0007_awg_versions": 7,
+        "0008_runtime_observations": 8,
+        "0009_runtime_wg_observed_at": 9,
     }
     return ranks.get(revision, 0)
 

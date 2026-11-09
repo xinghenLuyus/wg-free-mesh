@@ -219,3 +219,25 @@ When updating a Mesh pair, `forward` and `reverse` are matched to existing recor
 | `POST` | `/api/v0/dev/reset-bootstrap` | Dev/test endpoint registered only when `WFM_ENABLE_DEV_TEST_API=true`. |
 
 Update endpoints use HTTP Basic with an existing binding's MQTT username and password. The configuration and dynamic node must be valid, enabled, and bound. Both requests contain `config_id`, `node_id`, `goos`, and `goarch`; `artifact` also contains `version` and `source` (`github_release` or `local_build`). `check` never builds. A changed version returns `CLIENT_UPDATE_VERSION_CHANGED` (409); invalid credentials return `CLIENT_UPDATE_UNAUTHORIZED` (401). Local builds reuse the target allowlist, build locks, and cache, accepting no arbitrary command, source path, or version.
+
+## Page-scoped runtime observations
+
+`POST /api/v1/configs/{config_id}/runtime-watch` requires an administrator session. Fields are `viewer_id` (1–64 letters, digits, or hyphens), optional `node_id`, `mesh`, and `active`. Visible pages renew every 30 seconds; the server merges collection demand. `active=false` releases the registration for that config. No command arguments are accepted.
+
+Endpoint projections expose `endpoint_state`: `offline`, `not_started`, or `online`. The underlying `online` field still means client reachability. Static nodes do not show client runtime status.
+
+Each Mesh workspace connection exposes `health`: `state` is `healthy`, `interrupted`, or `null` when both nodes are static. `reason` explains the decision and `observations` identifies sources and data. A recorded handshake does not guarantee current reachability of all business addresses.
+
+The endpoint control action `wg_show` accepts optional strict boolean `current_interface_only`. Other actions reject this option; unconfirmed client capability returns `CLIENT_OBSERVATION_UNSUPPORTED`.
+
+Config counters follow endpoint display states: `online_node_count` counts dynamic nodes with confirmed running interfaces, `offline_node_count` counts unreachable clients, and `not_started_node_count` counts reachable clients without a confirmed running interface.
+
+## Config topology board
+
+`GET /api/v1/configs/{config_id}/topology` is a session-protected, read-only endpoint returning `config`, `nodes`, `connections`, `issues`, and `generated_at`. Missing configs return 404.
+
+Nodes include isolated and disabled endpoints. Each valid two-node connection group appears once under its group UUID; node UUIDs provide stable source/target ordering. Each direction retains its actual local_node_id/peer_node_id, independent of names or array order. Missing directions are null; malformed groups appear in issues.
+
+Health uses the existing Mesh rules while retaining observations from both ends. Explicit field allowlists exclude private keys, plaintext PSKs, and AWG secrets. To observe an entire config, renew runtime-watch with mesh=true and no node_id. The GET itself never starts collection.
+
+Each connection includes a server-provided `validation_errors` list covering duplicate enabled pairs, invalid direction structure, and existing Mesh validation rules. An empty list means no validation errors. This field is independent of runtime health; static connections are also validated. The frontend gives validation errors priority using red lines.

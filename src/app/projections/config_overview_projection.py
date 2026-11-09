@@ -33,7 +33,8 @@ class ConfigOverviewProjection:
             "created_at": node.created_at.isoformat(),
             "online": node.enabled
             and effective_node_type(node) == NodeType.dynamic
-            and bool(runtime_by_node_id.get(node.id, {}).get("online", False)),
+            and runtime_by_node_id.get(node.id, {}).get("endpoint_state") == "online",
+            "endpoint_state": runtime_by_node_id.get(node.id, {}).get("endpoint_state", "offline"),
             "peers_total": 0 if not node.enabled else cast(int, runtime_by_node_id.get(node.id, {}).get("peers_total", 0) or 0),
             "mesh_error": node.id in invalid_node_ids,
         }
@@ -45,7 +46,7 @@ class ConfigOverviewProjection:
                 "static_nodes": len([node for node in active_nodes if effective_node_type(node) == NodeType.static]),
                 "disabled_nodes": len(disabled_nodes),
                 "online_nodes": len(
-                    [item for item in runtimes if str(item["node_id"]) in dynamic_node_ids and bool(item["online"])]
+                    [item for item in runtimes if str(item["node_id"]) in dynamic_node_ids and item.get("endpoint_state") == "online"]
                 ),
                 "peer_links": peer_link_count,
             },

@@ -36,6 +36,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index("uq_port_forward_rules_to_port", table_name="port_forward_rules")
+    op.drop_index("uq_port_forward_rules_to_port", table_name="port_forward_rules", if_exists=True)
     op.drop_index("ix_port_forward_rules_config_id", table_name="port_forward_rules")
     op.drop_table("port_forward_rules")

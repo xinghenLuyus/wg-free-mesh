@@ -10,6 +10,7 @@ from app.core.responses import ApiResponse, ok
 from app.core.validation import normalize_cidr, strip_optional_text, strip_required_text
 from app.domain import awg
 from app.services.control_plane_service import control_plane_service
+from app.schemas.topology import TopologyBoardRead
 
 router = SessionProtectedAPIRouter(prefix="/configs", tags=["configs"])
 
@@ -105,6 +106,12 @@ def generate_awg_draft(payload: AwgGenerateRequest) -> ApiResponse[dict[str, obj
 @router.get("/{config_id}")
 def get_config(config_id: str) -> ApiResponse[dict[str, Any]]:
     return ok(control_plane_service.get_config(config_id).model_dump(mode="json"))
+
+
+@router.get("/{config_id}/topology")
+def read_topology(config_id: str) -> ApiResponse[TopologyBoardRead]:
+    from app.services.topology_board_service import topology_board
+    return ok(TopologyBoardRead.model_validate(topology_board(config_id)))
 
 
 @router.put("/{config_id}")

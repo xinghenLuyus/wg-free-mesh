@@ -114,3 +114,5 @@ Publish after database writes. Common sources:
 - Snapshot operations.
 
 Mesh changes should also refresh config list and system status so home statistics stay current.
+
+Completed runtime collection publishes `mesh.observation.updated` with `config_id`. Mesh pages coalesce refreshes and reload the server workspace projection rather than computing health in the browser.

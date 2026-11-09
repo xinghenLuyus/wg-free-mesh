@@ -132,6 +132,7 @@ class RuntimeStateRepositoryMixin:
         return states_by_config
 
     def list_runtime_snapshot(self, config_id: str) -> list[dict[str, object]]:
+        from app.services.runtime_observation_service import endpoint_state
         mqtt_enabled = mqtt_services_enabled()
         if mqtt_enabled:
             self.reconcile_client_timeouts(config_id)
@@ -192,6 +193,7 @@ class RuntimeStateRepositoryMixin:
                     "node_type": node_type,
                     "online": runtime.online,
                     "connectivity_state": runtime.connectivity_state,
+                    "endpoint_state": endpoint_state(runtime),
                     "wg_running": runtime.wg_running,
                     "wg_runtime_state": runtime.wg_runtime_state,
                     "config_sync_state": runtime.config_sync_state,

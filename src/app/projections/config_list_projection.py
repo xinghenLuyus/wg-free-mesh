@@ -16,6 +16,7 @@ class ConfigListProjection:
         states_by_config: dict[str, dict[str, object]],
         topology_for: Callable[[str], dict[str, object]],
     ) -> list[Config]:
+        from app.services.runtime_observation_service import endpoint_state
         result: list[Config] = []
         nodes_by_config: dict[str, list[Node]] = {}
         for node in nodes:
@@ -31,14 +32,15 @@ class ConfigListProjection:
                     node
                     for node in dynamic_nodes
                     if config.enabled
-                    and bool(getattr(runtime_map.get(node.id), "online", False))
+                    and endpoint_state(runtime_map.get(node.id)) == "online"
                 ]
             )
             result.append(
                 config.model_copy(
                     update={
                         "online_node_count": online_node_count,
-                        "offline_node_count": max(len(dynamic_nodes) - online_node_count, 0),
+                        "offline_node_count": sum(endpoint_state(runtime_map.get(node.id)) == "offline" for node in dynamic_nodes),
+                        "not_started_node_count": sum(endpoint_state(runtime_map.get(node.id)) == "not_started" for node in dynamic_nodes),
                         "dynamic_node_count": len(dynamic_nodes),
                         "disabled_node_count": len(disabled_nodes),
                         "topology_invalid": bool(config.enabled) and not bool(topology["valid"]),
