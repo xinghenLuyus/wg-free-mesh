@@ -8,6 +8,8 @@ Authorization: Bearer <mcp-token>
 
 MCP 的目标是让 AI 能读懂当前系统状态，并在用户确认后执行有限写操作。
 
+Streamable HTTP 的 Host 使用 `WFM_PUBLIC_ORIGIN` 中的主机和端口，未设置时允许本机回环地址。POST 请求体上限为 4 MiB。批量配置下载的交互式选择使用逗号分隔的端点 ID。
+
 ## 资源
 
 | Resource URI | 作用 |
@@ -88,6 +90,8 @@ MCP 的目标是让 AI 能读懂当前系统状态，并在用户确认后执行
 部分写工具支持 MCP elicitation 追问缺失参数，例如客户端下载目标、配置批量下载节点列表、快照 ID。
 
 追问只负责补齐参数，不代表执行。真正写入前仍会进入确认流程。
+
+写操作要求客户端声明支持 MCP elicitation。缺少该能力时，服务端会拒绝操作。
 
 ## 审计
 

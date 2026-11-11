@@ -16,7 +16,7 @@ WG Free Mesh 由控制台、后端、数据库、Go 客户端、EMQX 和 Docker 
 | 数据迁移 | Alembic | `>=1.13.0` | `src/pyproject.toml` |
 | PostgreSQL 驱动 | psycopg | `>=3.2.0` | `src/pyproject.toml` |
 | MQTT 客户端 | aiomqtt | `>=2.3.0` | `src/pyproject.toml` |
-| MCP 服务 | mcp | `>=1.12.0` | `src/pyproject.toml` |
+| MCP 服务 | mcp | `2.3.0` | `src/pyproject.toml` |
 | 前端运行时 | Node.js | Docker 构建使用 `node:22-alpine` | `docker/app/backend.Dockerfile` |
 | 包管理器 | pnpm | `11.17.0` | `docker/app/backend.Dockerfile` |
 | 前端框架 | Vue | `3.5.32` | `front/pnpm-lock.yaml` |

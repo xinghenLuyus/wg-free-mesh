@@ -44,7 +44,7 @@ Permissions are:
 - `read`: resources and `read_*` tools only.
 - `write`: both `read_*` and `write_*` tools; write operations still require confirmation.
 
-MCP tokens are stored in plaintext in the database so the system can identify, display, revoke, and audit them.
+MCP tokens are stored in plaintext so they can be copied in full. The AI Integration list masks the middle with `***`. The revoke endpoint, `POST /api/v1/mcp-access/tokens/{token_id}/revoke`, deletes the credential and retains its audit history.
 
 ## Source Restrictions
 

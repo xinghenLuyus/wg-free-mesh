@@ -53,7 +53,7 @@ def test_versioned_runtime_timestamp_upgrade(monkeypatch, has_observed_at):
         }
         with engine.connect() as connection:
             assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == (
-                "0009_runtime_wg_observed_at"
+                "0010_delete_revoked_mcp_tokens"
             )
             row = connection.execute(text("SELECT * FROM endpoint_runtime_status")).mappings().one()
             assert row["wg_observed_at"] == (timestamp if has_observed_at else None)

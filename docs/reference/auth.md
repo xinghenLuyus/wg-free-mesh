@@ -44,7 +44,7 @@ Authorization: Bearer <mcp-token>
 - `read`：只能调用资源和 `read_*` 工具。
 - `write`：可以调用 `read_*` 和 `write_*` 工具，但写操作仍必须确认。
 
-MCP token 在数据库中明文保存，便于系统识别、展示、撤销和审计。
+MCP Token 在数据库中明文保存，以支持完整复制。AI 接入列表将中间部分显示为 `***`。吊销接口 `POST /api/v1/mcp-access/tokens/{token_id}/revoke` 删除凭据并保留调用审计。
 
 ## 来源限制
 

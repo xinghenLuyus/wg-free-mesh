@@ -16,7 +16,7 @@ Versions come from the current repository config, lockfiles, and Docker compose 
 | Migrations | Alembic | `>=1.13.0` | `src/pyproject.toml` |
 | PostgreSQL driver | psycopg | `>=3.2.0` | `src/pyproject.toml` |
 | MQTT client | aiomqtt | `>=2.3.0` | `src/pyproject.toml` |
-| MCP server | mcp | `>=1.12.0` | `src/pyproject.toml` |
+| MCP server | mcp | `2.3.0` | `src/pyproject.toml` |
 | Frontend runtime | Node.js | Docker build uses `node:22-alpine` | `docker/app/backend.Dockerfile` |
 | Package manager | pnpm | `11.17.0` | `docker/app/backend.Dockerfile` |
 | Frontend framework | Vue | `3.5.32` | `front/pnpm-lock.yaml` |

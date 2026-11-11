@@ -8,6 +8,8 @@ Authorization: Bearer <mcp-token>
 
 MCP lets AI understand current system state and perform limited write operations after user confirmation.
 
+Streamable HTTP accepts the host and port from `WFM_PUBLIC_ORIGIN` or loopback addresses when unset. POST request bodies are limited to 4 MiB. Interactive bulk config selection accepts comma-separated endpoint IDs.
+
 ## Resources
 
 | Resource URI | Purpose |
@@ -88,6 +90,8 @@ The following operations must be performed manually in the system UI:
 Some write tools support MCP elicitation for missing parameters, such as a client download target, bulk-config endpoint selection, or snapshot ID.
 
 Elicitation only completes parameters; it does not authorize execution. The write still enters the confirmation flow.
+
+Write operations require clients to declare MCP elicitation support. The server rejects the operation if the client lacks that capability.
 
 ## Audit
 

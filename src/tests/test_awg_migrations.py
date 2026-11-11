@@ -64,7 +64,7 @@ def test_upgrade_all_historical_schemas(monkeypatch, revision: str, unversioned:
             assert state["confirmed_text"] == "original config"
             assert state["confirmed_version"] == 7
             assert connection.execute(text("SELECT version_num FROM alembic_version")).scalar() == (
-                "0009_runtime_wg_observed_at"
+                "0010_delete_revoked_mcp_tokens"
             )
         assert "node_runtime_observations" in inspect(engine).get_table_names()
         assert "wg_observed_at" in {

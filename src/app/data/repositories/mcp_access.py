@@ -49,14 +49,12 @@ class McpAccessRepositoryMixin:
     def revoke_mcp_token(self, token_id: str) -> dict[str, object]:
         now = now_utc().isoformat()
         with connect() as connection:
-            row = connection.execute("SELECT * FROM mcp_tokens WHERE id = ?", (token_id,)).fetchone()
-            if row is None:
-                raise AppError("MCP_TOKEN_NOT_FOUND", "MCP token not found", 404)
-            if not row["revoked_at"]:
-                connection.execute("UPDATE mcp_tokens SET revoked_at = ?, updated_at = ? WHERE id = ?", (now, now, token_id))
-            updated = connection.execute("SELECT * FROM mcp_tokens WHERE id = ?", (token_id,)).fetchone()
-        assert updated is not None
-        return self._mcp_token_payload(updated)
+            row = connection.execute(
+                "DELETE FROM mcp_tokens WHERE id = ? RETURNING *", (token_id,)
+            ).fetchone()
+        if row is None:
+            raise AppError("MCP_TOKEN_NOT_FOUND", "MCP token not found", 404)
+        return {**self._mcp_token_payload(row), "revoked_at": now, "updated_at": now}
 
     def find_active_mcp_token(self, token: str) -> dict[str, object] | None:
         raw_token = token.strip()
@@ -125,13 +123,17 @@ class McpAccessRepositoryMixin:
     def create_mcp_audit_log(self, payload: dict[str, object]) -> dict[str, object]:
         audit_id = new_id("mcpaudit")
         with connect() as connection:
+            # A call can finish after its token has been deleted. Keep its audit
+            # entry and only retain the foreign key if the token still exists.
+            token_lock = " FOR KEY SHARE" if connection.dialect_name == "postgresql" else ""
             connection.execute(
-                """
+                f"""
                 INSERT INTO mcp_audit_logs (
                     id, token_id, token_name, permission, target_kind, target_name, summary, impact,
                     confirmation_required, confirmation_result, result, error_code, created_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, (SELECT id FROM mcp_tokens WHERE id = ?{token_lock}),
+                        ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     audit_id,

@@ -3,13 +3,17 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import Any
 
+from mcp.server.mcpserver import Context, MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.types import ASGIApp
 
+from app.core.config import settings
 from app.mcp import catalog, operations
 from app.mcp.access import McpBearerAuthMiddleware
 from app.mcp.schemas import (
     McpClientArtifactPayload,
     McpConfigBulkPackagePayload,
+    McpConfigBulkPackageSelection,
     McpConfigPayload,
     McpNodePayload,
     McpPeerLinkGroupPayload,
@@ -19,34 +23,29 @@ from app.mcp.schemas import (
 )
 from app.services.control_plane_service import control_plane_service
 
-try:
-    from mcp.server.fastmcp import Context, FastMCP
-except ImportError:  # pragma: no cover - exercised before optional dependency is installed.
-    Context = Any
-    FastMCP = None  # type: ignore[assignment,misc]
-
-
-def create_mcp_server() -> Any | None:
-    if FastMCP is None:
-        return None
-    server = FastMCP("WG Free Mesh", streamable_http_path="/")
+def create_mcp_server() -> MCPServer:
+    server = MCPServer("WG Free Mesh")
     _register_resources(server)
     _register_read_tools(server)
     _register_write_tools(server)
     return server
 
 
-def mcp_http_app(server: Any | None) -> ASGIApp | None:
-    if server is None:
-        return None
-    return McpBearerAuthMiddleware(server.streamable_http_app())
+def mcp_http_app(server: MCPServer) -> ASGIApp:
+    host = settings.public_origin_host
+    security = TransportSecuritySettings(
+        allowed_hosts=[host] if host else [
+            "localhost", "localhost:*", "127.0.0.1", "127.0.0.1:*", "[::1]", "[::1]:*",
+        ],
+        allowed_origins=settings.allowed_origins,
+    )
+    return McpBearerAuthMiddleware(
+        server.streamable_http_app(streamable_http_path="/", transport_security=security)
+    )
 
 
 @asynccontextmanager
-async def mcp_session_lifespan(server: Any | None):
-    if server is None:
-        yield
-        return
+async def mcp_session_lifespan(server: MCPServer):
     async with server.session_manager.run():
         yield
 
@@ -687,7 +686,8 @@ def _register_write_tools(server: Any) -> None:
 async def _resolve_client_artifact_selection(ctx: Context, source: str, goos: str, goarch: str) -> McpClientArtifactPayload:
     if source and goos and goarch:
         return McpClientArtifactPayload(source=source, goos=goos, goarch=goarch)
-    response = await ctx.elicit(
+    response = await operations.elicit(
+        ctx,
         message="Select the WG Free Mesh client artifact target. Use read_client_download_options if you need all supported options.",
         schema=McpClientArtifactPayload,
     )
@@ -699,19 +699,24 @@ async def _resolve_client_artifact_selection(ctx: Context, source: str, goos: st
 async def _resolve_config_bulk_selection(ctx: Context, config_id: str, node_ids: list[str]) -> McpConfigBulkPackagePayload:
     if config_id and node_ids:
         return McpConfigBulkPackagePayload(config_id=config_id, node_ids=node_ids)
-    response = await ctx.elicit(
-        message="Provide the configuration id and node ids to include in the bulk config package. Use read_configs/read_nodes first if needed.",
-        schema=McpConfigBulkPackagePayload,
+    response = await operations.elicit(
+        ctx,
+        message="Provide the configuration id and comma-separated node ids. Use read_configs/read_nodes to discover them.",
+        schema=McpConfigBulkPackageSelection,
     )
     if response.action != "accept" or response.data is None:
         raise PermissionError("Config bulk package selection was not provided")
-    return response.data
+    selected_ids = [node_id.strip() for node_id in response.data.node_ids.split(",") if node_id.strip()]
+    if not selected_ids:
+        raise PermissionError("Config bulk package selection was not provided")
+    return McpConfigBulkPackagePayload(config_id=response.data.config_id, node_ids=selected_ids)
 
 
 async def _resolve_snapshot_export_selection(ctx: Context, snapshot_id: str) -> str:
     if snapshot_id.strip():
         return snapshot_id.strip()
-    response = await ctx.elicit(
+    response = await operations.elicit(
+        ctx,
         message="Provide the snapshot_id to export. Use read_snapshots first if needed.",
         schema=SnapshotExportSelection,
     )

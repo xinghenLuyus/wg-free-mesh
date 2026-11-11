@@ -50,14 +50,32 @@ Authorization: Bearer <mcp-token>
 | URL | `http://localhost:8000/mcp` 或 `https://wfm.example.com/mcp` |
 | Header | `Authorization: Bearer <mcp-token>` |
 
-如果工具使用 JSON 配置，常见写法类似：
+在「AI 接入」的 Token 行点击「复制配置」，可按客户端复制配置。系统会填入当前控制台的 `/mcp` 地址和完整 Token。「复制」按钮仍复制原始 Token，「Authorization 请求头值」复制含 `Bearer ` 前缀的值。吊销会删除该 Token，调用审计仍可查看。
+
+### AstrBot · Streamable HTTP
+
+新增 MCP 服务器，选择 **Streamable HTTP**，将对应模板粘贴到服务器配置，再测试连接。手动填写时，替换下面的地址和 Token。 [AstrBot MCP 文档](https://docs.astrbot.app/use/mcp.html)
+
+```json
+{
+  "transport": "streamable_http",
+  "url": "https://wfm.example.com/mcp",
+  "headers": {
+    "Authorization": "Bearer wfm_mcp_xxx"
+  }
+}
+```
+
+### Claude Code · `.mcp.json`
+
+将模板写入项目的 `.mcp.json`，已有其他服务器时将 `wfm` 项合并到 `mcpServers`。
 
 ```json
 {
   "mcpServers": {
     "wfm": {
       "type": "http",
-      "url": "http://localhost:8000/mcp",
+      "url": "https://wfm.example.com/mcp",
       "headers": {
         "Authorization": "Bearer wfm_mcp_xxx"
       }
@@ -66,7 +84,7 @@ Authorization: Bearer <mcp-token>
 }
 ```
 
-不同 AI 客户端的字段名可能略有差异，但核心就是 URL 加 Bearer Token。
+模板包含完整凭据，请仅保存到可信客户端的配置中。
 
 ## 第一次怎么验证
 

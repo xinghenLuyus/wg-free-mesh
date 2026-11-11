@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+from alembic import command
 from fastapi.testclient import TestClient
-import pytest
 
+from app.data.database import _alembic_config, _upgrade_database_schema, connect
 from app.services.control_plane_service import control_plane_service
 
 
 def test_mcp_endpoint_requires_bearer_token(client: TestClient) -> None:
-    pytest.importorskip("mcp.server.fastmcp", exc_type=ImportError)
-
     response = client.post("/mcp")
     slash_response = client.post("/mcp/")
 
@@ -74,6 +73,11 @@ def test_mcp_token_lifecycle_and_audit(authenticated_client: TestClient) -> None
     assert revoked.status_code == 200
     assert revoked.json()["data"]["revoked_at"]
     assert control_plane_service.find_active_mcp_token(token["token"]) is None
+    assert authenticated_client.get("/api/v1/mcp-access/tokens").json()["data"] == []
+    retained = authenticated_client.get("/api/v1/mcp-access/audit").json()["data"]
+    assert len(retained) == 1
+    assert retained[0]["token_id"] is None
+    assert retained[0]["token_name"] == token["name"]
 
     cleanup = authenticated_client.request(
         "DELETE",
@@ -87,3 +91,25 @@ def test_mcp_token_lifecycle_and_audit(authenticated_client: TestClient) -> None
     assert cleanup.status_code == 200
     assert cleanup.json()["data"]["deleted_count"] == 1
     assert authenticated_client.get("/api/v1/mcp-access/audit").json()["data"] == []
+
+
+def test_upgrade_removes_previously_revoked_tokens(authenticated_client: TestClient) -> None:
+    command.downgrade(_alembic_config(), "0009_runtime_wg_observed_at")
+    expires = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+    tokens = [
+        authenticated_client.post(
+            "/api/v1/mcp-access/tokens",
+            json={"name": name, "permission": "read", "expires_at": expires},
+        ).json()["data"]
+        for name in ("revoked", "active")
+    ]
+    with connect() as connection:
+        connection.execute(
+            "UPDATE mcp_tokens SET revoked_at = ? WHERE id = ?",
+            (datetime.now(UTC).isoformat(), tokens[0]["id"]),
+        )
+
+    _upgrade_database_schema()
+
+    remaining = authenticated_client.get("/api/v1/mcp-access/tokens").json()["data"]
+    assert [token["id"] for token in remaining] == [tokens[1]["id"]]

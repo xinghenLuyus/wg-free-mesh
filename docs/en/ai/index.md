@@ -50,14 +50,32 @@ If your AI tool has an MCP configuration UI, fill in:
 | URL | `http://localhost:8000/mcp` or `https://wfm.example.com/mcp` |
 | Header | `Authorization: Bearer <mcp-token>` |
 
-If the tool uses JSON configuration, the shape is commonly similar to:
+In **AI Integration**, select **Copy config** on a token row to copy a client template populated with the current console's `/mcp` URL and the full token. **Copy** still copies the raw token. **Authorization header value** includes the `Bearer ` prefix. Revoking a token deletes it and retains its audit history.
+
+### AstrBot · Streamable HTTP
+
+Add an MCP server, choose **Streamable HTTP**, paste the copied template into the server configuration, and test the connection. For manual setup, replace the URL and token below. [AstrBot MCP docs](https://docs.astrbot.app/en/use/mcp.html)
+
+```json
+{
+  "transport": "streamable_http",
+  "url": "https://wfm.example.com/mcp",
+  "headers": {
+    "Authorization": "Bearer wfm_mcp_xxx"
+  }
+}
+```
+
+### Claude Code · `.mcp.json`
+
+Save the template as the project's `.mcp.json`. If it already defines other servers, merge the `wfm` entry into `mcpServers`.
 
 ```json
 {
   "mcpServers": {
     "wfm": {
       "type": "http",
-      "url": "http://localhost:8000/mcp",
+      "url": "https://wfm.example.com/mcp",
       "headers": {
         "Authorization": "Bearer wfm_mcp_xxx"
       }
@@ -66,7 +84,7 @@ If the tool uses JSON configuration, the shape is commonly similar to:
 }
 ```
 
-Different clients may use slightly different field names. The important parts are the URL and Bearer token.
+The copied template contains the full credential. Store it only in a trusted client's configuration.
 
 ## First Test
 

@@ -128,5 +128,10 @@ class McpConfigBulkPackagePayload(BaseModel):
     node_ids: list[str] = Field(description="Node ids to include in the package.")
 
 
+class McpConfigBulkPackageSelection(BaseModel):
+    config_id: str = Field(description="Configuration id whose staged configs should be packaged.")
+    node_ids: str = Field(description="Comma-separated node ids to include in the package.")
+
+
 class SnapshotExportSelection(BaseModel):
     snapshot_id: str = Field(description="Snapshot id to export. Use read_snapshots to discover available ids.")

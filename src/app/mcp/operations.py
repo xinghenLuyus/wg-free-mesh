@@ -22,6 +22,13 @@ class WriteConfirmation(BaseModel):
     confirmed: bool = Field(description="Confirm this write operation after reviewing its impact.")
 
 
+async def elicit(ctx: Any, *, message: str, schema: type[BaseModel]) -> Any:
+    capabilities = ctx.client_capabilities
+    if capabilities is None or capabilities.elicitation is None:
+        raise PermissionError("MCP client does not support interactive confirmation")
+    return await ctx.elicit(message=message, schema=schema)
+
+
 def read_result(target_name: str, summary: str, reader: Callable[[], Any]) -> Any:
     grant = current_mcp_grant()
     try:
@@ -58,7 +65,8 @@ async def confirmed_write(
 
     confirmation_result: Literal["accepted", "rejected", "unsupported"] = "unsupported"
     try:
-        response = await ctx.elicit(
+        response = await elicit(
+            ctx,
             message=f"{summary}\nImpact: {impact}\nAllow this WG Free Mesh write operation?",
             schema=WriteConfirmation,
         )

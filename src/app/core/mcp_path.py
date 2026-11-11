@@ -5,7 +5,7 @@ from typing import Any
 
 
 class McpPathNormalizeMiddleware:
-    """Normalize /mcp to /mcp/ so Starlette mount routing reaches FastMCP."""
+    """Normalize /mcp to /mcp/ so Starlette mount routing reaches the MCP server."""
 
     def __init__(self, app: Callable[[dict[str, Any], Callable[[], Awaitable[dict[str, Any]]], Callable[[dict[str, Any]], Awaitable[None]]], Awaitable[None]]) -> None:
         self.app = app

@@ -27,7 +27,7 @@ from app.services.realtime_service import realtime_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    async with mcp_session_lifespan(getattr(app.state, "mcp_server", None)):
+    async with mcp_session_lifespan(app.state.mcp_server):
         init_database()
         store.reconcile_runtime_integrity()
         realtime_service.startup()
@@ -68,9 +68,7 @@ def create_app() -> FastAPI:
     app.include_router(internal_router)
     app.include_router(client_router)
     app.include_router(api_router)
-    mcp_app = mcp_http_app(mcp_server)
-    if mcp_app is not None:
-        app.mount("/mcp", mcp_app)
+    app.mount("/mcp", mcp_http_app(mcp_server))
 
     dist_dir = Path.cwd().parent / "front" / "dist"
     if dist_dir.exists():

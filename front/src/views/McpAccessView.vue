@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowLeft, CopyDocument, Delete, Key, Plus, RefreshRight, Search, SwitchButton } from '@element-plus/icons-vue'
+import { ArrowLeft, CopyDocument, Delete, Key, Plus, RefreshRight, Search } from '@element-plus/icons-vue'
 import { ElMessageBox } from 'element-plus'
 import { computed, onMounted, reactive, shallowRef } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -102,17 +102,46 @@ async function createToken() {
 
 async function revokeToken(token: McpTokenRead) {
   try {
+    await ElMessageBox.confirm(t('mcpAccess.revokeConfirm', { name: token.name }), t('mcpAccess.revoke'), {
+      type: 'warning',
+      confirmButtonText: t('mcpAccess.revoke'),
+      cancelButtonText: t('common.cancel'),
+    })
     await api.revokeMcpToken(token.id)
-    await load()
+    tokens.value = tokens.value.filter((item) => item.id !== token.id)
     notify.success(t('mcpAccess.tokenRevoked'))
   } catch (error) {
+    if (error === 'cancel' || error === 'close') return
     notify.error(error instanceof ApiClientError ? error.message : t('mcpAccess.tokenRevokeFailed'))
   }
 }
 
-async function copyToken(token: string) {
-  await navigator.clipboard.writeText(token)
-  notify.success(t('mcpAccess.tokenCopied'))
+function maskedToken(token: string) {
+  return `Bearer ${token.slice(0, 8)}***${token.slice(-4)}`
+}
+
+async function copyText(text: string, messageKey: string) {
+  try {
+    await navigator.clipboard.writeText(text)
+    notify.success(t(messageKey))
+  } catch {
+    notify.error(t('mcpAccess.copyFailed'))
+  }
+}
+
+type ConfigFormat = 'header' | 'astrbot' | 'claude'
+
+function copyConfig(format: ConfigFormat, token: string) {
+  const authorization = `Bearer ${token}`
+  const url = new URL('/mcp', window.location.origin).href
+  const headers = { Authorization: authorization }
+  if (format === 'header') {
+    return copyText(authorization, 'mcpAccess.configCopied')
+  }
+  const config = format === 'astrbot'
+    ? { transport: 'streamable_http', url, headers }
+    : { mcpServers: { wfm: { type: 'http', url, headers } } }
+  return copyText(JSON.stringify(config, null, 2), 'mcpAccess.configCopied')
 }
 
 function openClearAudit() {
@@ -187,7 +216,9 @@ onMounted(async () => {
         <el-table-column :label="t('mcpAccess.permission')" width="110">
           <template #default="{ row }">{{ t(`mcpAccess.permissions.${row.permission}`) }}</template>
         </el-table-column>
-        <el-table-column prop="token" :label="t('mcpAccess.token')" min-width="300" show-overflow-tooltip />
+        <el-table-column :label="t('mcpAccess.token')" min-width="220">
+          <template #default="{ row }"><code>{{ maskedToken(row.token) }}</code></template>
+        </el-table-column>
         <el-table-column :label="t('mcpAccess.expiresAt')" min-width="170">
           <template #default="{ row }">{{ formatDateTime(row.expires_at) }}</template>
         </el-table-column>
@@ -196,11 +227,21 @@ onMounted(async () => {
             <el-tag :type="row.revoked_at ? 'info' : 'success'">{{ row.revoked_at ? t('mcpAccess.revoked') : t('mcpAccess.active') }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column :label="t('nodes.actions')" width="190">
+        <el-table-column :label="t('nodes.actions')" min-width="300">
           <template #default="{ row }">
             <el-space>
-              <el-button size="small" :icon="CopyDocument" @click="copyToken(row.token)">{{ t('common.copy') }}</el-button>
-              <el-button v-if="!row.revoked_at" size="small" type="danger" plain :icon="SwitchButton" @click="revokeToken(row)">
+              <el-button size="small" :icon="CopyDocument" @click="copyText(row.token, 'mcpAccess.tokenCopied')">{{ t('common.copy') }}</el-button>
+              <el-dropdown trigger="click" @command="(format: ConfigFormat) => copyConfig(format, row.token)">
+                <el-button size="small">{{ t('mcpAccess.copyConfig') }}</el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="astrbot">AstrBot · Streamable HTTP</el-dropdown-item>
+                    <el-dropdown-item command="claude">Claude Code · .mcp.json</el-dropdown-item>
+                    <el-dropdown-item command="header">{{ t('mcpAccess.authorizationValue') }}</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+              <el-button size="small" type="danger" plain :icon="Delete" @click="revokeToken(row)">
                 {{ t('mcpAccess.revoke') }}
               </el-button>
             </el-space>
